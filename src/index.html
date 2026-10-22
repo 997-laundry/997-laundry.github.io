@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#eef7fb" />
+  <title id="docTitle">997 Laundry | نظام إدارة المغسلة</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- ====== ENTERPRISE EXTENSIONS START ====== -->
+<!-- ====== ENTERPRISE EXTENSIONS END ====== -->
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="auth-locked">
+  <noscript>
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#f6f4ec;font-family:sans-serif;direction:rtl;text-align:center">
+      <div style="max-width:420px">
+        <div style="font-size:52px;font-weight:800;color:#0f766e;margin-bottom:8px">997</div>
+        <div style="font-size:18px;font-weight:700;color:#132420;margin-bottom:16px">ما قدر النظام يشتغل بهذا الوضع</div>
+        <div style="font-size:14px;color:#4b5a53;line-height:1.9;margin-bottom:18px">
+          هذا النظام يحتاج تشغيل الجافاسكربت ليعمل، وهو معطّل حالياً بهذا العارض — هذا شائع لما يُفتح الملف من تطبيق «الملفات» أو معاينة سريعة بآيفون بدل ما يُفتح كصفحة إنترنت حقيقية.
+        </div>
+        <div style="background:#fff;border:1px solid #ded8c4;border-radius:10px;padding:16px;text-align:right">
+          <div style="font-weight:700;color:#0f766e;margin-bottom:8px">جرّب هذا:</div>
+          <div style="font-size:13.5px;color:#37423c;line-height:1.9">
+            1. لو الملف بتطبيق «الملفات» — اضغط عليه ضغطة مطوّلة واختر «مشاركة» ثم «Safari»، بدل ما تضغط عليه ضغطة عادية.<br>
+            2. لو ما زال ما يفتح، أفضل حل: ارفع الملف على استضافة مجانية بسيطة (مثل Netlify) واستخدم الرابط الناتج مباشرة بـ Safari.
+          </div>
+        </div>
+      </div>
+    </div>
+  </noscript>
+
+  <div id="authScreen" class="auth-screen" hidden>
+    <div class="auth-card" id="authCard"></div>
+  </div>
+  <dialog id="idleWarnDialog" class="idle-dialog">
+    <div class="idle-box">
+      <div class="idle-icon">⏱</div>
+      <h3 id="idleTitle">هل ما زلت هنا؟</h3>
+      <p id="idleText"></p>
+      <div class="idle-bar"><i id="idleBarFill"></i></div>
+      <div class="idle-actions"><button type="button" class="primary-btn" id="idleStayBtn">البقاء متصلاً</button><button type="button" class="ghost-btn" id="idleOutBtn">تسجيل الخروج</button></div>
+    </div>
+  </dialog>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark">997</div>
+        <div>
+          <h1>997 Laundry</h1>
+          <p data-i18n="brandTagline">نظام إدارة المغسلة</p>
+        </div>
+      </div>
+      <nav class="nav-list">
+        <button type="button" class="nav-item active" data-page="dashboard">⌂ <span data-i18n="nav_dashboard">الرئيسية</span></button>
+        <button type="button" class="nav-item" data-need="create_order" data-page="new-order">＋ <span data-i18n="nav_neworder">طلب جديد</span></button>
+        <button type="button" class="nav-item" data-page="orders">▦ <span data-i18n="nav_orders">الطلبات</span></button>
+        <button type="button" class="nav-item" data-page="customers">◉ <span data-i18n="nav_customers">العملاء</span></button>
+        <button type="button" class="nav-item" data-page="balances">◈ <span data-i18n="nav_balances">الأرصدة</span></button>
+        <button type="button" class="nav-item" data-need="view_reports" data-page="reports">▥ <span data-i18n="nav_reports">التقارير</span></button>
+
+        <button type="button" class="nav-item" data-need="view_reports" data-page="finance">◫ <span data-i18n="nav_finance">المالية</span></button>
+        <button type="button" class="nav-item" data-need="add_expense" data-page="inventory">▣ <span data-i18n="nav_inventory">المخزون والمشتريات</span></button>
+        <button type="button" class="nav-item" data-need="payroll" data-page="employees">♙ <span data-i18n="nav_employees">الموظفون والرواتب</span></button>
+        <button type="button" class="nav-item" data-need="view_closures" data-page="closures">✓ <span data-i18n="nav_closures">الإغلاقات</span></button>
+        <button type="button" class="nav-item" data-need="audit_log" data-page="audit">≡ <span data-i18n="nav_audit">سجل النشاط</span></button>
+        <button type="button" class="nav-item" data-need="admin_settings" data-page="profile">▤ <span data-i18n="nav_profile">ملف المنشأة</span></button>
+        <button type="button" class="nav-item" data-need="manage_users" data-page="access">🔒 <span data-i18n="nav_access">المستخدمون والصلاحيات</span></button>
+        <button type="button" class="nav-item" data-need="admin_settings" data-page="settings">⚙ <span data-i18n="nav_settings">الإعدادات</span></button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-card" id="userCard">
+          <div class="user-avatar" id="userAvatar">?</div>
+          <div class="user-meta"><b id="userName">—</b><span class="role-chip" id="roleChip">—</span></div>
+        </div>
+        <div class="user-actions">
+          <button type="button" class="ghost-btn" id="changePwBtn">🔑 كلمة المرور</button>
+          <button type="button" class="secondary-btn" id="logoutBtn">⎋ خروج</button>
+        </div>
+        <select class="ghost-btn full" id="langSelect" style="margin-top:8px;text-align:center">
+          <option value="ar">العربية</option>
+          <option value="en">English</option>
+          <option value="ur">اردو</option>
+        </select>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="topbar-start">
+          <button class="icon-btn mobile-only" id="menuBtn">☰</button>
+          <div>
+            <h2 id="pageTitle">الرئيسية</h2>
+            <p id="pageSubtitle">نظرة سريعة على حالة العمل اليوم</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="search-box">
+            <span>⌕</span>
+            <input id="globalSearch" data-i18n-placeholder="search_orders_ph" placeholder="ابحث برقم الطلب أو العميل أو الجوال" />
+          </div>
+          <select class="ghost-btn" id="langSelectTop" style="min-width:90px">
+            <option value="ar">العربية</option>
+            <option value="en">English</option>
+            <option value="ur">اردو</option>
+          </select>
+          <button class="primary-btn" data-open-page="new-order">＋ <span data-i18n="nav_neworder">طلب جديد</span></button>
+        </div>
+      </header>
+
+      <section id="toast" class="toast"></section>
+
+      <section class="page active" id="page-dashboard">
+        <div class="panel dash-range-panel">
+          <div class="dash-range-row">
+            <label>من<input type="date" id="dashFromDate" /></label>
+            <label>إلى<input type="date" id="dashToDate" /></label>
+            <div class="dash-range-presets">
+              <button type="button" class="mini-btn" data-range="today">اليوم</button>
+              <button type="button" class="mini-btn" data-range="week">أسبوع</button>
+              <button type="button" class="mini-btn active" data-range="month">شهر</button>
+              <button type="button" class="mini-btn" data-range="year">سنة</button>
+            </div>
+            <button type="button" class="primary-btn" id="dashApplyRange">تطبيق</button>
+          </div>
+        </div>
+
+        <div class="metrics-grid metrics-grid-compact" id="metricsGrid"></div>
+
+        <div class="content-grid two-cols" data-need="view_reports">
+          <div class="panel">
+            <div class="panel-header"><div><h3>المبيعات خلال الفترة</h3><p id="dashChartSub">حسب اليوم</p></div></div>
+            <div id="dashSalesChart" class="dash-bar-chart"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><div><h3>الإيرادات والمصروفات</h3><p>ملخص الفترة المختارة</p></div></div>
+            <div id="dashRevExpBreakdown"></div>
+          </div>
+        </div>
+
+        <div class="content-grid two-cols" style="margin-top:16px">
+          <div class="panel">
+            <div class="panel-header"><div><h3>الطلبات حسب الحالة</h3><p>ضمن الفترة المختارة</p></div></div>
+            <div id="dashStatusChart" class="dash-bar-chart"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><div><h3>أكثر الخدمات استخداماً</h3><p>حسب عدد القطع بالفترة</p></div></div>
+            <div id="dashServiceChart" class="dash-bar-chart"></div>
+          </div>
+        </div>
+
+        <div class="content-grid two-cols" style="margin-top:16px">
+          <div class="panel">
+            <div class="panel-header">
+              <div><h3 data-i18n="dash_attention_title">طلبات تحتاج الانتباه</h3><p data-i18n="dash_attention_sub">المتأخر، المستعجل، والجاهز منذ فترة</p></div>
+              <button class="link-btn" data-open-page="orders" data-i18n="viewAll">عرض الكل</button>
+            </div>
+            <div id="attentionList" class="stack-list"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <div><h3 data-i18n="dash_activity_title">حركة اليوم</h3><p data-i18n="dash_activity_sub">آخر العمليات المسجلة</p></div>
+            </div>
+            <div id="activityList" class="timeline"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-new-order">
+        <div class="pos-layout">
+          <div class="pos-main">
+            <div class="pos-customer-bar panel">
+              <button type="button" class="pos-customer-btn" id="posCustomerBarBtn">
+                <span class="pos-customer-icon">👤</span>
+                <span id="posCustomerBarText">اختر عميلاً للبدء بالطلب<small>اضغط هنا للبحث أو إضافة عميل جديد</small></span>
+              </button>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header"><div><h3>القطع والخدمات</h3><p>اضغط على القطعة لاختيار الخدمة والكمية</p></div></div>
+              <div class="pos-toolbar">
+                <div class="pos-cat-tabs" id="posCatTabs">
+                  <button type="button" class="pos-cat-tab active" data-cat="all">الكل</button>
+                  <button type="button" class="pos-cat-tab" data-cat="men">رجالي</button>
+                  <button type="button" class="pos-cat-tab" data-cat="women">نسائي</button>
+                  <button type="button" class="pos-cat-tab" data-cat="home">مفروشات ومنزلي</button>
+                </div>
+                <input type="text" id="posProductSearch" class="pos-search-input" placeholder="ابحث عن صنف..." />
+              </div>
+              <div class="pos-product-grid" id="posProductGrid"></div>
+            </div>
+          </div>
+
+          <aside class="pos-cart panel sticky-summary">
+            <div class="panel-header">
+              <div><h3>🛒 السلة <span id="summaryPieces">0</span></h3><p id="posCartCount">لا توجد قطع مضافة بعد</p></div>
+              <button class="mini-btn" type="button" id="posRecentBtn">المعاملات الأخيرة</button>
+            </div>
+
+            <div class="pos-cart-body" id="orderItemsBody"></div>
+
+            <div class="summary-row"><span>المجموع الأساسي</span><strong id="summarySubtotal">0.000 د.ب</strong></div>
+            <div class="summary-row"><span>رسوم الاستعجال</span><strong id="summaryUrgent">0.000 د.ب</strong></div>
+            <div class="summary-row"><span>الخصم</span><input id="discountAmount" type="number" min="0" step="0.001" value="0" /></div>
+            <div class="summary-row" id="discountReasonRow" style="display:none"><span>سبب الخصم (إلزامي)</span><input id="discountReason" type="text" maxlength="120" placeholder="مثال: عميل دائم، شكوى سابقة" /></div>
+            <div class="summary-row" id="summaryVatRow" style="display:none"><span id="summaryVatLabel">ضريبة القيمة المضافة</span><strong id="summaryVat">0.000 د.ب</strong></div>
+            <div class="summary-row total"><span>الإجمالي</span><strong id="summaryTotal">0.000 د.ب</strong></div>
+            <div class="summary-row"><span>المتبقي / غير مسدد</span><strong id="summaryOutstanding">0.000 د.ب</strong></div>
+
+            <label class="pos-urgent-toggle">
+              <input type="checkbox" id="orderPriorityToggle" />
+              ⚡ طلب مستعجل (رسوم إضافية تلقائية)
+            </label>
+
+            <details class="pos-advanced">
+              <summary>تفاصيل إضافية (الموعد، الموظف)</summary>
+              <div class="form-grid one-col" style="margin-top:10px">
+                <label><span>موعد التسليم المتوقع</span><input type="datetime-local" id="expectedDelivery" /></label>
+                <label><span>الموظف المسؤول</span><select id="orderEmployeeSelect"><option value="">— بدون تحديد —</option></select></label>
+                <label><span>رصيد العميل الحالي</span><strong id="summaryBalance">0.000 د.ب</strong></label>
+              </div>
+            </details>
+
+            <label class="pos-notes-field"><span>📝 ملاحظات الطلب (قبل الحفظ)</span>
+              <textarea id="orderNotes" rows="2" placeholder="بقعة، قطعة تالفة، تعليمات خاصة..."></textarea>
+            </label>
+
+            <select id="paymentMethod" style="display:none"><option value="cash">cash</option><option value="card">card</option><option value="benefitpay">benefitpay</option><option value="balance">balance</option><option value="unpaid">unpaid</option></select>
+            <input id="paidAmount" type="hidden" value="0" />
+            <input id="balanceUse" type="hidden" value="0" />
+            <select id="orderPriority" style="display:none"><option value="normal">normal</option><option value="urgent">urgent</option></select>
+            <button id="saveOrderBtn" style="display:none"></button>
+            
+            
+            <div class="pos-cart-actions" style="margin-top:6px">
+              <button class="secondary-btn" type="button" id="posSuspendBtn">⏸ تعليق</button>
+              <button class="ghost-btn" type="button" id="posCancelBtn">✕ إلغاء</button>
+            </div>
+            <div class="pos-checklist" id="posChecklist"></div>
+            <div class="pos-save-grid">
+              <button type="button" class="primary-btn full" id="posSaveOrderMainBtn">✓ حفظ الطلب</button>
+              <button type="button" class="secondary-btn full" id="savePrintBtn">🖨 حفظ وطباعة</button>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <dialog id="posCustomerDialog" class="modal">
+        <div class="quick-add-body">
+          <div class="modal-header"><div><h3>اختيار العميل</h3><p>اكتب أي جزء من رقم الجوال أو الاسم — تظهر الأرقام المحفوظة فوراً</p></div><button class="icon-btn" type="button" id="closePosCustomerDialog">✕</button></div>
+          <div class="customer-search-row">
+            <input id="orderCustomerPhone" class="large-input" inputmode="tel" autocomplete="off" placeholder="رقم الجوال أو الاسم" />
+            <button class="add-customer-fab" type="button" id="newCustomerInlineBtn" title="إضافة عميل جديد">+</button>
+          </div>
+          <div id="customerResults" class="cust-results" role="listbox"></div>
+          <div id="customerSearchNoResult" class="customer-no-result" style="display:none">
+            <span id="customerNoResultText">لا يوجد عميل بهذا الرقم</span>
+            <button type="button" class="secondary-btn" id="newCustomerFromNoResultBtn">＋ إضافة عميل جديد</button>
+          </div>
+          <div id="selectedCustomerCard" class="selected-customer empty-state compact" style="display:none">لم يتم اختيار عميل بعد</div>
+        </div>
+      </dialog>
+
+      <dialog id="quickAddDialog" class="modal">
+        <div class="quick-add-body">
+          <div class="modal-header"><div><h3 id="quickAddTitle">القطعة</h3><p>اختر الخدمة ثم الكمية</p></div><button class="icon-btn" type="button" id="closeQuickAddDialog">✕</button></div>
+          <div class="quick-add-services" id="quickAddServices"></div>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr;align-items:end">
+            <label><span>الكمية</span>
+              <div class="qty-stepper"><button type="button" id="quickQtyMinus">−</button><strong id="quickQtyValue">1</strong><button type="button" id="quickQtyPlus">＋</button></div>
+            </label>
+            <label><span>ملاحظة (اختياري)</span><input id="quickAddNote" placeholder="مثال: قطعة تالفة" /></label>
+          </div>
+          <div id="quickAddPackageNotice"></div>
+          <button class="primary-btn full" type="button" id="confirmQuickAddBtn" style="margin-top:14px">إضافة للسلة</button>
+        </div>
+      </dialog>
+
+      <dialog id="recentTransactionsDialog" class="modal wide-modal">
+        <div class="quick-add-body">
+          <div class="modal-header"><div><h3>المعاملات الأخيرة</h3><p>آخر 10 طلبات + الطلبات المعلّقة</p></div><button class="icon-btn" type="button" id="closeRecentTxDialog">✕</button></div>
+          <div id="suspendedOrdersSection"></div>
+          <div id="recentTxList"></div>
+        </div>
+      </dialog>
+
+      <dialog id="quickFormDialog" class="modal">
+        <div class="quick-add-body">
+          <div class="modal-header"><div><h3 id="quickFormTitle">عنوان</h3><p id="quickFormSub"></p></div><button class="icon-btn" type="button" id="closeQuickFormDialog">✕</button></div>
+          <div id="quickFormFields" class="form-grid one-col"></div>
+          <div class="modal-actions" style="margin-top:14px">
+            <button class="ghost-btn" type="button" id="quickFormCancelBtn">إلغاء</button>
+            <button class="primary-btn" type="button" id="quickFormSubmitBtn">حفظ</button>
+          </div>
+        </div>
+      </dialog>
+
+      <section class="page" id="page-orders">
+        <div class="panel">
+          <div class="panel-header responsive-header">
+            <div><h3 data-i18n="orders_title">إدارة الطلبات</h3><p data-i18n="orders_sub">تحديث الحالة والوصول السريع لجميع الطلبات</p></div>
+            <div class="filters-row">
+              <select id="orderStatusFilter"><option value="all" data-i18n="opt_all_statuses">كل الحالات</option></select>
+              <select id="orderPriorityFilter"><option value="all" data-i18n="opt_all_priorities">كل الأولويات</option><option value="normal" data-i18n="opt_normal">عادي</option><option value="urgent" data-i18n="opt_urgent_plain">مستعجل</option></select>
+            </div>
+          </div>
+          <div class="table-wrap desktop-orders-table">
+            <table>
+              <thead><tr>
+                <th data-i18n="th_order">الطلب</th><th data-i18n="th_customer">العميل</th><th data-i18n="th_pieces">القطع</th>
+                <th data-i18n="th_value">القيمة</th><th data-i18n="th_priority">الأولوية</th><th data-i18n="th_status">الحالة</th>
+                <th data-i18n="th_expected">موعد التسليم</th><th data-i18n="th_actions">الإجراءات</th>
+              </tr></thead>
+              <tbody id="ordersBody"></tbody>
+            </table>
+          </div>
+          <div id="ordersCards" class="mobile-orders-cards"></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-customers">
+        <div class="panel">
+          <div class="panel-header responsive-header">
+            <div><h3 data-i18n="nav_customers">العملاء</h3><p data-i18n="customers_sub">بيانات العملاء، الطلبات السابقة، والأرصدة</p></div>
+            <button class="primary-btn" id="addCustomerBtn">＋ <span data-i18n="btn_add_customer">إضافة عميل</span></button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th data-i18n="th_customer">العميل</th><th data-i18n="th_phone">الجوال</th><th data-i18n="th_area">المنطقة</th>
+                <th data-i18n="th_balance">الرصيد</th><th data-i18n="th_order_count">عدد الطلبات</th><th data-i18n="th_last_visit">آخر زيارة</th><th data-i18n="th_actions">الإجراءات</th>
+              </tr></thead>
+              <tbody id="customersBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-balances"><div id="balRoot"></div></section>
+
+      <section class="page" id="page-reports">
+        <div class="panel">
+          <div class="reports-toolbar">
+            <div class="report-tabs" id="reportTypeTabs">
+              <button type="button" class="report-tab active" data-report="overview">نظرة عامة</button>
+              <button type="button" class="report-tab" data-report="pnl">الأرباح والخسائر</button>
+              <button type="button" class="report-tab" data-report="sales">المبيعات</button>
+            </div>
+            <div class="report-date-row">
+              <label>من<input type="date" id="reportFromDate" /></label>
+              <label>إلى<input type="date" id="reportToDate" /></label>
+              <button type="button" class="primary-btn" id="reportApplyBtn">عرض</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="reportContent"></div>
+      </section>
+
+
+      <section class="page" id="page-finance">
+        <div class="panel">
+          <div class="finance-filter-row">
+            <label>من<input type="date" id="financeFromDate" /></label>
+            <label>إلى<input type="date" id="financeToDate" /></label>
+            <label>نوع التقرير<select id="financeReportType">
+              <option value="performance">الأداء المالي</option>
+              <option value="pnl">الأرباح والخسائر</option>
+              <option value="expenses">المصروفات</option>
+            </select></label>
+            <button type="button" class="primary-btn" id="financeViewBtn">عرض</button>
+          </div>
+        </div>
+
+        <div class="enterprise-grid" id="financeMetrics"></div>
+        <div id="financeReportBody"></div>
+
+        <div class="content-grid two-cols" style="margin-top:16px">
+          <div class="panel">
+            <div class="panel-header"><div><h3>المصروفات المتكررة</h3><p>إيجار، رواتب، اشتراكات — يومية أو شهرية</p></div><button class="primary-btn" type="button" id="addRecurringExpenseBtn">+ إضافة متكرر</button></div>
+            <div class="table-wrap"><table><thead><tr><th>الاسم</th><th>المبلغ</th><th>التكرار</th><th>آخر تطبيق</th><th></th></tr></thead><tbody id="recurringExpensesBody"></tbody></table></div>
+            <button type="button" class="secondary-btn full" id="applyRecurringExpensesBtn" style="margin-top:10px">تطبيق المستحق منها الآن</button>
+          </div>
+          <div class="panel"><div class="panel-header"><div><h3>المصروفات</h3><p>كل ما يخرج من المغسلة</p></div><button class="primary-btn" type="button" id="addExpenseBtn">+ إضافة مصروف</button></div><div id="expenseList"></div></div>
+        </div>
+      </section>
+      <section class="page" id="page-inventory"><div id="invRoot"></div></section>
+      <section class="page" id="page-employees">
+        <div class="metrics-grid" id="employeeMetrics"></div><div class="content-grid two-cols"><div class="panel"><div class="panel-header"><div><h3 data-i18n="emp_title">الموظفون</h3><p data-i18n="emp_sub">الرواتب والحضور والإنتاجية</p></div><button class="primary-btn" id="addEmployeeBtn" data-i18n="emp_add">＋ موظف</button></div><div class="table-wrap"><table><thead><tr><th data-i18n="th_employee">الموظف</th><th data-i18n="th_role">الدور</th><th data-i18n="th_salary">الراتب</th><th data-i18n="th_commission">العمولة</th><th data-i18n="th_completed_orders">طلبات منجزة</th><th data-i18n="th_linked_sales">مبيعات مرتبطة</th></tr></thead><tbody id="employeesBody"></tbody></table></div></div><div class="panel"><div class="panel-header"><div><h3 data-i18n="emp_payroll_title">الرواتب والحضور والاستحقاقات</h3><p data-i18n="emp_payroll_sub">خصومات، سلف، مكافآت وعمولات</p></div><div style="display:flex;gap:8px"><button class="secondary-btn" id="addAttendanceBtn" data-i18n="emp_add_attendance">تسجيل حضور</button><button class="primary-btn" id="addPayrollTxBtn" data-i18n="emp_add_payroll_tx">＋ حركة راتب</button></div></div><div id="payrollSummary"></div></div></div>
+      </section>
+      <section class="page" id="page-closures">
+        <div class="content-grid two-cols">
+          <div class="panel">
+            <div class="panel-header"><div><h3 data-i18n="cls_daily_title">الإغلاق اليومي</h3><p data-i18n="cls_daily_sub">مطابقة المبيعات والصندوق والمصروفات والفروقات</p></div><button class="primary-btn" id="closeDayBtn" data-i18n="cls_approve_day">اعتماد إغلاق اليوم</button></div>
+            <label class="closure-date-label"><span data-i18n="cls_date_label">التاريخ</span><input type="date" id="closureDate" /></label>
+            <div id="dailyClosurePreview"></div>
+          </div>
+          <div class="panel"><div class="panel-header"><div><h3 data-i18n="cls_monthly_title">الإغلاق الشهري</h3><p data-i18n="cls_monthly_sub">تجميع المبيعات والمصروفات والرواتب والجرد والربحية</p></div><button class="primary-btn" id="closeMonthBtn" data-i18n="cls_approve_month">اعتماد إغلاق الشهر</button></div><div id="monthlyClosurePreview"></div></div>
+        </div>
+        <div class="panel" style="margin-top:18px"><div class="panel-header"><div><h3 data-i18n="cls_register_title">تفاصيل الصندوق</h3><p data-i18n="cls_register_sub">البيع والمصروف لكل طريقة دفع، والصندوق المتبقي المتوقع لليوم المحدد</p></div></div><div class="table-wrap"><table><thead><tr><th data-i18n="th_payment_method">طريقة الدفع</th><th data-i18n="th_sell">بيع</th><th data-i18n="th_deposit_col">إيداع أرصدة</th><th data-i18n="th_expense_col">مصروف</th><th data-i18n="th_refund_col">استرداد نقدي</th></tr></thead><tbody id="registerDetailsBody"></tbody></table></div></div>
+        <div class="panel" style="margin-top:18px"><div class="panel-header"><div><h3 data-i18n="cls_history_title">سجل الإغلاقات</h3><p data-i18n="cls_history_sub">جميع الإغلاقات المعتمدة</p></div></div><div id="closuresList"></div></div>
+      </section>
+      <section class="page" id="page-audit"><div id="auditRoot"></div></section>
+
+      
+
+      <section class="page" id="page-profile">
+        <div class="panel">
+          <div class="panel-header"><div><h3>ملف المغسلة والإعدادات العامة</h3><p>بيانات المنشأة، الهوية، الضرائب، والتواصل</p></div><button class="primary-btn" id="saveProfileBtn">حفظ البيانات</button></div>
+          <div class="profile-hero">
+            <div class="logo-box">997</div>
+            <div class="form-grid">
+              <label>اسم المنشأة (إنجليزي)<input id="profileNameEn" /></label><label>الاسم بالعربي<input id="profileNameAr" /></label>
+              <label>السجل التجاري<input id="profileCr" placeholder="CR Number" /></label><label>الرقم الضريبي<input id="profileVat" placeholder="VAT / Tax ID" /></label>
+              <label>رقم الهاتف<input id="profilePhone" placeholder="+973" /></label><label>واتساب<input id="profileWhatsapp" placeholder="+973" /></label>
+              <label>البريد الإلكتروني<input id="profileEmail" placeholder="info@997laundry.com" /></label><label>المنطقة<input id="profileRegion" value="البحرين" /></label>
+              <label class="full-span">العنوان<textarea id="profileAddress" rows="2"></textarea></label>
+            </div>
+          </div>
+        </div>
+        <div class="content-grid two-cols" style="margin-top:18px">
+          <div class="panel"><div class="panel-header"><div><h3>الفروع ونقاط التشغيل</h3><p>تعريف الفرع وساعات العمل</p></div></div><div class="table-wrap"><table><thead><tr><th>الفرع</th><th>الحالة</th><th>ساعات العمل</th></tr></thead><tbody id="branchesBody"></tbody></table></div><button class="secondary-btn" id="addBranchBtn">＋ إضافة فرع</button></div>
+          <div class="panel"><div class="panel-header"><div><h3>ضريبة القيمة المضافة</h3><p>تُستخدم عند احتساب فواتير خاضعة للضريبة</p></div></div><div class="settings-list"><label>نسبة VAT %<input id="profileVatPercent" type="number" value="0"></label><label>مدة الاحتفاظ بالسجلات<input id="profileRetention" value="7 سنوات"></label></div>
+            <p class="section-note" style="margin-top:10px">إعدادات الاستعجال ومدد التنفيذ موجودة في صفحة الإعدادات.</p>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:18px">
+          <div class="panel-header"><div><h3>⚠ النسخ الاحتياطي — مهم جداً</h3><p>كل بيانات النظام محفوظة بهذا الجهاز فقط. صدّر نسخة احتياطية بانتظام لحماية بياناتك من الفقدان</p></div></div>
+          <div class="backup-row">
+            <button class="primary-btn" id="exportBackupBtn" data-need="export_data">⬇ تصدير نسخة احتياطية</button>
+            <label class="secondary-btn" data-need="restore_backup" for="importBackupInput" style="cursor:pointer;text-align:center">⬆ استيراد نسخة احتياطية<input type="file" id="importBackupInput" accept=".json" style="display:none" /></label>
+          </div>
+          <p class="section-note" id="lastBackupNote" style="margin-top:10px">لا توجد نسخة احتياطية مسجّلة بعد بهذا الجهاز</p>
+        </div>
+      </section>
+
+      <section class="page" id="page-access">
+        <div class="access-jump" id="accessJump">
+          <button type="button" class="secondary-btn" data-jump="usersPanel">👥 المستخدمون</button>
+          <button type="button" class="secondary-btn" data-jump="securityPanel">🔐 إعدادات الأمان</button>
+          <button type="button" class="primary-btn" data-jump="permMatrixPanel">🛡 مصفوفة الصلاحيات</button>
+        </div>
+        <div class="content-grid" style="grid-template-columns:1fr">
+          <div class="panel" id="usersPanel"><div class="panel-header"><div><h3>المستخدمون</h3><p>بيانات الدخول والتفاصيل الشخصية لكل موظف</p></div><button class="primary-btn" id="accessAddUserBtn">＋ مستخدم</button></div><div class="table-wrap"><table><thead><tr><th>الرقم الوظيفي</th><th>المستخدم</th><th>اسم الدخول</th><th>الدور</th><th>آخر دخول</th><th>تاريخ الانتهاء</th><th>الحالة</th><th></th></tr></thead><tbody id="accessUsersBody"></tbody></table></div></div>
+          <div class="panel" id="securityPanel"></div>
+        </div>
+        <div class="panel" id="permMatrixPanel" style="margin-top:18px">
+          <div class="panel-header"><div><h3>مصفوفة الصلاحيات</h3><p>فعّل أو عطّل كل صلاحية لكل دور — تُحفظ تلقائياً</p></div><button class="secondary-btn" type="button" id="resetPermMatrixBtn">استعادة الافتراضي</button></div>
+          <div class="table-wrap"><table class="permission-table" id="permMatrixTable"><thead><tr><th>الصلاحية</th><th>عامل</th><th>محاسب</th><th>مدير</th><th>مالك</th></tr></thead><tbody id="permMatrixBody"></tbody></table></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-settings">
+        <div class="panel">
+          <div class="settings-tabs" id="settingsTabs">
+            <button type="button" class="report-tab active" data-settings-tab="pricing">الأسعار والمنتجات</button>
+            <button type="button" class="report-tab" data-settings-tab="operating">إعدادات التشغيل</button>
+            <button type="button" class="report-tab" data-settings-tab="packages">الباقات</button>
+            <button type="button" class="report-tab" data-settings-tab="admin">حسابي</button>
+          </div>
+        </div>
+
+        <div id="settingsTabContent">
+          <div class="panel" data-settings-panel="pricing">
+            <div class="panel-header"><div><h3 data-i18n="prices_title">قائمة الأسعار والمنتجات</h3><p>سعر الكي، الغسيل، والغسيل والكي معاً لكل صنف — عطّل أو أضف أصنافاً خاصة بك</p></div><button class="primary-btn" id="addCustomGarmentBtn">＋ إضافة منتج</button></div>
+            <div class="table-wrap"><table><thead><tr><th data-i18n="th_cloth">الصنف</th><th>كي</th><th>غسيل</th><th>غسيل وكي</th><th>نشط</th><th></th></tr></thead><tbody id="pricesBody"></tbody></table></div>
+            <button class="primary-btn full" id="savePricesBtn" style="margin-top:14px">💾 حفظ الأسعار</button>
+          </div>
+
+          <div class="panel" data-settings-panel="operating" style="display:none">
+            <div class="panel-header"><div><h3 data-i18n="settings_ops_title">إعدادات التشغيل</h3><p data-i18n="settings_ops_sub">الرسوم والمدة الافتراضية</p></div></div>
+            <div class="form-grid one-col">
+              <label><span data-i18n="lbl_urgent_percent">نسبة رسوم الاستعجال %</span><input id="urgentPercentageSetting" type="number" min="0" step="1" /></label>
+              <label><span data-i18n="lbl_normal_hours">مدة الطلب العادي بالساعات</span><input id="normalHoursSetting" type="number" min="1" /></label>
+              <label><span data-i18n="lbl_urgent_hours">مدة الطلب المستعجل بالساعات</span><input id="urgentHoursSetting" type="number" min="1" /></label>
+              <button class="primary-btn" id="saveSettingsBtn" data-i18n="btn_save_settings">حفظ الإعدادات</button>
+            </div>
+          </div>
+
+          <div class="panel" data-settings-panel="packages" style="display:none">
+            <div class="panel-header"><div><h3>الباقات</h3><p>تعريف باقات مسبقة الدفع (عدد قطع بسعر ثابت) — أدخل أسعارك الخاصة</p></div><button class="primary-btn" id="addPackageDefBtn">＋ باقة جديدة</button></div>
+            <div class="table-wrap"><table><thead><tr><th>اسم الباقة</th><th>نوع الخدمة</th><th>عدد القطع</th><th>السعر</th><th>هدية مجانية</th><th></th></tr></thead><tbody id="packageDefsBody"></tbody></table></div>
+          </div>
+
+          <div class="panel" data-settings-panel="admin" style="display:none">
+            <div class="panel-header"><div><h3>حساب المدير الرئيسي</h3><p>تعديل سريع لاسم وكلمة مرور المستخدم صاحب صلاحية مالك/مدير — لإدارة بقية المستخدمين اذهب لصفحة "المستخدمون والصلاحيات"</p></div></div>
+            <div id="adminAccountPanel"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="customerDialog" class="modal">
+    <form method="dialog" id="customerForm">
+      <div class="modal-header"><div><h3 data-i18n="cust_dialog_title">إضافة عميل جديد</h3><p data-i18n="cust_dialog_sub">أدخل بيانات العميل الأساسية</p></div><button class="icon-btn" value="cancel">✕</button></div>
+      <div class="form-grid">
+        <label><span data-i18n="lbl_customer_name">اسم العميل</span><input id="customerName" required /></label>
+        <label><span data-i18n="lbl_phone">رقم الجوال</span><input id="customerPhone" required inputmode="tel" /></label>
+        <label><span data-i18n="lbl_area">المنطقة</span><input id="customerArea" /></label>
+        <label><span data-i18n="lbl_address">العنوان</span><input id="customerAddress" /></label>
+        <label class="full-span"><span data-i18n="lbl_notes">ملاحظات</span><textarea id="customerNotes" rows="3"></textarea></label>
+      </div>
+      <div class="modal-actions"><button class="ghost-btn" value="cancel" data-i18n="btn_cancel">إلغاء</button><button class="primary-btn" id="saveCustomerBtn" value="default" data-i18n="btn_save_customer">حفظ العميل</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="orderDialog" class="modal wide-modal">
+    <div id="orderDialogContent"></div>
+  </dialog>
+
+    <script src="app.js"></script>
+</body>
+</html>
