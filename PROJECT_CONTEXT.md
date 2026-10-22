@@ -5,7 +5,8 @@ Internal laundry management system for **997 Laundry (Al-Riffa, Bahrain)**. Sing
 
 ## Files
 - `laundry-997-full.html` — the complete deliverable (open in a browser; works offline).
-- `laundry997/index.html`, `styles.css`, `app.js` — editable source (build merges them into the single file).
+- `src/index.html`, `src/styles.css`, `src/finance.js`, `src/app.js` — editable source. `npm run build` merges them into the single file.
+- `src/finance.js` — the ONLY place money figures are computed (sales, collected cash, debts, profit, drawer). Every screen calls `L997Finance.summarize()` / `snapshot()`.
 - Auth/permission logic and order-flow logic are inside `app.js` (main IIFE + enterprise + inventory/closure IIFEs).
 
 ## Modules
@@ -20,9 +21,16 @@ Dashboard · POS / New order · Orders · Customers · Balances (customer wallet
 ## Order flow (anti-fraud)
 1. Live customer search (phone partial / name, Arabic digits OK) → 2. add services → 3. totals (discount capped at 25% with mandatory reason; above needs supervisor) → 4. save + WhatsApp confirmation prompt → 5. "Confirm payment & ready" (full payment; credit/partial needs `allow_credit` or supervisor; balance payment must be sufficient; debt recorded in customer ledger) + WhatsApp "ready" prompt → 6. Delivery: staff must enter actual piece count matching the order; receiver name; WhatsApp thank-you. Cancel needs supervisor, reverses debt/refunds balance. Every step records who did it ("responsibility log" in order dialog); reprints and draft deletions are logged.
 
+## Financial rules (since v1.1)
+- Sales = confirmed-paid orders (ready/delivered) dated by `paidAt`, + package sales. Net revenue excludes VAT.
+- Collected = cash/card/Benefit/transfer actually received (order payments, deposits, debt payments, packages) − refunds.
+- Customer debts = negative customer balances. Profit (estimate) = net revenue − expenses − bonuses/commissions.
+- One daily closure per date, one monthly closure per calendar month. Cancelling a paid order records a refund (cash now or to balance).
+- Orders can be edited only before payment; reductions need `cancel_order` or supervisor; `order.editHistory` keeps before/after.
+
 ## Known limits / next ideas
 - Per-browser data; no multi-device sync; no email sending; WhatsApp opens a prefilled message (wa.me), staff presses send.
 - Next: backend (Supabase/Firebase) for real auth + sync, WhatsApp Business API automation, branch support.
 
 ## How to continue in a Claude Project
-Upload `laundry-997-full.html` (or the three source files) plus this file as project knowledge. When asking for changes, say which page/module; ask Claude to keep: RTL/bilingual UI, permission checks via `can()`, `logActivity()` for sensitive actions, and `requireOverride()` for supervisor approvals.
+Upload `laundry-997-full.html` (or the source files in `src/`) plus this file as project knowledge. When asking for changes, say which page/module; ask Claude to keep: RTL/bilingual UI, permission checks via `can()`, `logActivity()` for sensitive actions, `requireOverride()` for supervisor approvals, and `L997Finance` for any money figure. Run `npm run check` before committing.

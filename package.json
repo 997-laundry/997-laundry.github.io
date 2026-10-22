@@ -1,0 +1,13 @@
+{
+  "name": "laundry-997",
+  "version": "1.1.0",
+  "private": true,
+  "description": "997 Laundry management system (single-file offline web app)",
+  "scripts": {
+    "build": "node tools/build.js",
+    "test": "TZ=Asia/Bahrain node --test tests/*.test.js",
+    "lint": "eslint src/",
+    "e2e": "node tools/build.js && NODE_PATH=/opt/node22/lib/node_modules EXPECT_FIXED=1 node tests/e2e.smoke.js",
+    "check": "npm run lint && npm test && npm run e2e"
+  }
+}

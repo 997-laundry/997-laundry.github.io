@@ -1,0 +1,207 @@
+/* ==========================================================================
+   997 Laundry — finance.js
+   محرك الحسابات المالية الموحّد: كل الشاشات (الرئيسية، التقارير، المالية، الإغلاق)
+   تحسب أرقامها من هنا حتى تتطابق دائماً. دوال نقية بلا DOM — قابلة للاختبار بـ Node.
+
+   التعريفات:
+   - المبيعات (Sales): قيمة الطلبات المؤكَّد دفعها (جاهز/مُسلَّم) بتاريخ تأكيد الدفع + الباقات المباعة.
+     الإيراد الصافي = المبيعات بدون ضريبة القيمة المضافة.
+   - المحصّل (Collected): النقد/البطاقة/التحويل الداخل فعلياً بالفترة (دفعات طلبات، إيداعات أرصدة،
+     سداد ديون، بيع باقات) ناقص المبالغ المُرجَعة للعملاء.
+   - ديون العملاء (Receivables): مجموع الأرصدة السالبة الآن.
+   - الربح التقديري = الإيراد الصافي − المصروفات − مكافآت/عمولات الموظفين.
+   ========================================================================== */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  else root.L997Finance = api;
+})(typeof self !== "undefined" ? self : this, function () {
+  "use strict";
+
+  const CASH_METHODS = ["cash", "card", "benefitpay", "bank_transfer"];
+  const r3 = (n) => { const x = Number(n) || 0; return Math.round((x + (x >= 0 ? Number.EPSILON : -Number.EPSILON)) * 1000) / 1000; };
+  const pad = (n) => String(n).padStart(2, "0");
+
+  // تاريخ اليوم حسب توقيت الجهاز المحلي (وليس UTC) — يمنع اختفاء طلبات بعد منتصف الليل
+  function localDay(v) {
+    const d = v instanceof Date ? v : new Date(v);
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+  function todayStr() { return localDay(new Date()); }
+  function addDays(dayStr, n) {
+    const d = new Date(dayStr + "T12:00:00");
+    d.setDate(d.getDate() + n);
+    return localDay(d);
+  }
+  function monthBounds(dayStr) {
+    const [y, m] = dayStr.split("-").map(Number);
+    const last = new Date(y, m, 0).getDate();
+    return { from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${pad(last)}`, key: `${y}-${pad(m)}` };
+  }
+  function inRange(iso, from, to) {
+    if (!iso) return false;
+    if (!from && !to) return true;
+    const day = localDay(iso);
+    return (!from || day >= from) && (!to || day <= to);
+  }
+
+  const pay = (o) => o.payment || {};
+  // تاريخ تحصيل الطلب: وقت تأكيد الدفع (وليس وقت إنشاء الطلب)
+  function orderPaidAt(o) { return o.paidAt || o.readyAt || o.deliveredAt || o.createdAt; }
+  // الطلب يُحسب مبيعاً فقط بعد تأكيد دفعه (جاهز أو مُسلَّم) — الملغي والمستلم غير المدفوع لا يُحسبان
+  function isSale(o) { return o.status === "ready" || o.status === "delivered"; }
+  // المبلغ المحصَّل نقداً/بطاقة/تحويل على الطلب نفسه (الدفع من الرصيد ليس نقداً جديداً)
+  function orderCashIn(o) {
+    const p = pay(o);
+    if (!CASH_METHODS.includes(p.method)) return 0;
+    if (o.status === "cancelled" && !o.refund) return 0; // بيانات قديمة: الإلغاء كان يستبعد التحصيل
+    return r3(p.paid);
+  }
+
+  // سعر الباقة: محفوظ بالحركة الجديدة، أو يُستنتج من سجل الباقة المطابق (للبيانات القديمة)
+  function packagePrice(tx, customerPackages) {
+    if (tx.price !== undefined) return r3(tx.price);
+    const cp = (customerPackages || []).find((p) => p.customerId === tx.customerId && p.purchasedAt === tx.at);
+    return cp ? r3(cp.price) : 0;
+  }
+
+  // حركات النقد بسجل الأرصدة: إيداع/سداد دين (+)، استرداد نقدي (−)، عكس حركة نقدية، بيع باقة (+)
+  function ledgerCashEffect(tx, customerPackages) {
+    if (!CASH_METHODS.includes(tx.method)) return 0;
+    if (tx.type === "credit" || tx.type === "cash_refund" || (tx.type === "reversal" && tx.cashRev)) return r3(tx.amount);
+    if (tx.type === "package_purchase") return packagePrice(tx, customerPackages);
+    return 0;
+  }
+
+  function addTo(obj, key, v) { obj[key] = r3((obj[key] || 0) + v); }
+
+  function summarize(data, from, to) {
+    const orders = data.orders || [], ledger = data.ledger || [], expenses = data.expenses || [];
+    const payroll = data.payroll || [], pkgs = data.customerPackages || [];
+    const s = {
+      salesOrders: 0, grossOrderSales: 0, vat: 0, discounts: 0, urgentFees: 0,
+      packageSales: 0, packageCount: 0, salesTotal: 0, netRevenue: 0,
+      paidFromBalance: 0, creditGiven: 0, ordersCreated: 0,
+      cashIn: 0, cashOut: 0, collected: 0, collectedBy: {}, refundsBy: {}, salesCashBy: {}, depositsBy: {},
+      orderPayments: 0, deposits: 0, refunds: 0,
+      expenses: 0, expensesBy: {}, expensesByCat: {},
+      staffCosts: 0, advances: 0, deductions: 0, profit: 0, expectedCash: 0,
+      piecesByService: {}, piecesByGarment: {}, salesByDay: {}, salesByMonth: {}, salesList: [],
+    };
+
+    orders.forEach((o) => {
+      const p = pay(o);
+      if (inRange(o.createdAt, from, to) && o.status !== "cancelled") s.ordersCreated++;
+      const paidAt = orderPaidAt(o);
+      if (isSale(o) && inRange(paidAt, from, to)) {
+        const total = r3(p.total);
+        s.salesOrders++;
+        s.grossOrderSales = r3(s.grossOrderSales + total);
+        s.vat = r3(s.vat + (Number(p.vat) || 0));
+        s.discounts = r3(s.discounts + (Number(p.discount) || 0));
+        s.urgentFees = r3(s.urgentFees + (Number(p.urgentFee) || 0));
+        if (p.method === "balance") s.paidFromBalance = r3(s.paidFromBalance + total);
+        if (o.debtRecorded) s.creditGiven = r3(s.creditGiven + (Number(p.outstanding) || 0));
+        addTo(s.salesByDay, localDay(paidAt), total);
+        addTo(s.salesByMonth, localDay(paidAt).slice(0, 7), total);
+        (o.items || []).forEach((it) => { addTo(s.piecesByService, it.serviceId, it.qty); addTo(s.piecesByGarment, it.clothingId, it.qty); });
+        s.salesList.push(o);
+      }
+      const cin = orderCashIn(o);
+      if (cin > 0 && inRange(paidAt, from, to)) {
+        s.orderPayments = r3(s.orderPayments + cin);
+        addTo(s.collectedBy, p.method, cin);
+        addTo(s.salesCashBy, p.method, cin);
+      }
+      // استرداد نقدي عند إلغاء طلب مدفوع
+      if (o.refund && o.refund.mode === "cash" && inRange(o.refund.at, from, to)) {
+        const amt = r3(o.refund.amount);
+        s.refunds = r3(s.refunds + amt);
+        addTo(s.refundsBy, o.refund.method, amt);
+      }
+    });
+
+    ledger.forEach((tx) => {
+      if (!inRange(tx.at, from, to)) return;
+      if (tx.type === "package_purchase") {
+        const price = packagePrice(tx, pkgs);
+        s.packageSales = r3(s.packageSales + price);
+        s.packageCount++;
+        addTo(s.salesByDay, localDay(tx.at), price);
+        addTo(s.salesByMonth, localDay(tx.at).slice(0, 7), price);
+      }
+      const eff = ledgerCashEffect(tx, pkgs);
+      if (eff > 0) {
+        if (tx.type === "package_purchase") addTo(s.salesCashBy, tx.method, eff);
+        else { s.deposits = r3(s.deposits + eff); addTo(s.depositsBy, tx.method, eff); }
+        addTo(s.collectedBy, tx.method, eff);
+      } else if (eff < 0) {
+        s.refunds = r3(s.refunds - eff);
+        addTo(s.refundsBy, tx.method, -eff);
+      }
+    });
+
+    expenses.forEach((e) => {
+      if (!inRange(e.date, from, to)) return;
+      const a = r3(e.amount);
+      s.expenses = r3(s.expenses + a);
+      addTo(s.expensesBy, e.method || "cash", a);
+      addTo(s.expensesByCat, e.category || "—", a);
+    });
+
+    payroll.forEach((p) => {
+      if (!inRange(p.date, from, to)) return;
+      const a = Math.abs(Number(p.amount ?? p.net) || 0);
+      if (p.type === "bonus" || p.type === "commission") s.staffCosts = r3(s.staffCosts + a);
+      else if (p.type === "advance") s.advances = r3(s.advances + a);
+      else if (p.type === "deduction") s.deductions = r3(s.deductions + a);
+    });
+
+    s.salesTotal = r3(s.grossOrderSales + s.packageSales);
+    s.netRevenue = r3(s.salesTotal - s.vat);
+    s.cashIn = r3(Object.values(s.collectedBy).reduce((a, v) => a + v, 0));
+    s.cashOut = s.refunds;
+    s.collected = r3(s.cashIn - s.cashOut);
+    s.profit = r3(s.netRevenue - s.expenses - s.staffCosts);
+    s.expectedCash = r3((s.collectedBy.cash || 0) - (s.refundsBy.cash || 0) - (s.expensesBy.cash || 0));
+    s.avgOrder = s.salesOrders ? r3(s.grossOrderSales / s.salesOrders) : 0;
+    return s;
+  }
+
+  // صورة الوضع الحالي (لا تعتمد على فترة): ديون العملاء، الأرصدة المدفوعة مقدماً، الطلبات المفتوحة
+  function snapshot(data, now) {
+    const customers = data.customers || [], orders = data.orders || [];
+    const nowMs = now ? new Date(now).getTime() : Date.now();
+    const debtors = customers.filter((c) => Number(c.balance) < 0);
+    const open = orders.filter((o) => o.status === "received");
+    const ready = orders.filter((o) => o.status === "ready");
+    return {
+      receivables: r3(debtors.reduce((a, c) => a - Number(c.balance), 0)),
+      debtorsCount: debtors.length,
+      prepaid: r3(customers.filter((c) => Number(c.balance) > 0).reduce((a, c) => a + Number(c.balance), 0)),
+      openCount: open.length,
+      openValue: r3(open.reduce((a, o) => a + Number(pay(o).total || 0), 0)),
+      readyCount: ready.length,
+      readyOver3Days: ready.filter((o) => nowMs - new Date(orderPaidAt(o)).getTime() > 3 * 86400000).length,
+    };
+  }
+
+  // توزيع دين العميل الحالي على طلباته الآجلة: الأقدم يُعتبر مسدداً أولاً، والدين المتبقي على الأحدث
+  function allocateDebts(customers, orders) {
+    const out = {};
+    (customers || []).forEach((c) => {
+      let left = r3(Math.max(0, -Number(c.balance) || 0));
+      (orders || [])
+        .filter((o) => o.customerId === c.id && o.debtRecorded && o.status !== "cancelled")
+        .sort((a, b) => String(orderPaidAt(b)).localeCompare(String(orderPaidAt(a))))
+        .forEach((o) => {
+          const owed = r3(Math.min(Number(pay(o).outstanding) || 0, left));
+          out[o.id] = owed;
+          left = r3(left - owed);
+        });
+    });
+    return out;
+  }
+
+  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, packagePrice, summarize, snapshot, allocateDebts };
+});

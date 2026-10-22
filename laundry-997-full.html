@@ -219,7 +219,9 @@ html[dir="ltr"] .link-btn{padding:6px 0}
 .report-tabs{display:flex;gap:6px;flex-wrap:wrap}
 .report-tab{border:1px solid var(--border);background:#fff;border-radius:12px;padding:10px 18px;font-weight:800;font-size:13px;color:#586873}
 .report-tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
-.report-date-row{display:flex;align-items:end;gap:10px}
+.report-date-row{display:flex;flex-wrap:wrap;align-items:end;gap:10px;max-width:100%}
+.report-date-row label{min-width:0;flex:1 1 130px}
+.report-date-row input[type=date]{width:100%;min-width:0}
 .report-date-row label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#56656e}
 .report-date-row input[type=date]{border:1px solid var(--border);border-radius:10px;padding:9px 10px}
 
@@ -858,6 +860,216 @@ html,body{max-width:100%;overflow-x:hidden}
   </dialog>
 
     <script>
+/* ==========================================================================
+   997 Laundry — finance.js
+   محرك الحسابات المالية الموحّد: كل الشاشات (الرئيسية، التقارير، المالية، الإغلاق)
+   تحسب أرقامها من هنا حتى تتطابق دائماً. دوال نقية بلا DOM — قابلة للاختبار بـ Node.
+
+   التعريفات:
+   - المبيعات (Sales): قيمة الطلبات المؤكَّد دفعها (جاهز/مُسلَّم) بتاريخ تأكيد الدفع + الباقات المباعة.
+     الإيراد الصافي = المبيعات بدون ضريبة القيمة المضافة.
+   - المحصّل (Collected): النقد/البطاقة/التحويل الداخل فعلياً بالفترة (دفعات طلبات، إيداعات أرصدة،
+     سداد ديون، بيع باقات) ناقص المبالغ المُرجَعة للعملاء.
+   - ديون العملاء (Receivables): مجموع الأرصدة السالبة الآن.
+   - الربح التقديري = الإيراد الصافي − المصروفات − مكافآت/عمولات الموظفين.
+   ========================================================================== */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  else root.L997Finance = api;
+})(typeof self !== "undefined" ? self : this, function () {
+  "use strict";
+
+  const CASH_METHODS = ["cash", "card", "benefitpay", "bank_transfer"];
+  const r3 = (n) => { const x = Number(n) || 0; return Math.round((x + (x >= 0 ? Number.EPSILON : -Number.EPSILON)) * 1000) / 1000; };
+  const pad = (n) => String(n).padStart(2, "0");
+
+  // تاريخ اليوم حسب توقيت الجهاز المحلي (وليس UTC) — يمنع اختفاء طلبات بعد منتصف الليل
+  function localDay(v) {
+    const d = v instanceof Date ? v : new Date(v);
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+  function todayStr() { return localDay(new Date()); }
+  function addDays(dayStr, n) {
+    const d = new Date(dayStr + "T12:00:00");
+    d.setDate(d.getDate() + n);
+    return localDay(d);
+  }
+  function monthBounds(dayStr) {
+    const [y, m] = dayStr.split("-").map(Number);
+    const last = new Date(y, m, 0).getDate();
+    return { from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${pad(last)}`, key: `${y}-${pad(m)}` };
+  }
+  function inRange(iso, from, to) {
+    if (!iso) return false;
+    if (!from && !to) return true;
+    const day = localDay(iso);
+    return (!from || day >= from) && (!to || day <= to);
+  }
+
+  const pay = (o) => o.payment || {};
+  // تاريخ تحصيل الطلب: وقت تأكيد الدفع (وليس وقت إنشاء الطلب)
+  function orderPaidAt(o) { return o.paidAt || o.readyAt || o.deliveredAt || o.createdAt; }
+  // الطلب يُحسب مبيعاً فقط بعد تأكيد دفعه (جاهز أو مُسلَّم) — الملغي والمستلم غير المدفوع لا يُحسبان
+  function isSale(o) { return o.status === "ready" || o.status === "delivered"; }
+  // المبلغ المحصَّل نقداً/بطاقة/تحويل على الطلب نفسه (الدفع من الرصيد ليس نقداً جديداً)
+  function orderCashIn(o) {
+    const p = pay(o);
+    if (!CASH_METHODS.includes(p.method)) return 0;
+    if (o.status === "cancelled" && !o.refund) return 0; // بيانات قديمة: الإلغاء كان يستبعد التحصيل
+    return r3(p.paid);
+  }
+
+  // سعر الباقة: محفوظ بالحركة الجديدة، أو يُستنتج من سجل الباقة المطابق (للبيانات القديمة)
+  function packagePrice(tx, customerPackages) {
+    if (tx.price !== undefined) return r3(tx.price);
+    const cp = (customerPackages || []).find((p) => p.customerId === tx.customerId && p.purchasedAt === tx.at);
+    return cp ? r3(cp.price) : 0;
+  }
+
+  // حركات النقد بسجل الأرصدة: إيداع/سداد دين (+)، استرداد نقدي (−)، عكس حركة نقدية، بيع باقة (+)
+  function ledgerCashEffect(tx, customerPackages) {
+    if (!CASH_METHODS.includes(tx.method)) return 0;
+    if (tx.type === "credit" || tx.type === "cash_refund" || (tx.type === "reversal" && tx.cashRev)) return r3(tx.amount);
+    if (tx.type === "package_purchase") return packagePrice(tx, customerPackages);
+    return 0;
+  }
+
+  function addTo(obj, key, v) { obj[key] = r3((obj[key] || 0) + v); }
+
+  function summarize(data, from, to) {
+    const orders = data.orders || [], ledger = data.ledger || [], expenses = data.expenses || [];
+    const payroll = data.payroll || [], pkgs = data.customerPackages || [];
+    const s = {
+      salesOrders: 0, grossOrderSales: 0, vat: 0, discounts: 0, urgentFees: 0,
+      packageSales: 0, packageCount: 0, salesTotal: 0, netRevenue: 0,
+      paidFromBalance: 0, creditGiven: 0, ordersCreated: 0,
+      cashIn: 0, cashOut: 0, collected: 0, collectedBy: {}, refundsBy: {}, salesCashBy: {}, depositsBy: {},
+      orderPayments: 0, deposits: 0, refunds: 0,
+      expenses: 0, expensesBy: {}, expensesByCat: {},
+      staffCosts: 0, advances: 0, deductions: 0, profit: 0, expectedCash: 0,
+      piecesByService: {}, piecesByGarment: {}, salesByDay: {}, salesByMonth: {}, salesList: [],
+    };
+
+    orders.forEach((o) => {
+      const p = pay(o);
+      if (inRange(o.createdAt, from, to) && o.status !== "cancelled") s.ordersCreated++;
+      const paidAt = orderPaidAt(o);
+      if (isSale(o) && inRange(paidAt, from, to)) {
+        const total = r3(p.total);
+        s.salesOrders++;
+        s.grossOrderSales = r3(s.grossOrderSales + total);
+        s.vat = r3(s.vat + (Number(p.vat) || 0));
+        s.discounts = r3(s.discounts + (Number(p.discount) || 0));
+        s.urgentFees = r3(s.urgentFees + (Number(p.urgentFee) || 0));
+        if (p.method === "balance") s.paidFromBalance = r3(s.paidFromBalance + total);
+        if (o.debtRecorded) s.creditGiven = r3(s.creditGiven + (Number(p.outstanding) || 0));
+        addTo(s.salesByDay, localDay(paidAt), total);
+        addTo(s.salesByMonth, localDay(paidAt).slice(0, 7), total);
+        (o.items || []).forEach((it) => { addTo(s.piecesByService, it.serviceId, it.qty); addTo(s.piecesByGarment, it.clothingId, it.qty); });
+        s.salesList.push(o);
+      }
+      const cin = orderCashIn(o);
+      if (cin > 0 && inRange(paidAt, from, to)) {
+        s.orderPayments = r3(s.orderPayments + cin);
+        addTo(s.collectedBy, p.method, cin);
+        addTo(s.salesCashBy, p.method, cin);
+      }
+      // استرداد نقدي عند إلغاء طلب مدفوع
+      if (o.refund && o.refund.mode === "cash" && inRange(o.refund.at, from, to)) {
+        const amt = r3(o.refund.amount);
+        s.refunds = r3(s.refunds + amt);
+        addTo(s.refundsBy, o.refund.method, amt);
+      }
+    });
+
+    ledger.forEach((tx) => {
+      if (!inRange(tx.at, from, to)) return;
+      if (tx.type === "package_purchase") {
+        const price = packagePrice(tx, pkgs);
+        s.packageSales = r3(s.packageSales + price);
+        s.packageCount++;
+        addTo(s.salesByDay, localDay(tx.at), price);
+        addTo(s.salesByMonth, localDay(tx.at).slice(0, 7), price);
+      }
+      const eff = ledgerCashEffect(tx, pkgs);
+      if (eff > 0) {
+        if (tx.type === "package_purchase") addTo(s.salesCashBy, tx.method, eff);
+        else { s.deposits = r3(s.deposits + eff); addTo(s.depositsBy, tx.method, eff); }
+        addTo(s.collectedBy, tx.method, eff);
+      } else if (eff < 0) {
+        s.refunds = r3(s.refunds - eff);
+        addTo(s.refundsBy, tx.method, -eff);
+      }
+    });
+
+    expenses.forEach((e) => {
+      if (!inRange(e.date, from, to)) return;
+      const a = r3(e.amount);
+      s.expenses = r3(s.expenses + a);
+      addTo(s.expensesBy, e.method || "cash", a);
+      addTo(s.expensesByCat, e.category || "—", a);
+    });
+
+    payroll.forEach((p) => {
+      if (!inRange(p.date, from, to)) return;
+      const a = Math.abs(Number(p.amount ?? p.net) || 0);
+      if (p.type === "bonus" || p.type === "commission") s.staffCosts = r3(s.staffCosts + a);
+      else if (p.type === "advance") s.advances = r3(s.advances + a);
+      else if (p.type === "deduction") s.deductions = r3(s.deductions + a);
+    });
+
+    s.salesTotal = r3(s.grossOrderSales + s.packageSales);
+    s.netRevenue = r3(s.salesTotal - s.vat);
+    s.cashIn = r3(Object.values(s.collectedBy).reduce((a, v) => a + v, 0));
+    s.cashOut = s.refunds;
+    s.collected = r3(s.cashIn - s.cashOut);
+    s.profit = r3(s.netRevenue - s.expenses - s.staffCosts);
+    s.expectedCash = r3((s.collectedBy.cash || 0) - (s.refundsBy.cash || 0) - (s.expensesBy.cash || 0));
+    s.avgOrder = s.salesOrders ? r3(s.grossOrderSales / s.salesOrders) : 0;
+    return s;
+  }
+
+  // صورة الوضع الحالي (لا تعتمد على فترة): ديون العملاء، الأرصدة المدفوعة مقدماً، الطلبات المفتوحة
+  function snapshot(data, now) {
+    const customers = data.customers || [], orders = data.orders || [];
+    const nowMs = now ? new Date(now).getTime() : Date.now();
+    const debtors = customers.filter((c) => Number(c.balance) < 0);
+    const open = orders.filter((o) => o.status === "received");
+    const ready = orders.filter((o) => o.status === "ready");
+    return {
+      receivables: r3(debtors.reduce((a, c) => a - Number(c.balance), 0)),
+      debtorsCount: debtors.length,
+      prepaid: r3(customers.filter((c) => Number(c.balance) > 0).reduce((a, c) => a + Number(c.balance), 0)),
+      openCount: open.length,
+      openValue: r3(open.reduce((a, o) => a + Number(pay(o).total || 0), 0)),
+      readyCount: ready.length,
+      readyOver3Days: ready.filter((o) => nowMs - new Date(orderPaidAt(o)).getTime() > 3 * 86400000).length,
+    };
+  }
+
+  // توزيع دين العميل الحالي على طلباته الآجلة: الأقدم يُعتبر مسدداً أولاً، والدين المتبقي على الأحدث
+  function allocateDebts(customers, orders) {
+    const out = {};
+    (customers || []).forEach((c) => {
+      let left = r3(Math.max(0, -Number(c.balance) || 0));
+      (orders || [])
+        .filter((o) => o.customerId === c.id && o.debtRecorded && o.status !== "cancelled")
+        .sort((a, b) => String(orderPaidAt(b)).localeCompare(String(orderPaidAt(a))))
+        .forEach((o) => {
+          const owed = r3(Math.min(Number(pay(o).outstanding) || 0, left));
+          out[o.id] = owed;
+          left = r3(left - owed);
+        });
+    });
+    return out;
+  }
+
+  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, packagePrice, summarize, snapshot, allocateDebts };
+});
+
+</script>
+    <script>
 /* حماية التخزين: إن مُنع localStorage/sessionStorage (نوافذ مدمجة أو وضع خصوصية) يعمل النظام بتخزين مؤقت في الذاكرة */
 (function(){
   ["localStorage","sessionStorage"].forEach(function(n){
@@ -939,12 +1151,13 @@ html,body{max-width:100%;overflow-x:hidden}
   deleteRecurringExpense(id){recurringExpenses=recurringExpenses.filter(x=>x.id!==id);save(EXT_KEYS.recurringExpenses,recurringExpenses)},
   updateRecurringExpense(id,patch){const r=recurringExpenses.find(x=>x.id===id);if(!r)return;Object.assign(r,patch);save(EXT_KEYS.recurringExpenses,recurringExpenses)},
   applyRecurringExpenses(){
-    const now=new Date(); const monthKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0'); const dayKey=now.toISOString().slice(0,10);
+    const now=new Date(); const monthKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0'); const dayKey=monthKey+'-'+String(now.getDate()).padStart(2,'0');
     let appliedCount=0;
     recurringExpenses.forEach(r=>{
       if(!r.active) return;
       const key = r.frequency==='monthly' ? monthKey : dayKey;
-      if(r.lastAppliedPeriod===key) return;
+      // يُقبل المفتاح القديم المبني على UTC حتى لا يتكرر المصروف مرة عند التحويل للتوقيت المحلي
+      if(r.lastAppliedPeriod===key||(r.frequency!=='monthly'&&r.lastAppliedPeriod===now.toISOString().slice(0,10))) return;
       this.addExpense({category:r.name,amount:r.amount,method:'cash',note:'مصروف متكرر ('+(r.frequency==='monthly'?'شهري':'يومي')+')'});
       r.lastAppliedPeriod=key; appliedCount++;
     });
@@ -1108,7 +1321,7 @@ html,body{max-width:100%;overflow-x:hidden}
       freq_daily: "يومي", freq_monthly: "شهري", no_expenses: "لا توجد مصروفات", no_recurring: "لا توجد مصروفات متكررة معرّفة",
       inv_material_count: "عدد المواد", inv_low_material: "مواد منخفضة", inv_value_approx: "قيمة المخزون التقريبية", inv_purchases_registered: "مشتريات مسجلة",
       inv_title: "المخزون", inv_sub: "المواد والكميات والتنبيهات", inv_add_material: "+ مادة جديدة",
-      th_material: "المادة", th_unit: "الوحدة", th_available: "المتوفر", th_alert_threshold: "حد التنبيه", th_approx_cost: "تكلفة تقريبية", th_status: "الحالة",
+      th_material: "المادة", th_available: "المتوفر", th_alert_threshold: "حد التنبيه", th_approx_cost: "تكلفة تقريبية", 
       status_good: "جيد", status_low: "منخفض", btn_edit: "تعديل", btn_delete: "حذف",
       inv_purchases_title: "المشتريات", inv_purchases_sub: "الكميات المشتراة والموردون", inv_add_purchase: "+ تسجيل شراء", no_purchases: "لا توجد مشتريات",
       inv_low_stock_title: "الأصناف منخفضة المخزون", inv_low_stock_sub: "تحتاج إعادة طلب", inv_low_stock_ok: "لا توجد أصناف منخفضة حالياً 🎉", inv_reorder: "أعد الطلب",
@@ -1280,7 +1493,7 @@ html,body{max-width:100%;overflow-x:hidden}
       freq_daily: "Daily", freq_monthly: "Monthly", no_expenses: "No expenses yet", no_recurring: "No recurring expenses defined",
       inv_material_count: "Materials", inv_low_material: "Low materials", inv_value_approx: "Approx. inventory value", inv_purchases_registered: "Registered purchases",
       inv_title: "Inventory", inv_sub: "Materials, quantities, and alerts", inv_add_material: "+ New material",
-      th_material: "Material", th_unit: "Unit", th_available: "Available", th_alert_threshold: "Alert level", th_approx_cost: "Approx. cost", th_status: "Status",
+      th_material: "Material", th_available: "Available", th_alert_threshold: "Alert level", th_approx_cost: "Approx. cost", 
       status_good: "Good", status_low: "Low", btn_edit: "Edit", btn_delete: "Delete",
       inv_purchases_title: "Purchases", inv_purchases_sub: "Quantities purchased and suppliers", inv_add_purchase: "+ Record purchase", no_purchases: "No purchases yet",
       inv_low_stock_title: "Low Stock Items", inv_low_stock_sub: "Need reordering", inv_low_stock_ok: "No low-stock items right now 🎉", inv_reorder: "Reorder",
@@ -1452,7 +1665,7 @@ html,body{max-width:100%;overflow-x:hidden}
       freq_daily: "روزانہ", freq_monthly: "ماہانہ", no_expenses: "ابھی تک کوئی اخراجات نہیں", no_recurring: "کوئی بار بار والا اخراجہ متعین نہیں",
       inv_material_count: "مواد کی تعداد", inv_low_material: "کم مواد", inv_value_approx: "تخمینی انوینٹری ویلیو", inv_purchases_registered: "درج شدہ خریداری",
       inv_title: "انوینٹری", inv_sub: "مواد، مقدار، اور الرٹس", inv_add_material: "+ نیا مواد",
-      th_material: "مواد", th_unit: "یونٹ", th_available: "دستیاب", th_alert_threshold: "الرٹ کی حد", th_approx_cost: "تخمینی لاگت", th_status: "حالت",
+      th_material: "مواد", th_available: "دستیاب", th_alert_threshold: "الرٹ کی حد", th_approx_cost: "تخمینی لاگت", 
       status_good: "اچھا", status_low: "کم", btn_edit: "ترمیم", btn_delete: "حذف کریں",
       inv_purchases_title: "خریداری", inv_purchases_sub: "خریدی گئی مقدار اور سپلائرز", inv_add_purchase: "+ خریداری درج کریں", no_purchases: "ابھی تک کوئی خریداری نہیں",
       inv_low_stock_title: "کم اسٹاک والے آئٹمز", inv_low_stock_sub: "دوبارہ آرڈر کی ضرورت ہے", inv_low_stock_ok: "ابھی کوئی کم اسٹاک آئٹم نہیں 🎉", inv_reorder: "دوبارہ آرڈر کریں",
@@ -1494,7 +1707,13 @@ html,body{max-width:100%;overflow-x:hidden}
     },
   };
 
-  let lang = localStorage.getItem(KEYS.lang) || "ar";
+  // اللغة تُحفظ بصيغة JSON عبر save() — نقرأها بنفس الصيغة (مع دعم القيم القديمة غير المرمّزة)
+  let lang = (() => {
+    const raw = localStorage.getItem(KEYS.lang);
+    let v = raw;
+    try { v = JSON.parse(raw); } catch (e) { /* قيمة قديمة نصية */ }
+    return I18N[v] ? v : "ar";
+  })();
   function t(key, ...args) {
     const val = (I18N[lang] && I18N[lang][key] !== undefined) ? I18N[lang][key] : (I18N.ar[key] ?? key);
     return typeof val === "function" ? val(...args) : val;
@@ -1922,7 +2141,7 @@ html,body{max-width:100%;overflow-x:hidden}
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const dateStr = new Date().toISOString().slice(0, 10);
+    const dateStr = todayStr();
     a.href = url;
     a.download = `997-laundry-backup-${dateStr}.json`;
     document.body.appendChild(a);
@@ -2928,7 +3147,7 @@ html,body{max-width:100%;overflow-x:hidden}
     if (p1 !== p2) return setErr(AX("e_pw_match"));
     let owner = existing;
     if (!owner) owner = window.L997Enterprise.addEmployee({ name, role: "owner", salary: 0, commission: 0 });
-    Object.assign(owner, { name, role: "owner", username, email, active: true, employeeNumber: owner.employeeNumber || nextEmployeeNumber(), createdDate: owner.createdDate || new Date().toISOString().slice(0, 10) });
+    Object.assign(owner, { name, role: "owner", username, email, active: true, employeeNumber: owner.employeeNumber || nextEmployeeNumber(), createdDate: owner.createdDate || todayStr() });
     setPassword(owner, p1, false);
     owner.lastLogin = new Date().toISOString();
     persistEmps();
@@ -3055,17 +3274,61 @@ html,body{max-width:100%;overflow-x:hidden}
   });
 
   /* ============================= لوحة التحكم ============================= */
+  /* ------------------ نصوص الأرقام المالية (مصدر واحد للتسميات) ------------------ */
+  const FT = {
+    ar: {
+      sales: "المبيعات", sales_note: (n, p) => `${n} طلب مدفوع${p ? ` + ${p} باقة` : ""}`,
+      collected: "المحصّل فعلياً", collected_note: "نقد + بطاقة + Benefit + تحويل − المرتجع",
+      expenses: "المصروفات", expenses_note: "المسجّلة بالفترة",
+      profit: "الربح التقديري", profit_note: "الإيراد بدون ضريبة − المصروفات − المكافآت",
+      receivables: "ديون العملاء", receivables_note: (n) => `${n} عميل عليه مبالغ (الآن)`,
+      open_value: "طلبات لم تُدفع بعد", open_note: (n) => `${n} طلب قيد التنفيذ`,
+      ready_note: "بانتظار التسليم للعميل",
+      gross: "المبيعات (شامل الضريبة)", vat: "ضريبة القيمة المضافة", net_rev: "الإيراد الصافي (بدون ضريبة)",
+      staff: "مكافآت وعمولات الموظفين", avg: "متوسط قيمة الطلب", discounts: "الخصومات الممنوحة",
+      pkg_sales: "مبيعات الباقات", from_balance: "مدفوع من أرصدة العملاء", credit: "بيع آجل (دين جديد)",
+      deposits: "إيداعات أرصدة وسداد ديون", refunds: "مبالغ مُرجَعة للعملاء", prepaid: "أرصدة العملاء المدفوعة مقدماً",
+      by_day: "حسب اليوم", by_month: "حسب الشهر", ready_old: "جاهز منذ أكثر من 3 أيام — تواصل مع العميل",
+      low_stock: (n, q, u) => `مخزون منخفض: ${n} — متبقي ${q} ${u}`, out_stock: (n) => `نفد من المخزون: ${n}`,
+      profit_hint: "ملاحظة: سجّل الرواتب المدفوعة كمصروف بتصنيف «رواتب» حتى يظهر الربح بدقة. مشتريات المخزون المدفوعة تُحسب مصروفاً عند الدفع.",
+      cash_in: "إجمالي المبالغ المستلمة", cash_methods: "التحصيل حسب طريقة الدفع", orders_count: "عدد الطلبات المدفوعة", created_count: "طلبات جديدة مستلمة",
+    },
+    en: {
+      sales: "Sales", sales_note: (n, p) => `${n} paid orders${p ? ` + ${p} packages` : ""}`,
+      collected: "Cash collected", collected_note: "Cash + card + Benefit + transfer − refunds",
+      expenses: "Expenses", expenses_note: "Recorded in period",
+      profit: "Estimated profit", profit_note: "Revenue excl. VAT − expenses − bonuses",
+      receivables: "Customer debts", receivables_note: (n) => `${n} customers owe money (now)`,
+      open_value: "Not yet paid orders", open_note: (n) => `${n} orders in progress`,
+      ready_note: "Waiting for customer pickup",
+      gross: "Sales (incl. VAT)", vat: "VAT", net_rev: "Net revenue (excl. VAT)",
+      staff: "Staff bonuses & commissions", avg: "Average order value", discounts: "Discounts given",
+      pkg_sales: "Package sales", from_balance: "Paid from customer balances", credit: "Credit sales (new debt)",
+      deposits: "Balance deposits & debt payments", refunds: "Refunded to customers", prepaid: "Customer prepaid balances",
+      by_day: "By day", by_month: "By month", ready_old: "Ready for over 3 days — contact the customer",
+      low_stock: (n, q, u) => `Low stock: ${n} — ${q} ${u} left`, out_stock: (n) => `Out of stock: ${n}`,
+      profit_hint: "Note: record salary payments as an expense with category \"Salaries\" so profit is accurate. Paid stock purchases count as expenses when paid.",
+      cash_in: "Total money received", cash_methods: "Collected by payment method", orders_count: "Paid orders", created_count: "New orders received",
+    },
+  };
+  const FX = (k, ...a) => { const d = FT[lang] || FT.ar; const v = d[k] !== undefined ? d[k] : FT.ar[k]; return typeof v === "function" ? v(...a) : v; };
+  window.FX997 = FX;
+  const FIN = window.L997Finance;
+  function finData() {
+    const E = window.L997Enterprise ? window.L997Enterprise.data : {};
+    return { orders, ledger, customers, customerPackages, expenses: E.expenses || [], payroll: E.payroll || [] };
+  }
+
   function computeCounts() {
     const active = orders.filter((o) => o.status === "received");
     const ready = orders.filter((o) => o.status === "ready");
-    const todayStr = new Date().toDateString();
-    const deliveredToday = orders.filter((o) => o.deliveredAt && new Date(o.deliveredAt).toDateString() === todayStr);
+    const today = FIN.todayStr();
+    const deliveredToday = orders.filter((o) => o.deliveredAt && FIN.localDay(o.deliveredAt) === today);
     return { active: active.length, ready: ready.length, deliveredToday: deliveredToday.length };
   }
 
   /* ------------------------------ فلتر الفترة ------------------------------ */
-  let dashFrom = null, dashTo = null;
-  function fmtDateInput(d) { return d.toISOString().slice(0, 10); }
+  function fmtDateInput(d) { return FIN.localDay(d); }
   function applyDashPreset(preset) {
     const now = new Date();
     const to = new Date(now);
@@ -3086,18 +3349,6 @@ html,body{max-width:100%;overflow-x:hidden}
     renderDashboard();
   });
 
-  function ordersInRange() {
-    const fromInput = document.getElementById("dashFromDate").value;
-    const toInput = document.getElementById("dashToDate").value;
-    if (!fromInput || !toInput) return orders.filter((o) => o.status !== "cancelled");
-    const fromTime = new Date(fromInput + "T00:00:00").getTime();
-    const toTime = new Date(toInput + "T23:59:59").getTime();
-    return orders.filter((o) => {
-      const t = new Date(o.createdAt).getTime();
-      return t >= fromTime && t <= toTime && o.status !== "cancelled";
-    });
-  }
-
   function drawBarChart(containerId, rows, opts) {
     const el = document.getElementById(containerId);
     if (!rows.length) { el.innerHTML = `<div class="empty-state compact">${t("empty_no_data")}</div>`; return; }
@@ -3109,67 +3360,53 @@ html,body{max-width:100%;overflow-x:hidden}
         <span class="dash-bar-value">${opts && opts.money ? money(r.value) : r.value}</span>
       </div>`).join("");
   }
+  // مخطط المبيعات: يوم بيوم للفترات القصيرة وشهر بشهر للطويلة
+  function salesTrendRows(s, from, to, maxBars) {
+    const spanDays = from && to ? Math.round((new Date(to) - new Date(from)) / 86400000) + 1 : 30;
+    const byMonth = spanDays > 31;
+    const src = byMonth ? s.salesByMonth : s.salesByDay;
+    return { byMonth, rows: Object.keys(src).sort().slice(-maxBars).map((k) => ({ label: k.slice(5), value: src[k] })) };
+  }
 
   function renderDashboard() {
     if (!document.getElementById("dashFromDate").value) applyDashPreset("month");
     const c = computeCounts();
-    const periodOrders = ordersInRange();
-    const periodRevenue = round3(periodOrders.reduce((s, o) => s + Number(o.payment?.paid || 0), 0));
-    const periodExpenses = window.L997Enterprise ? round3(window.L997Enterprise.data.expenses.filter((e) => {
-      const fromInput = document.getElementById("dashFromDate").value, toInput = document.getElementById("dashToDate").value;
-      if (!fromInput) return true;
-      const t = new Date(e.date).getTime();
-      return t >= new Date(fromInput + "T00:00:00").getTime() && t <= new Date(toInput + "T23:59:59").getTime();
-    }).reduce((s, e) => s + Number(e.amount || 0), 0)) : 0;
-    const periodNet = round3(periodRevenue - periodExpenses);
+    const fromInput = document.getElementById("dashFromDate").value, toInput = document.getElementById("dashToDate").value;
+    const s = FIN.summarize(finData(), fromInput, toInput);
+    const snap = FIN.snapshot(finData());
 
     const grid = document.getElementById("metricsGrid");
-    const validOrders = orders.filter((o) => o.status !== "cancelled");
-    const revenue = round3(validOrders.reduce((s, o) => s + Number(o.payment?.paid || 0), 0));
-    const outstanding = round3(orders.filter((o) => o.status !== "delivered" && o.status !== "cancelled").reduce((s, o) => s + Number(o.payment?.outstanding || 0), 0));
-    const expensesTotal = window.L997Enterprise ? round3(window.L997Enterprise.data.expenses.reduce((s, e) => s + Number(e.amount || 0), 0)) : 0;
-    const payrollTotal = window.L997Enterprise ? round3(window.L997Enterprise.data.payroll.reduce((s, e) => s + Number(e.net || 0), 0)) : 0;
-    const net = round3(revenue - expensesTotal - payrollTotal);
     const cards = [
       { label: t("metric_active"), value: c.active, icon: "▦", note: t("metric_active_note") },
-      { label: statusLabel("ready"), value: c.ready, icon: "✓", note: "بانتظار تأكيد التسليم" },
+      { label: statusLabel("ready"), value: c.ready, icon: "✓", note: FX("ready_note") },
       { label: t("metric_delivered_today"), value: c.deliveredToday, icon: "◎", note: new Date().toLocaleDateString(DATE_LOCALES[lang] || "en-GB", { dateStyle: "medium" }) },
-      { label: "مبيعات الفترة", value: money(periodRevenue), icon: "💰", note: `${periodOrders.length} طلب` },
-      { label: "صافي الفترة", value: money(periodNet), icon: "Σ", note: "بعد المصروفات" },
-      { label: t("metric_net"), value: money(net), icon: "Σ", note: t("metric_net_note") },
-      { label: t("metric_due"), value: money(outstanding), icon: "!", note: t("metric_due_note") },
+      { fin: true, label: FX("sales"), value: money(s.salesTotal), icon: "💰", note: FX("sales_note", s.salesOrders, s.packageCount) },
+      { fin: true, label: FX("collected"), value: money(s.collected), icon: "💵", note: FX("collected_note") },
+      { fin: true, label: FX("expenses"), value: money(s.expenses), icon: "🧾", note: FX("expenses_note") },
+      { fin: true, label: FX("profit"), value: money(s.profit), icon: "Σ", note: FX("profit_note"), neg: s.profit < 0 },
+      { fin: true, label: FX("receivables"), value: money(snap.receivables), icon: "!", note: FX("receivables_note", snap.debtorsCount) },
+      { fin: true, label: FX("open_value"), value: money(snap.openValue), icon: "⏳", note: FX("open_note", snap.openCount) },
     ];
-    const finCards = new Set(["💰", "Σ"]); // المبيعات والصافي: تتبع صلاحية عرض التقارير
-    grid.innerHTML = cards.filter((card) => can("view_reports") || !finCards.has(card.icon)).map((card) => `
+    grid.innerHTML = cards.filter((card) => can("view_reports") || !card.fin).map((card) => `
       <div class="metric-card">
         <div class="metric-top"><span>${card.label}</span><span class="metric-icon">${card.icon}</span></div>
-        <div class="metric-value" style="${typeof card.value === "string" && card.value.includes("-") ? "color:var(--danger)" : ""}">${card.value}</div>
+        <div class="metric-value" style="${card.neg ? "color:var(--danger)" : ""}">${card.value}</div>
         <div class="metric-note">${card.note}</div>
       </div>`).join("");
 
-    // مخطط المبيعات حسب اليوم/الشهر
-    const fromInput = document.getElementById("dashFromDate").value, toInput = document.getElementById("dashToDate").value;
-    const spanDays = fromInput && toInput ? Math.round((new Date(toInput) - new Date(fromInput)) / 86400000) + 1 : 30;
-    const byBucket = {};
-    const bucketByMonth = spanDays > 31;
-    periodOrders.forEach((o) => {
-      const d = new Date(o.createdAt);
-      const key = bucketByMonth ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : d.toISOString().slice(0, 10);
-      byBucket[key] = (byBucket[key] || 0) + Number(o.payment?.paid || 0);
-    });
-    document.getElementById("dashChartSub").textContent = bucketByMonth ? "حسب الشهر" : "حسب اليوم";
-    const bucketKeys = Object.keys(byBucket).sort();
-    drawBarChart("dashSalesChart", bucketKeys.slice(-12).map((k) => ({
-      label: bucketByMonth ? k.slice(5) : k.slice(5),
-      value: round3(byBucket[k]),
-    })), { money: true });
+    const trend = salesTrendRows(s, fromInput, toInput, 12);
+    document.getElementById("dashChartSub").textContent = trend.byMonth ? FX("by_month") : FX("by_day");
+    drawBarChart("dashSalesChart", trend.rows, { money: true });
 
-    // الإيرادات والمصروفات
-    document.getElementById("dashRevExpBreakdown").innerHTML = `
-      <div class="dash-revexp-row"><span class="label">إيرادات الفترة</span><span class="value" style="color:var(--success)">${money(periodRevenue)}</span></div>
-      <div class="dash-revexp-row"><span class="label">مصروفات الفترة</span><span class="value" style="color:var(--danger)">${money(periodExpenses)}</span></div>
-      <div class="dash-revexp-row"><span class="label">صافي الفترة</span><span class="value">${money(periodNet)}</span></div>
-      <div class="dash-revexp-row"><span class="label">متوسط الطلب</span><span class="value">${money(periodOrders.length ? periodRevenue / periodOrders.length : 0)}</span></div>`;
+    const line = (label, value, color) => `<div class="dash-revexp-row"><span class="label">${label}</span><span class="value"${color ? ` style="color:${color}"` : ""}>${money(value)}</span></div>`;
+    document.getElementById("dashRevExpBreakdown").innerHTML =
+      line(FX("gross"), s.salesTotal, "var(--success)") +
+      (s.vat > 0 ? line(FX("vat"), s.vat) + line(FX("net_rev"), s.netRevenue) : "") +
+      line(FX("expenses"), s.expenses, "var(--danger)") +
+      (s.staffCosts > 0 ? line(FX("staff"), s.staffCosts, "var(--danger)") : "") +
+      line(FX("profit"), s.profit, s.profit < 0 ? "var(--danger)" : "") +
+      line(FX("collected"), s.collected) +
+      line(FX("avg"), s.avgOrder);
 
     // الطلبات حسب الحالة
     const byStatus = { received: 0, ready: 0, delivered: 0 };
@@ -3181,9 +3418,7 @@ html,body{max-width:100%;overflow-x:hidden}
     ]);
 
     // أكثر الخدمات استخداماً بالفترة
-    const byService = {};
-    periodOrders.forEach((o) => o.items.forEach((it) => { byService[it.serviceId] = (byService[it.serviceId] || 0) + it.qty; }));
-    drawBarChart("dashServiceChart", Object.entries(byService).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => ({ label: serviceName(k), value: v })));
+    drawBarChart("dashServiceChart", Object.entries(s.piecesByService).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => ({ label: serviceName(k), value: v })));
 
     const now = Date.now();
     const attention = [];
@@ -3196,14 +3431,22 @@ html,body{max-width:100%;overflow-x:hidden}
       if (o.priority === "urgent") attention.push({ o, cust, reason: t("reason_urgent") });
       else if (overdue) attention.push({ o, cust, reason: t("reason_late") });
     });
+    orders.forEach((o) => {
+      if (o.status !== "ready" || now - new Date(FIN.orderPaidAt(o)).getTime() <= 3 * 86400000) return;
+      attention.push({ o, cust: customers.find((c2) => c2.id === o.customerId), reason: FX("ready_old") });
+    });
+    const stockAlerts = (window.L997Enterprise ? window.L997Enterprise.data.inventory : [])
+      .filter((i) => Number(i.qty) <= Number(i.minQty || 0))
+      .map((i) => (Number(i.qty) <= 0 ? FX("out_stock", esc(i.name)) : FX("low_stock", esc(i.name), round3(i.qty), esc(i.unit || ""))));
     const attList = document.getElementById("attentionList");
-    attList.innerHTML = attention.length === 0
+    attList.innerHTML = attention.length === 0 && stockAlerts.length === 0
       ? `<div class="empty-state compact">${t("empty_attention")}</div>`
       : attention.slice(0, 8).map(({ o, cust, reason }) => `
         <div class="attention-item">
           <div><strong>#${o.number} — ${cust ? esc(cust.name) : "—"}</strong><small>${reason} · ${money(o.payment.total)}</small></div>
           <span class="status-badge ${statusClass(o.status)}">${statusLabel(o.status)}</span>
-        </div>`).join("");
+        </div>`).join("") + stockAlerts.slice(0, 5).map((msg) => `
+        <div class="attention-item"><div><strong>📦 ${msg}</strong></div></div>`).join("");
 
     const actList = document.getElementById("activityList");
     actList.innerHTML = activity.length === 0
@@ -4104,6 +4347,7 @@ html,body{max-width:100%;overflow-x:hidden}
           order.creditApprovedBy = owed > 0 && overridden ? sup.name : "";
           order.status = "ready";
           order.readyAt = now;
+          order.paidAt = now;
           order.statusHistory.push({ status: "ready", at: now, by: me ? me.name : "" });
           if (method === "balance" && cust) {
             cust.balance = round3(cust.balance - total);
@@ -4172,6 +4416,76 @@ html,body{max-width:100%;overflow-x:hidden}
     });
   }
 
+  /* ---- تعديل طلب قبل الدفع: الكميات، الأولوية، الملاحظات، الموعد — مع إعادة حساب الإجمالي وسجل التعديل ---- */
+  function recomputeOrderTotals(order) {
+    const p = order.payment;
+    const subtotal = round3(order.items.reduce((a, it) => a + it.total, 0));
+    const urgentFee = order.priority === "urgent" ? round3((subtotal * settings.urgentPercent) / 100) : 0;
+    const discount = round3(Math.min(Number(p.discount) || 0, subtotal + urgentFee));
+    const preVat = Math.max(0, round3(subtotal + urgentFee - discount));
+    const vatPercent = p.vatPercent !== undefined ? Number(p.vatPercent) || 0 : Number(loadProfile().vatPercent) || 0;
+    const vat = vatPercent > 0 ? round3((preVat * vatPercent) / 100) : 0;
+    const total = round3(preVat + vat);
+    order.payment = { ...p, subtotal, urgentFee, discount, vatPercent, vat, total, paid: 0, balanceUse: 0, outstanding: total };
+  }
+  function openEditOrderForm(order) {
+    if (order.status !== "received" || order.paymentConfirmed) { toast(lang === "en" ? "Only unpaid received orders can be edited" : "يمكن تعديل الطلب فقط قبل تأكيد الدفع"); return; }
+    if (!can("create_order")) { denied(); return; }
+    const toLocalInput = (iso) => { if (!iso) return ""; const d = new Date(iso); if (isNaN(d)) return iso; return FIN.localDay(d) + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+    const fields = order.items.map((it, i) => ({ id: "q" + i, label: `${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}${it.fromPackageId ? " (باقة)" : ` (${money(it.unit)})`}`, type: "number", step: "1", value: it.qty, min: 0 }));
+    fields.push(
+      { id: "priority", label: t("th_priority"), type: "select", value: order.priority, options: [{ value: "normal", label: t("opt_normal") }, { value: "urgent", label: t("opt_urgent") }] },
+      { id: "expected", label: "موعد التسليم المتوقع", type: "datetime-local", value: toLocalInput(order.expectedDelivery) },
+      { id: "notes", label: t("dlg_notes"), type: "text", value: order.notes || "" },
+      { id: "reason", label: "سبب التعديل (إلزامي)", type: "text", value: "" },
+    );
+    openQuickForm({
+      title: `✏️ تعديل الطلب #${order.number}`, sub: "غيّر الكمية أو اجعلها 0 لحذف الصنف. الإجمالي يُعاد حسابه تلقائياً. تقليل القطع يحتاج صلاحية الإلغاء أو موافقة مشرف.",
+      fields, submitLabel: "حفظ التعديل",
+      onSubmit: (v) => {
+        if (!v.reason) { toast("اكتب سبب التعديل"); return false; }
+        const newQty = order.items.map((it, i) => Math.max(0, Math.floor(Number(v["q" + i]) || 0)));
+        if (newQty.every((q) => q === 0)) { toast("لا يمكن حذف كل الأصناف — استخدم إلغاء الطلب بدلاً من ذلك"); return false; }
+        // الباقات: الزيادة يجب أن تتوفر بالرصيد المتبقي للباقة
+        for (let i = 0; i < order.items.length; i++) {
+          const it = order.items[i], diff = newQty[i] - it.qty;
+          if (it.fromPackageId && diff > 0) {
+            const cp = customerPackages.find((x) => x.id === it.fromPackageId);
+            if (!cp || cp.remainingPieces < diff) { toast(`لا توجد قطع كافية بالباقة «${it.packageName || ""}»`); return false; }
+          }
+        }
+        const before = { pieces: order.items.reduce((a, it) => a + it.qty, 0), total: order.payment.total, priority: order.priority };
+        const reduces = newQty.some((q, i) => q < order.items[i].qty) || (order.priority === "urgent" && v.priority === "normal");
+        const apply = (sup, overridden) => {
+          if (order.status !== "received" || order.paymentConfirmed) return;
+          order.items.forEach((it, i) => {
+            const diff = newQty[i] - it.qty;
+            if (it.fromPackageId && diff !== 0) {
+              const cp = customerPackages.find((x) => x.id === it.fromPackageId);
+              if (cp) cp.remainingPieces = Math.min(cp.totalPieces, Math.max(0, cp.remainingPieces - diff));
+            }
+            it.qty = newQty[i];
+            it.total = round3(it.unit * it.qty);
+          });
+          order.items = order.items.filter((it) => it.qty > 0);
+          order.priority = v.priority === "urgent" ? "urgent" : "normal";
+          order.expectedDelivery = v.expected || null;
+          order.notes = v.notes;
+          recomputeOrderTotals(order);
+          const after = { pieces: order.items.reduce((a, it) => a + it.qty, 0), total: order.payment.total, priority: order.priority };
+          (order.editHistory = order.editHistory || []).push({ at: new Date().toISOString(), by: me ? me.name : "", approvedBy: overridden ? sup.name : "", reason: v.reason, before, after });
+          logActivity(`تعديل الطلب #${order.number} — ${before.pieces}→${after.pieces} قطعة، ${money(before.total)}→${money(after.total)} — السبب: ${v.reason}${overridden ? " — اعتمده " + sup.name : ""}`, after.total);
+          persistAll();
+          renderOrderDialog();
+          renderOrdersPage();
+          toast(lang === "en" ? "Order updated" : "تم تعديل الطلب");
+        };
+        if (reduces) { setTimeout(() => requireOverride("cancel_order", `تقليل قطع/قيمة الطلب #${order.number}`, apply), 80); return; }
+        apply(null, false);
+      },
+    });
+  }
+
   function openOrderDialog(orderId) {
     currentOrderDialogId = orderId;
     renderOrderDialog();
@@ -4188,8 +4502,9 @@ html,body{max-width:100%;overflow-x:hidden}
     if (order.createdBy) rows.push(["أنشأ الطلب", order.createdBy]);
     if (order.discountReason || order.discountApprovedBy) rows.push(["خصم", `${money(order.payment.discount || 0)} — ${esc(order.discountReason || "")}${order.discountApprovedBy ? " (اعتمده " + esc(order.discountApprovedBy) + ")" : ""}`]);
     if (order.paymentBy) rows.push(["أكّد الدفع", order.paymentBy + (order.creditApprovedBy ? " — دين اعتمده " + order.creditApprovedBy : "")]);
-    if (order.deliveredBy) rows.push(["سلّم الطلب", order.deliveredBy + (order.receiver ? " — المستلم: " + order.receiver : "")]);
+    if (order.deliveredBy) rows.push(["سلّم الطلب", order.deliveredBy + (order.receiver ? " — المستلم: " + esc(order.receiver) : "")]);
     if (order.cancelledBy) rows.push(["ألغى الطلب", order.cancelledBy + (order.cancelApprovedBy ? " — اعتمده " + order.cancelApprovedBy : "")]);
+    (order.editHistory || []).forEach((h) => rows.push([`عدّل الطلب (${fmtDT(h.at)})`, `${esc(h.by)} — ${h.before.pieces}→${h.after.pieces} قطعة، ${money(h.before.total)}→${money(h.after.total)} — ${esc(h.reason)}${h.approvedBy ? " (اعتمده " + esc(h.approvedBy) + ")" : ""}`]));
     if (!rows.length) return "";
     return `<div class="details-box full-span" style="grid-column:1/-1"><h4>سجل المسؤولية</h4>${rows.map((r) => `<div class="details-line"><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join("")}</div>`;
   }
@@ -4217,6 +4532,11 @@ html,body{max-width:100%;overflow-x:hidden}
           <div class="details-line"><span>${t("dlg_total")}</span><strong>${money(order.payment.total)}</strong></div>
           <div class="details-line"><span>${t("dlg_paid")}</span><strong>${money(order.payment.paid)}</strong></div>
           <div class="details-line"><span>${t("dlg_remaining")}</span><strong>${money(order.payment.outstanding)}</strong></div>
+          ${order.debtRecorded && order.status !== "cancelled" && cust ? (() => {
+            const owedNow = FIN.allocateDebts([cust], orders)[order.id] || 0;
+            return `<div class="details-line"><span>${lang === "en" ? "Still owed now" : "المتبقي عليه الآن"}</span><strong style="color:${owedNow > 0 ? "var(--danger)" : "var(--success)"}">${owedNow > 0 ? money(owedNow) : (lang === "en" ? "Settled ✓" : "مسدَّد ✓")}</strong></div>`;
+          })() : ""}
+          ${order.refund ? `<div class="details-line"><span>${lang === "en" ? "Refunded" : "المبلغ المُرجَع"}</span><strong>${money(order.refund.amount)} — ${order.refund.mode === "balance" ? (lang === "en" ? "to balance" : "للرصيد") : paymentLabel(order.refund.method)}</strong></div>` : ""}
         </div>
         <div class="details-box full-span" style="grid-column:1/-1">
           <h4>${t("dlg_status")}</h4>
@@ -4227,6 +4547,7 @@ html,body{max-width:100%;overflow-x:hidden}
       </div>
       <div class="details-actions">
         ${next ? `<button class="primary-btn" id="advanceStatusBtn">${lang === "ar" ? (next === "ready" ? "💳 تأكيد الدفع وتجهيز الطلب" : next === "delivered" ? "📦 تسليم الطلب للعميل" : t("dlg_advance_to", statusLabel(next))) : t("dlg_advance_to", statusLabel(next))}</button>` : ""}
+        ${order.status === "received" && !order.paymentConfirmed && can("create_order") ? `<button class="secondary-btn" id="editOrderBtn">✏️ ${lang === "en" ? "Edit order" : "تعديل الطلب"}</button>` : ""}
         ${order.status !== "cancelled" && order.status !== "delivered" ? `<button class="secondary-btn" id="cancelOrderBtn">${t("dlg_cancel_order")}</button>` : ""}
         ${can("cancel_order") && order.status === "delivered" && order.deliveredAt && (Date.now() - new Date(order.deliveredAt).getTime() <= 24 * 3600 * 1000) ? `<button class="secondary-btn" id="revertDeliveryBtn">↩ إرجاع من التسليم (خلال 24 ساعة)</button>` : ""}
         <button class="whatsapp-btn" id="dialogWhatsappBtn">${t("dlg_send_whatsapp")}</button>
@@ -4249,14 +4570,22 @@ html,body{max-width:100%;overflow-x:hidden}
       renderOrdersPage();
       toast(t("toast_status_updated"));
     });
+    document.getElementById("editOrderBtn")?.addEventListener("click", () => openEditOrderForm(order));
     document.getElementById("cancelOrderBtn")?.addEventListener("click", () => {
       requireOverride("cancel_order", `إلغاء الطلب #${order.number}`, (sup, overridden) => {
+      const paidCash = order.payment.method !== "balance" && order.payment.method !== "unpaid" && order.payment.paid > 0;
+      const cancelFields = [{ id: "reason", label: "سبب الإلغاء", type: "text", placeholder: "مثال: طلب مكرر، طلب العميل، خطأ إدخال" }];
+      if (paidCash && cust) cancelFields.push({ id: "refund", label: `المبلغ المدفوع ${money(order.payment.paid)} — كيف يُعاد للعميل؟`, type: "select", value: "cash", options: [
+        { value: "cash", label: `إرجاعه الآن (${paymentLabel(order.payment.method)}) — يُخصم من تحصيل اليوم` },
+        { value: "balance", label: "إضافته لرصيد العميل (بدون إخراج نقد)" },
+      ] });
       openQuickForm({
         title: "إلغاء الطلب", sub: `طلب #${order.number} — سبب الإلغاء إلزامي`,
-        fields: [{ id: "reason", label: "سبب الإلغاء", type: "text", placeholder: "مثال: طلب مكرر، طلب العميل، خطأ إدخال" }],
+        fields: cancelFields,
         submitLabel: "تأكيد الإلغاء",
         onSubmit: (v) => {
           if (!v.reason || !v.reason.trim()) { toast("سبب الإلغاء إلزامي"); return false; }
+          if (order.status === "cancelled") return;
           const now = new Date().toISOString();
           let refundNote = "";
           // إن دُفع الطلب من رصيد العميل، تُعكَس الحركة تلقائياً (ضمن سيطرة النظام الكاملة)
@@ -4266,9 +4595,18 @@ html,body{max-width:100%;overflow-x:hidden}
             ledger.unshift({ id: uid(), customerId: cust.id, type: "order_refund", amount: refundAmount, balanceAfter: cust.balance, method: "balance", orderId: order.id, note: `استرداد إلغاء طلب #${order.number} — ${v.reason}`, at: now });
             refundNote = ` — تم استرداد ${money(refundAmount)} لرصيد العميل تلقائياً`;
           }
-          // إن دُفع نقداً/بطاقة فعلياً، النظام لا يقدر يعكس مبلغاً فعلياً خرج من الصندوق — ينبّه المدير بوضوح
-          else if (order.payment.paid > 0) {
-            refundNote = ` — تنبيه: تم تحصيل ${money(order.payment.paid)} نقداً/بطاقة فعلياً، يجب ترتيب استرداده يدوياً للعميل`;
+          // مدفوع نقداً/بطاقة/تحويل: يُسجَّل الاسترداد فعلياً حتى يتطابق الصندوق والتقارير
+          else if (paidCash) {
+            const amt = round3(order.payment.paid);
+            if (v.refund === "balance" && cust) {
+              cust.balance = round3(cust.balance + amt);
+              ledger.unshift({ id: uid(), customerId: cust.id, type: "order_refund", amount: amt, balanceAfter: cust.balance, method: "balance", orderId: order.id, note: `إلغاء طلب #${order.number} — المدفوع أُضيف للرصيد — ${v.reason}`, at: now });
+              order.refund = { mode: "balance", method: "balance", amount: amt, at: now, by: me ? me.name : "" };
+              refundNote = ` — أُضيف ${money(amt)} لرصيد العميل`;
+            } else {
+              order.refund = { mode: "cash", method: order.payment.method, amount: amt, at: now, by: me ? me.name : "" };
+              refundNote = ` — يجب إرجاع ${money(amt)} (${paymentLabel(order.payment.method)}) للعميل الآن`;
+            }
           }
           // استرجاع أي قطع مستهلكة من باقات العميل ضمن هذا الطلب
           let restoredPieces = 0;
@@ -4394,8 +4732,8 @@ html,body{max-width:100%;overflow-x:hidden}
     });
     body.querySelectorAll("[data-sell-package]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        sellPackageToCustomer(btn.dataset.sellPackage);
-        renderCustomersPage();
+        // بيع الباقة تحصيل مالي — يتطلب صلاحية عمليات الأرصدة أو موافقة مشرف
+        requireOverride("balance_tx", "بيع باقة لعميل", () => { sellPackageToCustomer(btn.dataset.sellPackage); renderCustomersPage(); });
       });
     });
   }
@@ -4724,16 +5062,6 @@ html,body{max-width:100%;overflow-x:hidden}
   });
   document.getElementById("reportApplyBtn").addEventListener("click", renderReportsPage);
 
-  function reportsOrdersInRange() {
-    const fromInput = document.getElementById("reportFromDate").value;
-    const toInput = document.getElementById("reportToDate").value;
-    const validOrders = orders.filter((o) => o.status !== "cancelled");
-    if (!fromInput || !toInput) return validOrders;
-    const fromTime = new Date(fromInput + "T00:00:00").getTime();
-    const toTime = new Date(toInput + "T23:59:59").getTime();
-    return validOrders.filter((o) => { const t2 = new Date(o.createdAt).getTime(); return t2 >= fromTime && t2 <= toTime; });
-  }
-
   function renderReportsPage() {
     if (!document.getElementById("reportFromDate").value) {
       const to = new Date(), from = new Date(); from.setDate(from.getDate() - 29);
@@ -4741,82 +5069,71 @@ html,body{max-width:100%;overflow-x:hidden}
       document.getElementById("reportToDate").value = fmtDateInput(to);
     }
     const content = document.getElementById("reportContent");
-    const validOrders = reportsOrdersInRange();
+    const fromInput = document.getElementById("reportFromDate").value, toInput = document.getElementById("reportToDate").value;
+    const s = FIN.summarize(finData(), fromInput, toInput);
+    const snap = FIN.snapshot(finData());
+    const metric = (label, value, color) => `<div class="metric-card"><div class="metric-top"><span>${label}</span></div><div class="metric-value"${color ? ` style="color:${color}"` : ""}>${value}</div></div>`;
+    const row = (label, value, color, strong) => `<div class="dash-revexp-row"><span class="label">${strong ? `<strong>${label}</strong>` : label}</span><span class="value"${color ? ` style="color:${color}"` : ""}>${strong ? `<strong>${money(value)}</strong>` : money(value)}</span></div>`;
 
     if (activeReportType === "overview") {
-      const totalRevenue = round3(validOrders.reduce((s, o) => s + Number(o.payment.paid || 0), 0));
-      const totalOrderValue = round3(validOrders.reduce((s, o) => s + Number(o.payment.total || 0), 0));
-      const totalOrders = validOrders.length;
-      const avgOrder = totalOrders ? round3(totalOrderValue / totalOrders) : 0;
-      const outstanding = round3(validOrders.reduce((s, o) => s + (o.payment.outstanding || 0), 0));
-
-      const byMethod = {};
-      validOrders.forEach((o) => { byMethod[o.payment.method] = (byMethod[o.payment.method] || 0) + Number(o.payment.paid || 0); });
-      const byService = {};
-      validOrders.forEach((o) => o.items.forEach((it) => { byService[it.serviceId] = (byService[it.serviceId] || 0) + it.qty; }));
-
       content.innerHTML = `
         <div class="metrics-grid" id="reportMetrics"></div>
         <div class="content-grid two-cols" style="margin-top:16px">
-          <div class="panel"><div class="panel-header"><div><h3 data-i18n="report_by_payment">المبيعات حسب طريقة الدفع</h3></div></div><div id="paymentReport" class="report-bars"></div></div>
-          <div class="panel"><div class="panel-header"><div><h3 data-i18n="report_by_service">الخدمات الأكثر استخداماً</h3></div></div><div id="servicesReport" class="report-bars"></div></div>
+          <div class="panel"><div class="panel-header"><div><h3>${FX("cash_methods")}</h3></div></div><div id="paymentReport" class="report-bars"></div></div>
+          <div class="panel"><div class="panel-header"><div><h3 data-i18n="report_by_service">${t("report_by_service")}</h3></div></div><div id="servicesReport" class="report-bars"></div></div>
         </div>`;
       document.getElementById("reportMetrics").innerHTML = [
-        { label: t("report_revenue"), value: money(totalRevenue) },
-        { label: t("report_orders_count"), value: totalOrders },
-        { label: t("report_avg_order"), value: money(avgOrder) },
-        { label: t("report_outstanding"), value: money(outstanding) },
-      ].map((c) => `<div class="metric-card"><div class="metric-top"><span>${c.label}</span></div><div class="metric-value">${c.value}</div></div>`).join("");
-      drawBarChart("paymentReport", Object.entries(byMethod).map(([k, v]) => ({ label: paymentLabel(k), value: round3(v) })), { money: true });
-      drawBarChart("servicesReport", Object.entries(byService).map(([k, v]) => ({ label: serviceName(k), value: v })));
+        metric(FX("sales"), money(s.salesTotal)),
+        metric(FX("collected"), money(s.collected)),
+        metric(FX("orders_count"), s.salesOrders),
+        metric(FX("avg"), money(s.avgOrder)),
+        metric(FX("receivables"), money(snap.receivables), snap.receivables > 0 ? "var(--danger)" : ""),
+        metric(FX("open_value"), money(snap.openValue)),
+      ].join("");
+      drawBarChart("paymentReport", Object.entries(s.collectedBy).filter(([, v]) => v > 0).map(([k, v]) => ({ label: paymentLabel(k), value: v })), { money: true });
+      drawBarChart("servicesReport", Object.entries(s.piecesByService).map(([k, v]) => ({ label: serviceName(k), value: v })));
     }
 
     else if (activeReportType === "pnl") {
-      const revenue = round3(validOrders.reduce((s, o) => s + Number(o.payment.paid || 0), 0));
-      const fromInput = document.getElementById("reportFromDate").value, toInput = document.getElementById("reportToDate").value;
-      const expenses = window.L997Enterprise ? round3(window.L997Enterprise.data.expenses.filter((e) => {
-        const t2 = new Date(e.date).getTime();
-        return t2 >= new Date(fromInput + "T00:00:00").getTime() && t2 <= new Date(toInput + "T23:59:59").getTime();
-      }).reduce((s, e) => s + Number(e.amount || 0), 0)) : 0;
-      const payroll = window.L997Enterprise ? round3(window.L997Enterprise.data.payroll.filter((p) => {
-        const t2 = new Date(p.date).getTime();
-        return t2 >= new Date(fromInput + "T00:00:00").getTime() && t2 <= new Date(toInput + "T23:59:59").getTime();
-      }).reduce((s, p) => s + Number(p.net || 0), 0)) : 0;
-      const net = round3(revenue - expenses - payroll);
       content.innerHTML = `
-        <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
-          <div class="metric-card"><div class="metric-top"><span>الإيرادات المحصّلة</span></div><div class="metric-value" style="color:var(--success)">${money(revenue)}</div></div>
-          <div class="metric-card"><div class="metric-top"><span>المصروفات</span></div><div class="metric-value" style="color:var(--danger)">${money(expenses)}</div></div>
-          <div class="metric-card"><div class="metric-top"><span>الرواتب والاستحقاقات</span></div><div class="metric-value" style="color:var(--danger)">${money(payroll)}</div></div>
-          <div class="metric-card"><div class="metric-top"><span>صافي الربح</span></div><div class="metric-value" style="${net < 0 ? "color:var(--danger)" : "color:var(--success)"}">${money(net)}</div></div>
+        <div class="metrics-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+          ${metric(FX("net_rev"), money(s.netRevenue), "var(--success)")}
+          ${metric(FX("expenses"), money(s.expenses), "var(--danger)")}
+          ${metric(FX("staff"), money(s.staffCosts), "var(--danger)")}
+          ${metric(FX("profit"), money(s.profit), s.profit < 0 ? "var(--danger)" : "var(--success)")}
         </div>
-        <div class="panel" style="margin-top:16px"><div class="panel-header"><div><h3>مقارنة الإيرادات والمصروفات</h3></div></div><div id="pnlChart" class="dash-bar-chart"></div></div>`;
-      drawBarChart("pnlChart", [
-        { label: "الإيرادات", value: revenue, color: "var(--success)" },
-        { label: "المصروفات", value: expenses, color: "var(--danger)" },
-        { label: "الرواتب", value: payroll, color: "var(--warning)" },
-        { label: "الصافي", value: Math.abs(net), color: net < 0 ? "var(--danger)" : "var(--primary)" },
-      ], { money: true });
+        <div class="content-grid two-cols" style="margin-top:16px">
+          <div class="panel"><div class="panel-header"><div><h3>${FX("profit")}</h3></div></div>
+            ${row(FX("gross"), s.salesTotal)}
+            ${s.packageSales ? row("  · " + FX("pkg_sales"), s.packageSales) : ""}
+            ${s.vat ? row("− " + FX("vat"), s.vat) : ""}
+            ${row(FX("net_rev"), s.netRevenue, "var(--success)", true)}
+            ${row("− " + FX("expenses"), s.expenses, "var(--danger)")}
+            ${row("− " + FX("staff"), s.staffCosts, "var(--danger)")}
+            ${row(FX("profit"), s.profit, s.profit < 0 ? "var(--danger)" : "var(--success)", true)}
+            <p class="inv-muted" style="margin-top:10px;font-size:12px">${FX("profit_hint")}</p>
+          </div>
+          <div class="panel"><div class="panel-header"><div><h3>${FX("collected")}</h3></div></div>
+            ${row(FX("cash_in"), s.cashIn)}
+            ${row("  · " + FX("deposits"), s.deposits)}
+            ${row("− " + FX("refunds"), s.refunds, "var(--danger)")}
+            ${row(FX("collected"), s.collected, "", true)}
+            ${row(FX("from_balance"), s.paidFromBalance)}
+            ${row(FX("credit"), s.creditGiven)}
+            ${row(FX("discounts"), s.discounts)}
+            ${row(FX("receivables"), snap.receivables, snap.receivables > 0 ? "var(--danger)" : "")}
+            ${row(FX("prepaid"), snap.prepaid)}
+          </div>
+        </div>`;
     }
 
     else if (activeReportType === "sales") {
-      const fromInput = document.getElementById("reportFromDate").value, toInput = document.getElementById("reportToDate").value;
-      const spanDays = fromInput && toInput ? Math.round((new Date(toInput) - new Date(fromInput)) / 86400000) + 1 : 30;
-      const bucketByMonth = spanDays > 31;
-      const byBucket = {};
-      validOrders.forEach((o) => {
-        const d = new Date(o.createdAt);
-        const key = bucketByMonth ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : d.toISOString().slice(0, 10);
-        byBucket[key] = (byBucket[key] || 0) + Number(o.payment.total || 0);
-      });
-      const byGarment = {};
-      validOrders.forEach((o) => o.items.forEach((it) => { byGarment[it.clothingId] = (byGarment[it.clothingId] || 0) + it.qty; }));
+      const trend = salesTrendRows(s, fromInput, toInput, 14);
       content.innerHTML = `
-        <div class="panel"><div class="panel-header"><div><h3>المبيعات ${bucketByMonth ? "حسب الشهر" : "حسب اليوم"}</h3></div></div><div id="salesTrendChart" class="dash-bar-chart"></div></div>
+        <div class="panel"><div class="panel-header"><div><h3>${FX("sales")} — ${trend.byMonth ? FX("by_month") : FX("by_day")}</h3></div></div><div id="salesTrendChart" class="dash-bar-chart"></div></div>
         <div class="panel" style="margin-top:16px"><div class="panel-header"><div><h3>الأصناف الأكثر مبيعاً</h3></div></div><div id="topGarmentsChart" class="dash-bar-chart"></div></div>`;
-      const keys = Object.keys(byBucket).sort();
-      drawBarChart("salesTrendChart", keys.slice(-14).map((k) => ({ label: k.slice(5), value: round3(byBucket[k]) })), { money: true });
-      drawBarChart("topGarmentsChart", Object.entries(byGarment).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => ({ label: clothingName(k), value: v })));
+      drawBarChart("salesTrendChart", trend.rows, { money: true });
+      drawBarChart("topGarmentsChart", Object.entries(s.piecesByGarment).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => ({ label: clothingName(k), value: v })));
     }
   }
 
@@ -5019,7 +5336,7 @@ html,body{max-width:100%;overflow-x:hidden}
         const now = new Date().toISOString();
         const cp = { id: uid(), customerId, defId: def.id, name: def.name, serviceType: def.serviceType, totalPieces: def.pieceCount, remainingPieces: def.pieceCount, price: def.price, purchasedAt: now };
         customerPackages.unshift(cp);
-        ledger.unshift({ id: uid(), customerId, type: "package_purchase", amount: 0, balanceAfter: cust.balance, method: v.method, note: `شراء باقة: ${def.name}`, orderId: null, at: now });
+        ledger.unshift({ id: uid(), customerId, type: "package_purchase", amount: 0, price: round3(def.price), packageId: cp.id, balanceAfter: cust.balance, method: v.method, note: `شراء باقة: ${def.name} — ${money(def.price)}`, orderId: null, at: now });
         persistAll();
         logActivity(`${cust.name} اشترى باقة «${def.name}» (${def.pieceCount} قطعة، ${money(def.price)})`, def.price);
         toast(`تم تفعيل باقة «${def.name}» للعميل — ${def.pieceCount} قطعة متاحة`);
@@ -5044,27 +5361,28 @@ html,body{max-width:100%;overflow-x:hidden}
  function within(iso,days){if(!iso)return false;return Date.now()-new Date(iso).getTime()<=days*86400000}
  function inDateRange(iso,fromStr,toStr){if(!iso)return false;if(!fromStr||!toStr)return true;const t=new Date(iso).getTime();return t>=new Date(fromStr+'T00:00:00').getTime()&&t<=new Date(toStr+'T23:59:59').getTime()}
  function pay(o){return o.payment||{}}
- function calc(days){const os=orders().filter(o=>o.status!=='cancelled'&&within(o.createdAt,days));const rev=os.reduce((s,o)=>s+Number(pay(o).paid||0),0);const sales=os.reduce((s,o)=>s+Number(pay(o).total||0),0);const exp=L997Enterprise.data.expenses.filter(e=>within(e.date,days)).reduce((s,e)=>s+Number(e.amount||0),0);const payroll=L997Enterprise.data.payroll.filter(e=>within(e.date,days)).reduce((s,e)=>s+Number(e.net||0),0);const refunds=0,disc=os.reduce((s,o)=>s+Number(pay(o).discount||0),0),out=os.reduce((s,o)=>s+Number(pay(o).outstanding||0),0);return{os,rev,sales,exp,payroll,refunds,disc,out,profit:rev-exp-payroll}}
- function ledgerCash(fromStr,toStr){const dep={},ref={};ledger().forEach(tx=>{if(!inDateRange(tx.at,fromStr,toStr))return;const m=tx.method||'';if(!m||m==='balance'||m==='unpaid')return;if(!(tx.type==='credit'||tx.type==='cash_refund'||(tx.type==='reversal'&&tx.cashRev)))return;const eff=Number(tx.amount||0);if(eff>=0)dep[m]=(dep[m]||0)+eff;else ref[m]=(ref[m]||0)-eff});const sum=o=>Object.values(o).reduce((s,x)=>s+x,0);return{dep,ref,depTotal:sum(dep),refTotal:sum(ref)}}
- function calcRange(fromStr,toStr){const os=orders().filter(o=>o.status!=='cancelled'&&inDateRange(o.createdAt,fromStr,toStr));const rev=os.reduce((s,o)=>s+Number(pay(o).paid||0),0);const sales=os.reduce((s,o)=>s+Number(pay(o).total||0),0);const exps=L997Enterprise.data.expenses.filter(e=>inDateRange(e.date,fromStr,toStr));const exp=exps.reduce((s,e)=>s+Number(e.amount||0),0);const payroll=L997Enterprise.data.payroll.filter(e=>inDateRange(e.date,fromStr,toStr)).reduce((s,e)=>s+Number(e.net||0),0);const disc=os.reduce((s,o)=>s+Number(pay(o).discount||0),0),out=os.reduce((s,o)=>s+Number(pay(o).outstanding||0),0);const lc=ledgerCash(fromStr,toStr);const cashSales=os.filter(o=>(pay(o).method||'cash')==='cash').reduce((s,o)=>s+Number(pay(o).paid||0),0);const cashExp=exps.filter(e=>(e.method||'cash')==='cash').reduce((s,e)=>s+Number(e.amount||0),0);const expectedCash=Math.round((cashSales+(lc.dep.cash||0)-(lc.ref.cash||0)-cashExp)*1000)/1000;return{os,rev,sales,exp,payroll,disc,out,profit:rev-exp-payroll,dep:lc.depTotal,refund:lc.refTotal,depBy:lc.dep,refBy:lc.ref,cashSales,cashExp,expectedCash}}
- function defaultFinanceDates(){const to=new Date(),from=new Date();from.setDate(from.getDate()-29);const f=d=>d.toISOString().slice(0,10);return{from:f(from),to:f(to)}}
+ const FIN=window.L997Finance; const FX=(k,...a)=>window.FX997?window.FX997(k,...a):k;
+ function finData(){const E=L997Enterprise.data;const ls=k=>{try{return JSON.parse(localStorage.getItem(k)||'[]')}catch{return[]}};return{orders:orders(),ledger:ledger(),customers:ls('l997_customers'),customerPackages:ls('l997_customer_packages'),expenses:E.expenses,payroll:E.payroll}}
+ // كل الأرقام المالية من المحرك الموحّد (finance.js) — نفس النتائج بالرئيسية والتقارير والإغلاق
+ function calcRange(fromStr,toStr){return FIN.summarize(finData(),fromStr,toStr)}
+ function defaultFinanceDates(){const to=FIN.todayStr();return{from:FIN.addDays(to,-29),to}}
  function renderFinance(){
   if(!q('financeFromDate').value){const d=defaultFinanceDates();q('financeFromDate').value=d.from;q('financeToDate').value=d.to}
   const fromStr=q('financeFromDate').value, toStr=q('financeToDate').value, reportType=q('financeReportType').value;
   const x=calcRange(fromStr,toStr);
-  q('financeMetrics').innerHTML=[[t('fin_revenue'),money(x.rev),'kpi-positive'],[t('fin_expenses'),money(x.exp),'kpi-negative'],[t('fin_uncollected'),money(x.out),'kpi-warn'],[t('fin_net_profit'),money(x.profit),x.profit>=0?'kpi-positive':'kpi-negative']].map(a=>`<div class="enterprise-card"><h4>${a[0]}</h4><strong class="${a[2]}">${a[1]}</strong></div>`).join('');
+  const snap=FIN.snapshot(finData());
+  q('financeMetrics').innerHTML=[[FX('sales'),money(x.salesTotal),'kpi-positive'],[FX('collected'),money(x.collected),'kpi-positive'],[FX('expenses'),money(x.expenses),'kpi-negative'],[FX('receivables'),money(snap.receivables),'kpi-warn'],[FX('profit'),money(x.profit),x.profit>=0?'kpi-positive':'kpi-negative']].map(a=>`<div class="enterprise-card"><h4>${a[0]}</h4><strong class="${a[2]}">${a[1]}</strong></div>`).join('');
 
   const body=q('financeReportBody');
+  const ms=(label,v,cls)=>`<div class="mini-stat"><span>${label}</span><b${cls?` class="${cls}"`:''}>${money(v)}</b></div>`;
   if(reportType==='performance'){
-    let pm={cash:0,benefitpay:0,card:0,balance:0,unpaid:0,bank_transfer:0};x.os.forEach(o=>{const m=pay(o).method||'cash';pm[m]=(pm[m]||0)+Number(pay(o).paid||0)});
-    const pmLabels={cash:t('opt_cash'),benefitpay:'BenefitPay',card:t('opt_card'),balance:t('opt_balance'),unpaid:t('opt_unpaid'),bank_transfer:t('opt_bank_transfer')};
-    body.innerHTML=`<div class="panel"><h3 style="margin:0 0 10px">${t('fin_performance_title')}</h3><div class="mini-stat"><span>${t('fin_orders_total')}</span><b>${money(x.sales)}</b></div><div class="mini-stat"><span>${t('fin_discounts')}</span><b>${money(x.disc)}</b></div><div class="mini-stat"><span>${t('fin_expenses')}</span><b>${money(x.exp)}</b></div><div class="mini-stat"><span>${t('fin_payroll_dues')}</span><b>${money(x.payroll)}</b></div><div class="mini-stat"><span>${t('fin_net_profit')}</span><b>${money(x.profit)}</b></div><hr>${Object.entries(pm).map(([k,v])=>`<div class="mini-stat"><span>${pmLabels[k]||k}</span><b>${money(v)}</b></div>`).join('')}</div>`;
+    const pmLabels={cash:t('opt_cash'),benefitpay:'BenefitPay',card:t('opt_card'),bank_transfer:t('opt_bank_transfer')};
+    body.innerHTML=`<div class="panel"><h3 style="margin:0 0 10px">${t('fin_performance_title')}</h3>${ms(FX('sales'),x.salesTotal)}${x.packageSales?ms(FX('pkg_sales'),x.packageSales):''}${ms(FX('discounts'),x.discounts)}${ms(FX('from_balance'),x.paidFromBalance)}${ms(FX('credit'),x.creditGiven)}<hr><h4 style="margin:6px 0">${FX('cash_methods')}</h4>${FIN.CASH_METHODS.map(k=>ms(pmLabels[k]||k,x.collectedBy[k]||0)).join('')}${ms('− '+FX('refunds'),x.refunds,'kpi-negative')}${ms(FX('collected'),x.collected,'kpi-positive')}</div>`;
   } else if(reportType==='pnl'){
     body.innerHTML=`<div class="panel"><h3 style="margin:0 0 10px">${t('fin_pnl_title')}</h3>
-      <div class="mini-stat"><span>${t('fin_revenue')}</span><b class="kpi-positive">${money(x.rev)}</b></div>
-      <div class="mini-stat"><span>${t('fin_expenses')}</span><b class="kpi-negative">${money(x.exp)}</b></div>
-      <div class="mini-stat"><span>${t('cls_month_payroll')}</span><b class="kpi-negative">${money(x.payroll)}</b></div>
-      <hr><div class="mini-stat"><span>${t('cls_month_profit')}</span><b class="${x.profit>=0?'kpi-positive':'kpi-negative'}">${money(x.profit)}</b></div></div>`;
+      ${ms(FX('gross'),x.salesTotal)}${x.vat?ms('− '+FX('vat'),x.vat):''}${ms(FX('net_rev'),x.netRevenue,'kpi-positive')}
+      ${ms('− '+FX('expenses'),x.expenses,'kpi-negative')}${ms('− '+FX('staff'),x.staffCosts,'kpi-negative')}
+      <hr>${ms(FX('profit'),x.profit,x.profit>=0?'kpi-positive':'kpi-negative')}<p class="subtle" style="font-size:12px;margin-top:8px">${FX('profit_hint')}</p></div>`;
   } else if(reportType==='expenses'){
     const filteredExp=L997Enterprise.data.expenses.filter(e=>inDateRange(e.date,fromStr,toStr));
     const byCat={};filteredExp.forEach(e=>{byCat[e.category||'—']=(byCat[e.category||'—']||0)+Number(e.amount||0)});
@@ -5076,10 +5394,11 @@ html,body{max-width:100%;overflow-x:hidden}
   const rx=L997Enterprise.data.recurringExpenses;
   q('recurringExpensesBody').innerHTML=rx.length?rx.map(r=>`<tr><td>${esc(r.name)}</td><td>${money(r.amount)}</td><td>${r.frequency==='monthly'?t('freq_monthly'):t('freq_daily')}</td><td>${r.lastAppliedPeriod||'—'}</td><td><button class="mini-btn" data-edit-recurring="${r.id}">${t('btn_edit')}</button> <button class="mini-btn danger-mini" data-del-recurring="${r.id}">${t('btn_delete')}</button></td></tr>`).join(''):`<tr><td colspan="5" class="empty-state compact">${t('no_recurring')}</td></tr>`;
   q('recurringExpensesBody').querySelectorAll('[data-del-recurring]').forEach(btn=>{
-    btn.addEventListener('click',()=>{L997Enterprise.deleteRecurringExpense(btn.dataset.delRecurring);renderFinance();window.toast&&window.toast('تم حذف المصروف المتكرر')});
+    btn.addEventListener('click',()=>{if(!CAN('delete_records')){window.toast('ليست لديك صلاحية لهذا الإجراء');return}const r=rx.find(x=>x.id===btn.dataset.delRecurring);window.confirmAction(`حذف المصروف المتكرر «${r?r.name:''}»؟`,()=>{L997Enterprise.deleteRecurringExpense(btn.dataset.delRecurring);L997Enterprise.log('حذف مصروف متكرر',r?r.amount:0,{name:r?r.name:''});renderFinance();window.toast&&window.toast('تم حذف المصروف المتكرر')})});
   });
   q('recurringExpensesBody').querySelectorAll('[data-edit-recurring]').forEach(btn=>{
     btn.addEventListener('click',()=>{
+      if(!CAN('add_expense')){window.toast('ليست لديك صلاحية لهذا الإجراء');return}
       const r=rx.find(x=>x.id===btn.dataset.editRecurring);if(!r)return;
       window.openQuickForm({
         title:t('btn_edit')+' — '+r.name, sub:r.name,
@@ -5092,6 +5411,7 @@ html,body{max-width:100%;overflow-x:hidden}
           if(!v.name){window.toast('أدخل اسم المصروف');return false}
           if(!(v.amount>0)){window.toast('أدخل مبلغاً صحيحاً');return false}
           L997Enterprise.updateRecurringExpense(r.id,{name:v.name,amount:v.amount,frequency:v.frequency});
+          L997Enterprise.log('تعديل مصروف متكرر',v.amount,{name:v.name,from:r.amount});
           renderFinance();
           window.toast('تم تحديث المصروف المتكرر');
         }
@@ -5101,6 +5421,7 @@ html,body{max-width:100%;overflow-x:hidden}
  }
  q('financeViewBtn')?.addEventListener('click',renderFinance);
  q('addRecurringExpenseBtn')?.addEventListener('click',()=>{
+   if(!CAN('add_expense')){window.toast('ليست لديك صلاحية لهذا الإجراء');return}
    window.openQuickForm({
      title:'مصروف متكرر جديد', sub:'إيجار، رواتب، اشتراكات...',
      fields:[
@@ -5437,27 +5758,28 @@ html,body{max-width:100%;overflow-x:hidden}
   q('employeesBody').innerHTML=es.length?es.map(e=>{let mine=os.filter(o=>o.employeeId===e.id&&o.status!=='cancelled'),sales=mine.reduce((s,o)=>s+Number(pay(o).total||0),0);return `<tr><td>${esc(e.name)}</td><td>${roleLabel997(e.role)||esc(e.role)}</td><td>${money(e.salary)}</td><td>${money(e.commission)}</td><td>${mine.length}</td><td>${money(sales)}</td></tr>`}).join(''):`<tr><td colspan="6" class="empty-state compact">${t('no_employees')}</td></tr>`;
   q('payrollSummary').innerHTML=es.length?es.map(e=>{const empPr=pr.filter(p=>p.employeeId===e.id),net=empPr.reduce((s,p)=>s+Number(p.net||0),0),attCount=att.filter(a=>a.employeeId===e.id&&within(a.date,30)).length;return `<div class="mini-stat"><span>${esc(e.name)} <small class="subtle">(${t('attendance_days_30').replace('{0}',attCount)})</small></span><b>${money(Number(e.salary||0)+Number(e.commission||0)+net)}</b></div>`}).join(''):`<div class="empty-state compact">${t('no_payroll_data')}</div>`;
  }
+ function closureFor(type,key){return L997Enterprise.data.closures.find(c=>c.type===type&&(type==='daily'?c.forDate===key:c.forMonth===key))}
  function renderClosures(){
-  if(!q('closureDate').value) q('closureDate').value=new Date().toISOString().slice(0,10);
+  if(!q('closureDate').value) q('closureDate').value=FIN.todayStr();
   const selDate=q('closureDate').value;
-  const d=calcRange(selDate,selDate), m=calc(31);
-  const remainingCash=d.expectedCash;
+  const mb=FIN.monthBounds(selDate);
+  const d=calcRange(selDate,selDate), m=calcRange(mb.from,mb.to), snap=FIN.snapshot(finData());
   const lang997=window.getLang997?window.getLang997():'ar';
+  const ms=(label,v,style)=>`<div class="mini-stat"><span>${label}</span><b${style?` style="${style}"`:''}>${typeof v==='number'?money(v):v}</b></div>`;
+  const done=closureFor('daily',selDate), mdone=closureFor('monthly',mb.key);
+  const doneNote=c=>c?`<div class="mini-stat" style="color:var(--success)"><span>✓ ${lang997==='en'?'Closed by':'اعتمده'} ${esc(c.by||'')}</span><b>${new Date(c.date).toLocaleString(lang997)}</b></div>`:'';
   q('dailyClosurePreview').innerHTML=`
-    <div class="mini-stat"><span>${t('fin_revenue')}</span><b>${money(d.rev)}</b></div>
-    <div class="mini-stat"><span>${t('cls_deposits')}</span><b>${money(d.dep)}</b></div>
-    <div class="mini-stat"><span>${t('fin_expenses')}</span><b>${money(d.exp)}</b></div>
-    <div class="mini-stat"><span>${t('cls_open_orders')}</span><b>${d.os.filter(o=>o.status!=='delivered'&&o.status!=='cancelled').length}</b></div>
+    ${ms(FX('sales'),d.salesTotal)}${ms(FX('collected'),d.collected)}${ms('  · '+FX('deposits'),d.deposits)}${ms(FX('expenses'),d.expenses)}
+    ${ms(t('cls_open_orders'),String(snap.openCount))}
     <hr>
-    <div class="mini-stat" style="font-size:15px"><span><strong>${t('cls_remaining_cash')}</strong></span><b style="font-size:17px;${remainingCash<0?'color:var(--danger)':'color:var(--success)'}">${money(remainingCash)}</b></div>`;
-  q('monthlyClosurePreview').innerHTML=`<div class="mini-stat"><span>${t('cls_month_revenue')}</span><b>${money(m.rev)}</b></div><div class="mini-stat"><span>${t('cls_month_expenses')}</span><b>${money(m.exp)}</b></div><div class="mini-stat"><span>${t('cls_month_payroll')}</span><b>${money(m.payroll)}</b></div><div class="mini-stat"><span>${t('cls_month_profit')}</span><b>${money(m.profit)}</b></div>`;
-  q('closuresList').innerHTML=L997Enterprise.data.closures.length?L997Enterprise.data.closures.slice(0,30).map(c=>`<div class="ledger-item"><div><strong>${c.type==='daily'?t('cls_daily_label'):t('cls_monthly_label')}</strong><small>${c.forDate?(t('cls_for_date')+' '+c.forDate+' — '):''}${new Date(c.date).toLocaleString(lang997)}</small></div><b>${money(c.revenue||0)}</b></div>`).join(''):`<div class="empty-state compact">${t('no_closures')}</div>`;
-  const methods={cash:t('opt_cash'),card:t('opt_card'),benefitpay:'Benefit Pay',bank_transfer:t('opt_bank_transfer'),balance:t('opt_balance'),unpaid:t('opt_unpaid')};
-  const sellByMethod={},expByMethod={},depByMethod=d.depBy,refByMethod=d.refBy;
-  d.os.forEach(o=>{const m2=pay(o).method||'cash';sellByMethod[m2]=(sellByMethod[m2]||0)+Number(pay(o).paid||0)});
-  L997Enterprise.data.expenses.filter(e=>inDateRange(e.date,selDate,selDate)).forEach(e=>{const m2=e.method||'cash';expByMethod[m2]=(expByMethod[m2]||0)+Number(e.amount||0)});
-  const allMethods=Array.from(new Set([...Object.keys(methods),...Object.keys(sellByMethod),...Object.keys(expByMethod),...Object.keys(depByMethod),...Object.keys(refByMethod)]));
-  q('registerDetailsBody').innerHTML=allMethods.map(m2=>`<tr><td>${methods[m2]||m2}</td><td>${money(sellByMethod[m2]||0)}</td><td>${depByMethod[m2]?money(depByMethod[m2]):'--'}</td><td>${expByMethod[m2]?money(expByMethod[m2]):'--'}</td><td>${refByMethod[m2]?money(refByMethod[m2]):'--'}</td></tr>`).join('')+`<tr style="font-weight:800;background:var(--panel-soft)"><td>${t('th_total_row')}</td><td>${money(d.rev)}</td><td>${money(d.dep)}</td><td>${money(d.exp)}</td><td>${money(d.refund)}</td></tr>`;
+    <div class="mini-stat" style="font-size:15px"><span><strong>${t('cls_remaining_cash')}</strong></span><b style="font-size:17px;${d.expectedCash<0?'color:var(--danger)':'color:var(--success)'}">${money(d.expectedCash)}</b></div>
+    ${done?ms(lang997==='en'?'Counted cash / difference':'النقد الفعلي / الفرق',`${money(done.cashActual)} / ${money(done.variance)}`,done.variance?'color:var(--danger)':''):''}${doneNote(done)}`;
+  q('monthlyClosurePreview').innerHTML=`<div class="mini-stat"><span><strong>${mb.key}</strong></span><b>${mb.from} → ${mb.to}</b></div>${ms(FX('sales'),m.salesTotal)}${m.vat?ms(FX('net_rev'),m.netRevenue):''}${ms(FX('expenses'),m.expenses)}${ms(FX('staff'),m.staffCosts)}${ms(FX('profit'),m.profit,m.profit<0?'color:var(--danger)':'')}${ms(FX('collected'),m.collected)}${doneNote(mdone)}`;
+  q('closuresList').innerHTML=L997Enterprise.data.closures.length?L997Enterprise.data.closures.slice(0,30).map(c=>`<div class="ledger-item"><div><strong>${c.type==='daily'?t('cls_daily_label'):t('cls_monthly_label')}</strong><small>${c.forDate?(t('cls_for_date')+' '+c.forDate+' — '):c.forMonth?(c.forMonth+' — '):''}${new Date(c.date).toLocaleString(lang997)}${c.by?' — '+esc(c.by):''}${c.variance?` — ${lang997==='en'?'difference':'فرق'} ${money(c.variance)}`:''}</small></div><b>${money(c.revenue||0)}</b></div>`).join(''):`<div class="empty-state compact">${t('no_closures')}</div>`;
+  const methods={cash:t('opt_cash'),card:t('opt_card'),benefitpay:'Benefit Pay',bank_transfer:t('opt_bank_transfer')};
+  const allMethods=Array.from(new Set([...Object.keys(methods),...Object.keys(d.salesCashBy),...Object.keys(d.expensesBy),...Object.keys(d.depositsBy),...Object.keys(d.refundsBy)]));
+  const cell=v=>v?money(v):'--';
+  q('registerDetailsBody').innerHTML=allMethods.map(m2=>`<tr><td>${methods[m2]||esc(m2)}</td><td>${money(d.salesCashBy[m2]||0)}</td><td>${cell(d.depositsBy[m2])}</td><td>${cell(d.expensesBy[m2])}</td><td>${cell(d.refundsBy[m2])}</td></tr>`).join('')+`<tr style="font-weight:800;background:var(--panel-soft)"><td>${t('th_total_row')}</td><td>${money(d.orderPayments+d.packageSales)}</td><td>${money(d.deposits)}</td><td>${money(d.expenses)}</td><td>${money(d.refunds)}</td></tr>`;
  }
  q('closureDate')?.addEventListener('change',renderClosures);
  /* ===================== سجل النشاط والتدقيق (نسخة موسّعة) ===================== */
@@ -5595,6 +5917,7 @@ html,body{max-width:100%;overflow-x:hidden}
  window.renderFinance997=renderFinance; window.renderInventory997=renderInventory; window.renderEmployees997=renderEmployees; window.renderClosures997=renderClosures; window.renderAudit997=renderAudit;
 
  q('addExpenseBtn')?.addEventListener('click',()=>{
+   if(!CAN('add_expense')){window.toast('ليست لديك صلاحية لهذا الإجراء');return}
    window.openQuickForm({
      title: 'إضافة مصروف', sub: 'نوع المصروف والمبلغ وطريقة الدفع',
      fields: [
@@ -5614,14 +5937,19 @@ html,body{max-width:100%;overflow-x:hidden}
  });
  q('closeDayBtn')?.addEventListener('click',()=>{
    if(!CAN('approve_closing')){window.toast('ليست لديك صلاحية لهذا الإجراء');return}
-   const selDate=q('closureDate').value||new Date().toISOString().slice(0,10);
+   const selDate=q('closureDate').value||FIN.todayStr();
+   if(selDate>FIN.todayStr()){window.toast('لا يمكن إغلاق يوم لم يأتِ بعد');return}
+   const prev=closureFor('daily',selDate);
+   if(prev){window.toast(`تم اعتماد إغلاق يوم ${selDate} مسبقاً بواسطة ${prev.by||'—'} — لا يمكن تكراره`);return}
    let x=calcRange(selDate,selDate);
    window.openQuickForm({
      title:'اعتماد الإغلاق اليومي', sub:`ليوم ${selDate} — أدخل النقد الفعلي الموجود بالصندوق`,
      fields:[{ id:'cash', label:'النقد الفعلي بالصندوق (د.ب)', type:'number', step:'0.001', value:x.expectedCash>0?x.expectedCash:0, min:0 }],
      submitLabel:'اعتماد الإغلاق',
      onSubmit:(v)=>{
-       L997Enterprise.closeDay({revenue:x.rev,expenses:x.exp,profit:x.profit,deposits:x.dep,refunds:x.refund,cashExpected:x.expectedCash,cashActual:v.cash,variance:Math.round((v.cash-x.expectedCash)*1000)/1000,forDate:selDate});
+       if(closureFor('daily',selDate))return;
+       const me=window.L997Auth?window.L997Auth.user():null;
+       L997Enterprise.closeDay({revenue:x.salesTotal,sales:x.salesTotal,collected:x.collected,collectedBy:x.collectedBy,expenses:x.expenses,profit:x.profit,deposits:x.deposits,refunds:x.refunds,cashExpected:x.expectedCash,cashActual:FIN.r3(v.cash),variance:FIN.r3(v.cash-x.expectedCash),forDate:selDate,by:me?me.name:''});
        renderClosures();
        window.toast('تم اعتماد الإغلاق اليومي');
      }
@@ -5629,9 +5957,14 @@ html,body{max-width:100%;overflow-x:hidden}
  });
  q('closeMonthBtn')?.addEventListener('click',()=>{
    if(!CAN('approve_closing')){window.toast('ليست لديك صلاحية لهذا الإجراء');return}
-   let x=calc(31);
-   window.confirmAction('اعتماد الإغلاق الشهري وتجميع كل بيانات الشهر؟', ()=>{
-     L997Enterprise.closeMonth({revenue:x.rev,expenses:x.exp,payroll:x.payroll,profit:x.profit});
+   const mb=FIN.monthBounds(q('closureDate').value||FIN.todayStr());
+   const prev=closureFor('monthly',mb.key);
+   if(prev){window.toast(`تم اعتماد إغلاق شهر ${mb.key} مسبقاً — لا يمكن تكراره`);return}
+   let x=calcRange(mb.from,mb.to);
+   window.confirmAction(`اعتماد الإغلاق الشهري لشهر ${mb.key} (${mb.from} → ${mb.to})؟`, ()=>{
+     if(closureFor('monthly',mb.key))return;
+     const me=window.L997Auth?window.L997Auth.user():null;
+     L997Enterprise.closeMonth({revenue:x.salesTotal,sales:x.salesTotal,netRevenue:x.netRevenue,expenses:x.expenses,staffCosts:x.staffCosts,payroll:x.staffCosts,profit:x.profit,collected:x.collected,forMonth:mb.key,by:me?me.name:''});
      renderClosures();
      window.toast('تم اعتماد الإغلاق الشهري');
    });
@@ -5648,7 +5981,7 @@ html,body{max-width:100%;overflow-x:hidden}
      onSubmit:(v)=>{
        if(!v.name){window.toast('أدخل اسم الموظف');return false}
        L997Enterprise.addEmployee({name:v.name,role:v.role,salary:v.salary,commission:v.commission});
-       renderEmployees(); typeof populateEmployeeSelect==='function'&&populateEmployeeSelect();
+       renderEmployees(); typeof window.populateEmployeeSelect==='function'&&window.populateEmployeeSelect();
        window.toast('تم إضافة الموظف');
      }
    });

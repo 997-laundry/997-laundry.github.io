@@ -1,0 +1,16 @@
+// Builds the single-file app: inlines src/styles.css and every <script src> into laundry-997-full.html.
+// Usage: node tools/build.js
+const fs = require("fs");
+const path = require("path");
+
+const root = path.join(__dirname, "..");
+const src = (f) => fs.readFileSync(path.join(root, "src", f), "utf8");
+
+let html = src("index.html");
+html = html.replace('  <link rel="stylesheet" href="styles.css" />', () => "  <style>\n" + src("styles.css") + "\n</style>");
+html = html.replace(/    <script src="([\w.-]+)"><\/script>/g, (_, f) => "    <script>\n" + src(f) + "\n</script>");
+if (/<script src=|href="styles\.css"/.test(html)) throw new Error("build: an asset reference was not inlined");
+
+const out = path.join(root, "laundry-997-full.html");
+fs.writeFileSync(out, html);
+console.log(`built ${path.relative(root, out)} (${(html.length / 1024).toFixed(0)} KB)`);
