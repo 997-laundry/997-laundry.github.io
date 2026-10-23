@@ -38,6 +38,7 @@ function check(name, cond, detail) {
   const quickCancelIfOpen = async () => {
     await page.waitForTimeout(250);
     if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); }
+    else if (await page.isVisible("#quickFormSubmitBtn") && /واتساب|WhatsApp/.test(await page.textContent("#quickFormSubmitBtn"))) { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(200); }
   };
 
   // 2) Create customer + order (2 x cotton thob wash&iron = 0.600, 1 x shirt = 0.200 → 0.800)
@@ -238,6 +239,28 @@ function check(name, cond, detail) {
   const thob = hz.o.items.find((i) => i.clothingId === "thob_cotton"), shirt = hz.o.items.find((i) => i.clothingId === "shirt");
   const hPkg = hz.cps.find((c) => c.name === "Thobes 10");
   check("thobe-only package: thobe from package, shirt charged 0.200", !!thob.fromPackageId && !shirt.fromPackageId && hz.o.payment.total === 0.2 && hPkg.remainingPieces === 9 && hPkg.garments.join() === "thob_cotton", JSON.stringify([thob.fromPackageId, shirt.fromPackageId, hz.o.payment.total, hPkg.remainingPieces, hPkg.garments]));
+
+  // 6i) New order: WhatsApp confirmation is the only option (no Later, no close, Esc ignored)
+  await page.click('.nav-item[data-page="new-order"]');
+  await page.click("#posCustomerBarBtn"); await page.fill("#orderCustomerPhone", "33001122"); await page.waitForTimeout(100);
+  await page.click("#customerResults [data-pick]");
+  await page.click('#posProductGrid [data-cloth="shirt"]');
+  await page.click("#posSaveOrderMainBtn"); await page.waitForTimeout(300);
+  const later = await page.isVisible("#quickFormCancelBtn"), closeX = await page.isVisible("#closeQuickFormDialog");
+  await page.keyboard.press("Escape"); await page.waitForTimeout(150);
+  const stillOpen = await page.isVisible("#quickFormSubmitBtn");
+  const btn = await page.textContent("#quickFormSubmitBtn");
+  check("order saved → WhatsApp confirmation is mandatory (no Later / close / Esc)", !later && !closeX && stillOpen && /واتساب/.test(btn), JSON.stringify([later, closeX, stillOpen]));
+  await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(200);
+  // 6j) Search by order number: "2" puts order #00002 first; Enter opens it
+  await page.click('.nav-item[data-page="orders"]');
+  await page.fill("#orderSearch", "2");
+  const first = await page.textContent("#ordersBody tr:nth-child(1) td:nth-child(1)");
+  check("order search: exact number first", /#00002/.test(first), first);
+  await page.press("#orderSearch", "Enter"); await page.waitForTimeout(200);
+  check("Enter on an order number opens the order", /00002/.test(await page.textContent("#orderDialogContent h3")));
+  await page.evaluate(() => document.querySelectorAll("dialog[open]").forEach((d) => d.close()));
+  await page.fill("#orderSearch", "");
 
   // 7) Language persists across reload
   await page.selectOption("#langSelectTop", "en");

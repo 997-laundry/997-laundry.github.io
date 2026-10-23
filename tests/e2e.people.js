@@ -21,7 +21,7 @@ function check(name, cond, detail) {
   await page.goto("file://" + file);
   const OWNER_PW = "Owner#2026pass", ACC_PW = "Accnt#2026pass";
   const submit = async () => { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(250); };
-  const later = async () => { await page.waitForTimeout(250); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } };
+  const later = async () => { await page.waitForTimeout(250); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } else if (await page.isVisible("#quickFormSubmitBtn") && /واتساب|WhatsApp/.test(await page.textContent("#quickFormSubmitBtn"))) { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(200); } };
   const nav = (pg) => page.evaluate((pg) => document.querySelector(`.nav-item[data-page="${pg}"]`).click(), pg);
   const emps = () => page.evaluate(() => JSON.parse(localStorage.getItem("l997_employees")));
   const login = async (u, p) => {

@@ -50,7 +50,8 @@ const AR = /[؀-ۿ]+(?:[\s؀-ۿ«»،؛؟.\-—:()]*[؀-ۿ]+)*/g;
   await pageText("new order page", "#page-new-order");
   await page.click("#posSaveOrderMainBtn");
   const t1 = await dialogText("order saved prompt");
-  await page.click("#quickFormCancelBtn");
+  check("order-saved WhatsApp prompt in English", /Send order confirmation on WhatsApp/.test(t1), t1.slice(0, 160));
+  await page.click("#quickFormSubmitBtn"); // mandatory WhatsApp confirmation
   await nav("orders");
   await page.click("#ordersBody tr:nth-child(1) [data-view]");
   await pageText("order dialog", "#orderDialogContent");

@@ -23,7 +23,7 @@ function check(name, cond, detail) {
   await page.goto("file://" + file);
   const OWNER_PW = "Owner#2026pass", WORKER_PW = "Worker#2026pass";
   const submit = async () => { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(250); };
-  const later = async () => { await page.waitForTimeout(250); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } };
+  const later = async () => { await page.waitForTimeout(250); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } else if (await page.isVisible("#quickFormSubmitBtn") && /واتساب|WhatsApp/.test(await page.textContent("#quickFormSubmitBtn"))) { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(200); } };
   const nav = (pg) => page.evaluate((pg) => document.querySelector(`.nav-item[data-page="${pg}"]`).click(), pg);
   const closeDialogs = () => page.evaluate(() => document.querySelectorAll("dialog[open]").forEach((d) => d.close()));
 
@@ -90,23 +90,28 @@ function check(name, cond, detail) {
   await page.click("#advanceStatusBtn");
   await page.selectOption("#qf_method", "unpaid");
   await submit();
+  await later();
+  let o = await page.evaluate(() => JSON.parse(localStorage.getItem("l997_orders"))[0]);
+  const cust = await page.evaluate(() => JSON.parse(localStorage.getItem("l997_customers"))[0]);
+  check("credit (pay later) needs no supervisor and is recorded under the worker", o.status === "ready" && o.debtRecorded && o.paymentBy === "Worker One" && cust.balance === -0.4, JSON.stringify([o.status, o.paymentBy, cust.balance]));
+  // Supervisor override still guards cancellations: self-approval and wrong password refused, owner approves
+  await closeDialogs();
+  await page.click("#ordersBody tr:nth-child(1) [data-view]");
+  await page.click("#cancelOrderBtn");
   await page.waitForTimeout(300);
   const title = await page.textContent("#quickFormTitle");
-  check("credit by worker asks for supervisor approval", /موافقة مشرف/.test(title), title);
+  check("cancellation by worker asks for supervisor approval", /موافقة مشرف/.test(title), title);
   await page.fill("#qf_u", "worker1"); await page.fill("#qf_p", WORKER_PW);
   await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(250);
-  let o = await page.evaluate(() => JSON.parse(localStorage.getItem("l997_orders"))[0]);
-  check("worker cannot approve own credit", o.status === "received");
+  check("worker cannot approve own action", /موافقة مشرف/.test(await page.textContent("#quickFormTitle")));
   await page.fill("#qf_u", "owner"); await page.fill("#qf_p", "wrong-password");
   await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(250);
-  o = await page.evaluate(() => JSON.parse(localStorage.getItem("l997_orders"))[0]);
-  check("wrong supervisor password rejected", o.status === "received");
+  check("wrong supervisor password rejected", /موافقة مشرف/.test(await page.textContent("#quickFormTitle")));
   await page.fill("#qf_u", "owner"); await page.fill("#qf_p", OWNER_PW);
   await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(400);
-  await later();
+  await page.fill("#qf_reason", "customer request"); await submit();
   o = await page.evaluate(() => JSON.parse(localStorage.getItem("l997_orders"))[0]);
-  const cust = await page.evaluate(() => JSON.parse(localStorage.getItem("l997_customers"))[0]);
-  check("owner approval records the credit", o.status === "ready" && o.debtRecorded && o.creditApprovedBy === "Owner" && cust.balance === -0.4, JSON.stringify([o.status, o.creditApprovedBy, cust.balance]));
+  check("owner approval lets the worker cancel (debt written off)", o.status === "cancelled" && o.cancelApprovedBy === "Owner", JSON.stringify([o.status, o.cancelApprovedBy]));
   const audit = await page.evaluate(() => JSON.parse(localStorage.getItem("l997_audit")));
   check("audit log records the failed and approved attempts", audit.some((a) => /موافقة مشرف فاشلة/.test(a.action)) && audit.some((a) => /موافقة مشرف: Owner/.test(a.action)));
 

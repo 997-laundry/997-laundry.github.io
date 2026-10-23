@@ -24,7 +24,7 @@ function check(name, cond, detail) {
   await page.click("#au_form button[type=submit]"); await page.check("#au_saved"); await page.click("#au_next");
   await page.waitForSelector("body:not(.auth-locked)");
   const submit = async () => { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(250); };
-  const later = async () => { await page.waitForTimeout(250); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } };
+  const later = async () => { await page.waitForTimeout(250); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } else if (await page.isVisible("#quickFormSubmitBtn") && /واتساب|WhatsApp/.test(await page.textContent("#quickFormSubmitBtn"))) { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(200); } };
   const nav = (pg) => page.evaluate((pg) => document.querySelector(`.nav-item[data-page="${pg}"]`).click(), pg);
   const exps = () => page.evaluate(() => JSON.parse(JSON.stringify(window.L997Enterprise.data.expenses)));
   const text = async (sel) => ((await page.textContent(sel)) || "").replace(/\s+/g, " ");

@@ -1442,7 +1442,6 @@
     { id: "create_order", label: "إنشاء طلب جديد", worker: true, accountant: false, manager: true },
     { id: "cancel_order", label: "إلغاء الطلب بدون موافقة مشرف / إرجاعه من التسليم", worker: false, accountant: false, manager: true },
     { id: "give_discount", label: "منح خصم على الطلب بدون موافقة مشرف", worker: false, accountant: false, manager: true },
-    { id: "allow_credit", label: "تسليم طلب بدين (آجل أو دفع جزئي) بدون موافقة مشرف", worker: false, accountant: false, manager: true },
     { id: "edit_customer", label: "تعديل بيانات العملاء (الاسم والجوال)", worker: false, accountant: true, manager: true },
     { id: "balance_tx", label: "استلام دفعة وإيداع رصيد للعميل", worker: true, accountant: true, manager: true },
     { id: "balance_adjust", label: "ردّ نقدي / خصم / تسوية رصيد / عكس حركة", worker: false, accountant: true, manager: true },
@@ -3034,22 +3033,77 @@
   document.getElementById("savePrintBtn").addEventListener("click", () => saveCurrentOrder(true));
 
   /* ---- رسائل واتساب في كل مرحلة: تأكيد الاستلام ← جاهزية ودفع ← تسليم ---- */
+
+  /* ============================= رسائل واتساب للعملاء =============================
+     صياغة ودية موحّدة بالعربية والإنجليزية والأردو — حسب لغة النظام المختارة */
+  const piecesOf = (order) => order.items.reduce((n, it) => n + it.qty, 0);
+  // صيغة العدد العربية الصحيحة: قطعة واحدة، قطعتان، 3–10 قطع، 11+ قطعة
+  const arPcs = (k) => (k === 1 ? "قطعة واحدة" : k === 2 ? "قطعتان" : k >= 3 && k <= 10 ? `${k} قطع` : `${k} قطعة`);
+  const SIGN = { ar: "فريق 997 Laundry 💙", en: "The 997 Laundry team 💙", ur: "997 Laundry ٹیم 💙" };
+  function waMsg(kind, d) {
+    const L = lang === "en" || lang === "ur" ? lang : "ar";
+    const n = d.name || "";
+    const M = {
+      received: {
+        ar: () => `هلا والله ${n} 🌸\nاستلمنا ملابسك وهي الحين بين أيادٍ أمينة 🧺✨\n\n🧾 رقم الطلب: #${d.number}\n👕 عدد القطع: ${d.pieces}\n💰 قيمة الطلب: ${d.total}${d.expected ? `\n⏰ موعد الجاهزية المتوقع: ${d.expected}` : ""}${d.urgent ? "\n⚡ طلبك مستعجل — بنخلصه لك بأسرع وقت" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}\n\nبنرسل لك رسالة أول ما يجهز إن شاء الله 😊\n${SIGN.ar}`,
+        en: () => `Hi ${n} 🌸\nWe've received your clothes — they're in safe hands 🧺✨\n\n🧾 Order: #${d.number}\n👕 Pieces: ${d.pieces}\n💰 Order value: ${d.total}${d.expected ? `\n⏰ Expected ready: ${d.expected}` : ""}${d.urgent ? "\n⚡ Urgent — we'll have it ready as fast as we can" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}\n\nWe'll message you as soon as it's ready 😊\n${SIGN.en}`,
+        ur: () => `السلام علیکم ${n} 🌸\nآپ کے کپڑے ہمیں موصول ہو گئے ہیں — بالکل محفوظ ہاتھوں میں 🧺✨\n\n🧾 آرڈر نمبر: #${d.number}\n👕 قطعات: ${d.pieces}\n💰 آرڈر کی قیمت: ${d.total}${d.expected ? `\n⏰ متوقع تیاری: ${d.expected}` : ""}${d.urgent ? "\n⚡ فوری آرڈر — جلد از جلد تیار کریں گے" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}\n\nتیار ہوتے ہی آپ کو پیغام بھیج دیں گے 😊\n${SIGN.ur}`,
+      },
+      ready: {
+        ar: () => `بشارة حلوة يا ${n} 🎉\nطلبك رقم #${d.number} جاهز ومرتب بانتظارك 👔✨\n\n👕 عدد القطع: ${d.pieces}\n${d.due > 0 ? `💰 المبلغ المستحق: ${d.dueTxt}\n💳 تقدر تدفع نقداً أو بالبطاقة أو Benefit Pay عند الاستلام` : `✅ مدفوع بالكامل — ما عليك إلا تشرفنا وتستلم`}\n\nنتشرف بزيارتك في أي وقت — المحل مفتوح 24 ساعة 🕐\n${SIGN.ar}`,
+        en: () => `Great news, ${n} 🎉\nYour order #${d.number} is ready and waiting for you 👔✨\n\n👕 Pieces: ${d.pieces}\n${d.due > 0 ? `💰 Amount due: ${d.dueTxt}\n💳 Pay by cash, card or Benefit Pay on pickup` : `✅ Fully paid — just drop by and collect`}\n\nCome by anytime — we're open 24 hours 🕐\n${SIGN.en}`,
+        ur: () => `خوشخبری ${n} 🎉\nآپ کا آرڈر #${d.number} تیار ہے اور آپ کا منتظر ہے 👔✨\n\n👕 قطعات: ${d.pieces}\n${d.due > 0 ? `💰 واجب الادا رقم: ${d.dueTxt}\n💳 وصولی پر نقد، کارڈ یا Benefit Pay سے ادائیگی کریں` : `✅ مکمل ادائیگی ہو چکی — بس تشریف لائیں اور وصول کریں`}\n\nکسی بھی وقت تشریف لائیں — ہم 24 گھنٹے کھلے ہیں 🕐\n${SIGN.ur}`,
+      },
+      delivered: {
+        ar: () => `شكراً لك يا ${n} 💐\nتم تسليم طلبك رقم #${d.number} (${arPcs(d.pieces)}) — نتمنى إنها تعجبك وتكون عند حسن ظنك ✨${d.owed > 0 ? `\n\n📌 للتذكير: المتبقي على حسابك ${d.owedTxt}` : ""}\n\nرأيك يهمنا، وإذا عندك أي ملاحظة لا تتردد تراسلنا 🌷\nننتظرك في طلبك الجاي 😊\n${SIGN.ar}`,
+        en: () => `Thank you, ${n} 💐\nYour order #${d.number} (${d.pieces} pcs) has been handed over — we hope you love the result ✨${d.owed > 0 ? `\n\n📌 Just a reminder: ${d.owedTxt} remains on your account` : ""}\n\nYour feedback means a lot — message us anytime 🌷\nSee you on your next visit 😊\n${SIGN.en}`,
+        ur: () => `شکریہ ${n} 💐\nآپ کا آرڈر #${d.number} (${d.pieces} قطعات) حوالے کر دیا گیا — امید ہے آپ کو پسند آئے گا ✨${d.owed > 0 ? `\n\n📌 یاد دہانی: آپ کے اکاؤنٹ پر ${d.owedTxt} باقی ہیں` : ""}\n\nآپ کی رائے ہمارے لیے اہم ہے — کسی بھی وقت پیغام کریں 🌷\nاگلی بار پھر ملیں گے 😊\n${SIGN.ur}`,
+      },
+      balance: {
+        ar: () => `هلا ${n} 👋\n${d.added ? `تمت إضافة ${d.amount} إلى رصيدك لدينا ✅` : `تم خصم ${d.amount} من رصيدك لدينا ✅`}\n💳 رصيدك الحالي: ${d.balance}\n\nشكراً لثقتك فينا، ودايماً بخدمتك 🌷\n${SIGN.ar}`,
+        en: () => `Hi ${n} 👋\n${d.added ? `${d.amount} has been added to your balance ✅` : `${d.amount} has been deducted from your balance ✅`}\n💳 Current balance: ${d.balance}\n\nThank you for trusting us — always happy to help 🌷\n${SIGN.en}`,
+        ur: () => `السلام علیکم ${n} 👋\n${d.added ? `آپ کے بیلنس میں ${d.amount} شامل کر دیے گئے ✅` : `آپ کے بیلنس سے ${d.amount} منہا کر دیے گئے ✅`}\n💳 موجودہ بیلنس: ${d.balance}\n\nہم پر اعتماد کا شکریہ — ہمیشہ خدمت میں حاضر 🌷\n${SIGN.ur}`,
+      },
+      due: {
+        ar: () => `هلا والله ${n} 🌸\nحبينا نذكّرك بلطف إن المتبقي على حسابك لدينا ${d.amount}${d.lines ? `:\n${d.lines}` : "."}\n\nتقدر تسدده بأي وقت يناسبك عند زيارتك الجاية أو عن طريق Benefit Pay 🙏\nشكراً لتعاونك ودايماً بخدمتك 💐\n${SIGN.ar}`,
+        en: () => `Hi ${n} 🌸\nJust a friendly reminder that ${d.amount} is outstanding on your account${d.lines ? `:\n${d.lines}` : "."}\n\nYou can settle it whenever it suits you — on your next visit or via Benefit Pay 🙏\nThank you, and we're always here for you 💐\n${SIGN.en}`,
+        ur: () => `السلام علیکم ${n} 🌸\nنرم یاد دہانی: آپ کے اکاؤنٹ پر ${d.amount} باقی ہیں${d.lines ? `:\n${d.lines}` : "۔"}\n\nاپنی سہولت کے مطابق اگلی آمد پر یا Benefit Pay کے ذریعے ادا کر دیں 🙏\nشکریہ، ہم ہمیشہ آپ کی خدمت میں ہیں 💐\n${SIGN.ur}`,
+      },
+    };
+    return M[kind][L]();
+  }
+  function orderMsgData(order, cust) {
+    return { name: cust.name, number: order.number, pieces: piecesOf(order), total: money(order.payment.total) };
+  }
+  function sendOrderConfirmation(order, cust) {
+    if (!cust) return;
+    const pkg = orderPackageLines(order).join("\n🎟 ");
+    openWhatsApp(cust.phone, waMsg("received", { ...orderMsgData(order, cust), expected: order.expectedDelivery ? fmtDT(order.expectedDelivery) : "", urgent: order.priority === "urgent", pkg }));
+  }
+  // رسالة الجاهزية: تُظهر المستحق إن لم يُدفع (أو المتبقي)، وإلا «مدفوع بالكامل»
+  function sendReadyMessage(order, cust) {
+    if (!cust) return;
+    const due = order.paymentConfirmed ? Number(order.payment.outstanding) || 0 : Number(order.payment.total) || 0;
+    openWhatsApp(cust.phone, waMsg("ready", { ...orderMsgData(order, cust), due, dueTxt: money(due) }));
+  }
+  const sendPaymentConfirmationMessage = sendReadyMessage;
   function sendDeliveredMessage(order, cust) {
     if (!cust) return;
-    const pieces = order.items.reduce((n, it) => n + it.qty, 0);
-    const L = {
-      ar: `تم تسليم طلبكم #${order.number} (${pieces} قطعة) بنجاح.\nنتمنى أن ينال رضاكم، ويسعدنا خدمتكم دائماً.`,
-      en: `Your order #${order.number} (${pieces} pcs) has been delivered successfully.\nWe hope you are happy with the service — thank you!`,
-      ur: `آپ کا آرڈر #${order.number} (${pieces} عدد) کامیابی سے حوالے کر دیا گیا۔\nہم آپ کی خدمت کے لیے ہمیشہ حاضر ہیں، شکریہ!`,
-    };
-    openWhatsApp(cust.phone, `${t("wa_greeting", cust.name)}\n${L[lang] || L.ar}`);
+    const owed = order.debtRecorded ? FIN.allocateDebts([cust], orders)[order.id] || 0 : 0;
+    openWhatsApp(cust.phone, waMsg("delivered", { ...orderMsgData(order, cust), owed, owedTxt: money(owed) }));
   }
-  function waPrompt(title, sub, submitLabel, send) {
-    setTimeout(() => openQuickForm({ title, sub, fields: [], submitLabel, cancelLabel: "لاحقاً", onSubmit: () => { send(); } }), 120);
+  function sendBalanceMessage(cust, amount) {
+    openWhatsApp(cust.phone, waMsg("balance", { name: cust.name, added: amount >= 0, amount: money(Math.abs(amount)), balance: money(cust.balance) }));
   }
+  window.waMsg997 = waMsg;
+
+  function waPrompt(title, sub, submitLabel, send, mandatory) {
+    setTimeout(() => openQuickForm({ title, sub, fields: [], submitLabel, cancelLabel: "لاحقاً", mandatory, onSubmit: () => { send(); } }), 120);
+  }
+  // تأكيد الطلب على واتساب إلزامي عند إنشاء الطلب (لا يوجد «لاحقاً»)
   function showOrderSavedPrompt(order, cust) {
     const pieces = order.items.reduce((n, it) => n + it.qty, 0);
-    waPrompt(`✓ تم حفظ الطلب #${order.number}`, `${cust ? cust.name : ""} — ${pieces} قطعة — الإجمالي ${money(order.payment.total)}. الدفع يتم عند تجهيز الطلب. هل ترسل تأكيد الاستلام للعميل على واتساب؟`, "📲 إرسال تأكيد واتساب", () => { sendOrderConfirmation(order, cust); logActivity(`إرسال تأكيد استلام واتساب — طلب #${order.number}`); });
+    waPrompt(`✓ تم حفظ الطلب #${order.number}`, `${cust ? cust.name : ""} — ${pieces} قطعة — الإجمالي ${money(order.payment.total)}. أرسل تأكيد الطلب للعميل على واتساب الآن.`, "📲 إرسال تأكيد الطلب على واتساب", () => { sendOrderConfirmation(order, cust); logActivity(`إرسال تأكيد استلام واتساب — طلب #${order.number}`); }, true);
   }
   function showReadyPrompt(order, cust) {
     waPrompt(`✓ تم تأكيد الدفع — الطلب #${order.number} جاهز`, `هل ترسل رسالة «طلبك جاهز» مع تفاصيل الدفع للعميل على واتساب؟`, "📲 إرسال رسالة الجاهزية", () => { sendPaymentConfirmationMessage(order, cust); logActivity(`إرسال رسالة جاهزية واتساب — طلب #${order.number}`); });
@@ -3166,38 +3220,10 @@
         : `باقة «${cp.name}»: استُخدم ${usedHere} قطعة — متبقي ${cp.remainingPieces} من ${cp.totalPieces}`;
     }).filter(Boolean);
   }
-  function sendOrderConfirmation(order, cust) {
-    if (!cust) return;
-    const pieces = order.items.reduce((s, it) => s + it.qty, 0);
-    const text = `${t("wa_greeting", cust.name)}\n${t("wa_order_received")}\n\n` +
-      `${t("wa_order_number")}: #${order.number}\n${t("wa_pieces_count")}: ${pieces}\n${t("wa_order_value")}: ${money(order.payment.total)}\n` +
-      `${t("wa_order_status")}: ${statusLabel(order.status)}\n` +
-      (order.priority === "urgent" ? `${t("wa_urgent_flag")}\n` : "") +
-      (orderPackageLines(order).length ? `\n${orderPackageLines(order).join("\n")}\n` : "") +
-      `\n${t("wa_thanks")}`;
-    openWhatsApp(cust.phone, text);
-  }
-  function sendReadyMessage(order, cust) {
-    if (!cust) return;
-    const pieces = order.items.reduce((s, it) => s + it.qty, 0);
-    const text = `${t("wa_greeting", cust.name)}\n${t("wa_ready_title", order.number)}\n\n` +
-      `${t("wa_pieces_count")}: ${pieces}\n${t("wa_due_amount")}: ${money(order.payment.outstanding)}\n\n${t("wa_waiting")}`;
-    openWhatsApp(cust.phone, text);
-  }
-  function sendBalanceMessage(cust, amount) {
-    const text = `${t("wa_greeting", cust.name)}\n${t("wa_balance_updated")}\n\n` +
-      `${t("wa_amount")}: ${money(Math.abs(amount))} (${amount >= 0 ? t("wa_added") : t("wa_deducted")})\n${t("wa_current_balance")}: ${money(cust.balance)}\n\n${t("wa_contact")}`;
-    openWhatsApp(cust.phone, text);
-  }
-  function sendPaymentConfirmationMessage(order, cust) {
-    if (!cust) return;
-    const pieces = order.items.reduce((s, it) => s + it.qty, 0);
-    const text = `${t("wa_greeting", cust.name)}\n${t("wa_ready_title", order.number)}\n\n` +
-      `${t("wa_pieces_count")}: ${pieces}\n${t("dlg_payment_method")}: ${paymentLabel(order.payment.method)}\n` +
-      `${t("dlg_total")}: ${money(order.payment.total)}\n${t("dlg_paid")}: ${money(order.payment.method === "balance" ? order.payment.total : order.payment.paid)}\n` +
-      `${t("dlg_remaining")}: ${money(order.payment.outstanding)}\n\n${t("wa_waiting")}`;
-    openWhatsApp(cust.phone, text);
-  }
+
+
+
+
 
   /* ============================= الطباعة ============================= */
   /* ============================= نافذة نموذج سريع عامة (بديل prompt) ============================= */
@@ -3205,7 +3231,12 @@
   function normDigits(v) {
     return String(v == null ? "" : v).replace(/[٠-٩]/g, (d) => d.charCodeAt(0) - 1632).replace(/[۰-۹]/g, (d) => d.charCodeAt(0) - 1776).replace(/[٫،,]/g, ".").replace(/\s+/g, "");
   }
-  function openQuickForm({ title, sub, fields, submitLabel, cancelLabel, onSubmit }) {
+  let quickFormMandatory = false;
+  function openQuickForm({ title, sub, fields, submitLabel, cancelLabel, onSubmit, mandatory }) {
+    // mandatory: لا زر إلغاء ولا إغلاق ولا Esc — الإجراء الوحيد هو زر التنفيذ
+    quickFormMandatory = !!mandatory;
+    document.getElementById("quickFormCancelBtn").style.display = mandatory ? "none" : "";
+    document.getElementById("closeQuickFormDialog").style.display = mandatory ? "none" : "";
     document.getElementById("quickFormTitle").textContent = title;
     document.getElementById("quickFormSub").textContent = sub || "";
     document.getElementById("quickFormSubmitBtn").textContent = submitLabel || "حفظ";
@@ -3266,6 +3297,7 @@
     quickFormDialog.showModal();
   }
 
+  quickFormDialog.addEventListener("cancel", (e) => { if (quickFormMandatory) e.preventDefault(); });
   function confirmAction(message, onConfirm) {
     openQuickForm({ title: "تأكيد", sub: message, fields: [], submitLabel: "تأكيد", onSubmit: () => onConfirm() });
   }
@@ -3349,13 +3381,21 @@
     statusSel.value = currentVal;
   }
   document.getElementById("orderStatusFilter").addEventListener("change", () => renderOrdersPage());
+  document.getElementById("orderSearch")?.addEventListener("input", () => renderOrdersPage());
+  // Enter على رقم طلب مطابق يفتحه مباشرة
+  document.getElementById("orderSearch")?.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const q = toLatinDigits(e.target.value).trim().replace(/^#/, "");
+    const hit = /^\d+$/.test(q) && orders.find((o) => Number(o.number) === Number(q));
+    if (hit) { e.preventDefault(); openOrderDialog(hit.id); }
+  });
   document.getElementById("orderPriorityFilter").addEventListener("change", () => renderOrdersPage());
 
   function renderOrdersPage(searchOverride) {
     populateFilterOptions();
     const statusFilter = document.getElementById("orderStatusFilter").value;
     const priorityFilter = document.getElementById("orderPriorityFilter").value;
-    const q = toLatinDigits(searchOverride ?? document.getElementById("globalSearch").value ?? "").trim().toLowerCase();
+    const q = toLatinDigits(searchOverride ?? (document.getElementById("orderSearch")?.value || document.getElementById("globalSearch").value) ?? "").trim().toLowerCase().replace(/^#/, "");
     const qPhoneDigits = q.replace(/[^0-9]/g, "").replace(/^0+/, "");
 
     let list = orders.slice();
@@ -3367,6 +3407,8 @@
         const phoneMatch = qPhoneDigits.length >= 3 && cust && cust.phone.replace(/[^0-9]/g, "").includes(qPhoneDigits);
         return o.number.includes(q) || (cust && cust.name.toLowerCase().includes(q)) || phoneMatch;
       });
+      // رقم الطلب المطابق تماماً أولاً (كتابة 5 تُظهر #00005 في الأعلى)
+      if (/^\d+$/.test(q)) list.sort((x, y) => (Number(y.number) === Number(q)) - (Number(x.number) === Number(q)));
     }
 
     const body = document.getElementById("ordersBody");
@@ -3416,7 +3458,7 @@
     return paymentLabel(order.payment.method);
   }
   // يتحقق من مدخلات الدفع ويسجّلها على الطلب ثم يستدعي onDone(now).
-  // يرجع false عند خطأ بالإدخال (تبقى النافذة مفتوحة). الآجل/الجزئي يحتاج صلاحية allow_credit أو موافقة مشرف.
+  // يرجع false عند خطأ بالإدخال (تبقى النافذة مفتوحة). الآجل/الجزئي مسموح مباشرة ويُسجَّل باسم الموظف.
   function applyOrderPayment(order, cust, v, what, onDone) {
     const total = order.payment.total;
     const method = v.method;
@@ -3457,10 +3499,7 @@
       logActivity(`تأكيد دفع طلب #${order.number} — ${money(method === "balance" ? total : paid)}${owed > 0 ? ` — دين مسجّل ${money(owed)}${overridden ? " اعتمده " + sup.name : ""}` : ""}`);
       onDone(now);
     };
-    if (owed > 0.0004 && !can("allow_credit")) {
-      setTimeout(() => requireOverride("allow_credit", `${what} بدين ${money(owed)}`, finalize), 80);
-      return;
-    }
+    // الآجل/الدفع الجزئي بدون موافقة مشرف — يُسجَّل باسم الموظف ويظهر في ملف العميل وسجل النشاط
     finalize(null, false);
   }
   function refreshAfterOrderChange() {
@@ -3970,7 +4009,7 @@
     if (q("cpSettle")) q("cpSettle").onclick = () => balTxForm({ custId: c.id, type: "credit", amount: cs.debt, note: "" });
     if (q("cpRemind")) q("cpRemind").onclick = () => {
       const lines = cs.rows.filter((r) => r.remaining > 0 && r.state !== "in_progress").map((r) => `• #${r.order.number}: ${money(r.remaining)}`).join("\n");
-      openWhatsApp(c.phone, `${t("wa_greeting", c.name)}\n${en ? "Amount due at 997 Laundry" : "المبلغ المستحق لدى مغسلة 997"}: ${money(cs.totalOwed)}\n${lines}\n\n${en ? "Thank you" : "شكراً لكم"}`);
+      openWhatsApp(c.phone, waMsg("due", { name: c.name, amount: money(cs.totalOwed), lines }));
       logActivity(`تذكير واتساب بالمستحق — ${c.name} — ${money(cs.totalOwed)}`);
     };
     q("cpStatement").onclick = () => { customerProfileDialog.close(); bv.stmt = c.id; openPage("balances"); };
@@ -4052,7 +4091,7 @@
       st_title: "كشف حساب", st_check_ok: "الرصيد مطابق لمجموع السجل ✓", st_check_bad: d => `⚠ فرق ${d} بين الرصيد المخزّن ومجموع السجل (غالباً بيانات قديمة)`,
       st_phone: "الجوال", st_wa_title: "كشف حسابكم", reversed: "معكوسة", order_no: n => `طلب #${n}`,
       wa_debt: (n, shop, amt) => `السلام عليكم ${n}،\nنذكّركم بوجود مبلغ مستحق قدره ${amt} على حسابكم لدى ${shop}.\nنرجو التكرم بالسداد عند أقرب فرصة. شكراً لتعاونكم.`,
-      wa_stmt: (n, shop, lines, bal) => `السلام عليكم ${n}،\nكشف حسابكم لدى ${shop} (آخر العمليات):\n${lines}\n\nالرصيد الحالي: ${bal}`,
+      wa_stmt: (n, shop, lines, bal) => `هلا والله ${n} 🌸\nهذا كشف حسابك لدى ${shop} (آخر الحركات):\n${lines}\n\n💳 رصيدك الحالي: ${bal}\n\nإذا عندك أي استفسار إحنا بالخدمة دايماً 💐\nفريق 997 Laundry 💙`,
       thanks: "شكراً لتعاملكم معنا", debtor_note: "⚠ الرصيد مستحق على العميل", shop_default: "مغسلة 997"
     },
     en: {
@@ -4077,7 +4116,7 @@
       st_title: "Account statement", st_check_ok: "Balance matches the ledger total ✓", st_check_bad: d => `⚠ Difference of ${d} between stored balance and ledger total (likely older data)`,
       st_phone: "Phone", st_wa_title: "Your statement", reversed: "reversed", order_no: n => `Order #${n}`,
       wa_debt: (n, shop, amt) => `Hello ${n},\nThis is a reminder that an amount of ${amt} is due on your account at ${shop}.\nKindly settle it at your earliest convenience. Thank you.`,
-      wa_stmt: (n, shop, lines, bal) => `Hello ${n},\nYour account statement at ${shop} (latest activity):\n${lines}\n\nCurrent balance: ${bal}`,
+      wa_stmt: (n, shop, lines, bal) => `Hi ${n} 🌸\nHere is your account statement at ${shop} (latest activity):\n${lines}\n\n💳 Current balance: ${bal}\n\nAny questions? We're always here to help 💐\nThe 997 Laundry team 💙`,
       thanks: "Thank you for your business", debtor_note: "⚠ Amount due from customer", shop_default: "997 Laundry"
     },
     ur: {
@@ -4102,7 +4141,7 @@
       st_title: "اکاؤنٹ اسٹیٹمنٹ", st_check_ok: "بیلنس ریکارڈ کے مجموعے سے مطابقت رکھتا ہے ✓", st_check_bad: d => `⚠ محفوظ بیلنس اور ریکارڈ کے مجموعے میں ${d} کا فرق (غالباً پرانا ڈیٹا)`,
       st_phone: "فون", st_wa_title: "آپ کی اسٹیٹمنٹ", reversed: "الٹایا گیا", order_no: n => `آرڈر #${n}`,
       wa_debt: (n, shop, amt) => `السلام علیکم ${n}،\nیاد دہانی ہے کہ ${shop} میں آپ کے اکاؤنٹ پر ${amt} واجب الادا ہیں۔\nبراہ کرم جلد ادا کر دیں۔ شکریہ۔`,
-      wa_stmt: (n, shop, lines, bal) => `السلام علیکم ${n}،\n${shop} میں آپ کی اکاؤنٹ اسٹیٹمنٹ (حالیہ لین دین):\n${lines}\n\nموجودہ بیلنس: ${bal}`,
+      wa_stmt: (n, shop, lines, bal) => `السلام علیکم ${n} 🌸\n${shop} میں آپ کی اکاؤنٹ اسٹیٹمنٹ (حالیہ لین دین):\n${lines}\n\n💳 موجودہ بیلنس: ${bal}\n\nکوئی سوال ہو تو ہم ہمیشہ حاضر ہیں 💐\n997 Laundry ٹیم 💙`,
       thanks: "ہمارے ساتھ لین دین کا شکریہ", debtor_note: "⚠ کسٹمر پر رقم واجب ہے", shop_default: "997 لانڈری"
     }
   };
@@ -4286,7 +4325,7 @@
       else if (a === "stmt" && c) { bv.stmt = c.id; renderBalancesPage(); window.scrollTo({ top: 0 }); }
       else if (a === "back") { bv.stmt = null; renderBalancesPage(); }
       else if (a === "wa" && c) openWhatsApp(c.phone, BX("wa_stmt", c.name, shopName997(), statementLines(c, 5), money(c.balance)));
-      else if (a === "remind" && c) openWhatsApp(c.phone, BX("wa_debt", c.name, shopName997(), money(-c.balance)));
+      else if (a === "remind" && c) openWhatsApp(c.phone, waMsg("due", { name: c.name, amount: money(-c.balance), lines: "" }));
       else if (a === "stmtwa" && c) openWhatsApp(c.phone, BX("wa_stmt", c.name, shopName997(), statementLines(c, 8), money(c.balance)));
       else if (a === "print" && c) printStatement(c);
       else if (a === "rev") reverseTx(id);

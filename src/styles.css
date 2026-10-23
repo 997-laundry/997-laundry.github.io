@@ -424,3 +424,4 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
 body.auth-locked .top-logout{display:none!important}
 .top-logout{font-size:13px;color:var(--danger)}
 @media (max-width:520px){#langSelectTop{max-width:96px;padding-inline:8px}}
+.order-search{border:1px solid var(--border);border-radius:12px;padding:10px 12px;min-width:220px;flex:1 1 220px;font:inherit}
