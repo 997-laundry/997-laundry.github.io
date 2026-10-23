@@ -27,7 +27,7 @@ function check(name, cond, detail) {
   const login = async (u, p) => {
     await page.evaluate(() => document.querySelectorAll("dialog[open]").forEach((d) => d.close()));
     if (await page.isVisible("#logoutBtn")) await page.click("#logoutBtn");
-    await page.waitForSelector("#au_user");
+    await page.waitForSelector("#au_user"); await page.waitForTimeout(150); // let the login screen finish its auto-focus
     await page.fill("#au_user", u); await page.fill("#au_pass", p);
     await page.click("#au_form button[type=submit]");
   };

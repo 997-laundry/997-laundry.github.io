@@ -109,7 +109,8 @@ function check(name, cond, detail) {
   await nav("reports");
   await page.click('[data-report="pnl"]');
   const pnl = (await page.textContent("#reportContent")).replace(/\s+/g, " ");
-  check("P&L: expenses 25.000, bonuses 10.000, profit −35.000", /المصروفات ?25\.000/.test(pnl) && /الموظفين ?10\.000/.test(pnl) && /−?-?35\.000/.test(pnl), pnl.slice(0, 220));
+  // a bonus is part of the salary paid later — it is not a second cost: profit = 0 − 25.000 stock purchases
+  check("P&L: expenses 25.000 (stock purchases), profit −25.000", /المصروفات ?25\.000/.test(pnl) && /الربح التقديري ?-25\.000/.test(pnl) && /مشتريات المخزون ?25\.000/.test(pnl), pnl.slice(0, 260));
   await nav("closures");
   const cls = (await page.textContent("#dailyClosurePreview")).replace(/\s+/g, " ");
   check("drawer counts only cash expenses (−20.000)", /-20\.000/.test(cls), cls);

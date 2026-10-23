@@ -385,3 +385,26 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
 .cp-pkg-garments{font-size:12px;color:var(--muted);margin-top:4px}
 #quickFormFields .qf-check{flex-direction:row;align-items:center;justify-content:flex-start;gap:8px;margin:0}
 #quickFormFields .qf-check span{margin:0;font-weight:600;color:var(--text)}
+/* التقرير الشهري — على الشاشة وعند الطباعة (A4) */
+.mreport{font-size:13px;color:var(--text)}
+.mr-title{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;border-bottom:2px solid var(--primary);padding-bottom:8px;margin-bottom:12px}
+.mr-title h3{margin:0}.mr-title p{margin:2px 0 0;color:var(--muted)}
+.mr-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.mr-kpis div{border:1px solid var(--border);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:2px}
+.mr-kpis span{font-size:12px;color:var(--muted)}.mr-kpis b{font-size:17px}
+.mr-kpis .pos b{color:var(--success)}.mr-kpis .neg b{color:var(--danger)}
+.mr-sec{margin-bottom:14px}.mr-sec h4{margin:0 0 6px;color:var(--primary-dark)}
+.mr-sec table{width:100%;border-collapse:collapse}
+.mr-sec td{padding:6px 4px;border-bottom:1px dashed var(--border)}
+.mr-sec td:not(:first-child){text-align:end;white-space:nowrap}
+.mr-head td{font-size:11px;color:var(--muted);font-weight:700}
+.mr-sub td{font-size:12px;color:var(--muted)}
+.mr-total td{font-weight:800;border-bottom:2px solid var(--border)}
+.mr-total.pos td:nth-child(2){color:var(--success)}.mr-total.neg td:nth-child(2),tr.neg td:nth-child(2){color:var(--danger)}
+.mr-prev{color:var(--muted);font-size:12px}
+.mr-note{font-size:11px;color:var(--muted)}
+@media (max-width:700px){.mr-kpis{grid-template-columns:1fr 1fr}.mr-prev{display:none}}
+@media print{#printReceipt .mreport{width:auto;max-width:190mm;margin:0 auto;font-size:11px;color:#000}#printReceipt .mr-prev{display:table-cell}}
+.cls-steps{margin:0 0 10px;padding-inline-start:20px;font-size:13px;color:var(--muted);line-height:1.9}
+.cls-pending{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;padding:8px 10px;border-radius:12px;background:rgba(217,119,6,.08);color:var(--warning);font-weight:700;font-size:13px}
+.cls-month-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}

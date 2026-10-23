@@ -48,11 +48,11 @@
     const p={id:uid(),date:new Date().toISOString(),inventoryId:item.id,itemName:item.name,unit:item.unit,qty,unitCost:unit,total:r3(qty*unit),supplierId:x.supplierId||'',supplier:x.supplier||'',invoiceNo:x.invoiceNo||'',paid:x.paid!==false,method:x.method||'cash',voided:false};
     const oldVal=item.qty*(item.avgCost||0),newQty=r3(item.qty+qty);
     item.avgCost=newQty>0?+((oldVal+p.total)/newQty).toFixed(4):unit;item.lastCost=unit;item.qty=newQty;
-    if(p.paid){const e=this.addExpense({category:'مشتريات مخزون',amount:p.total,method:p.method,note:item.name+(p.supplier?' — '+p.supplier:''),purchaseId:p.id});p.expenseId=e.id;p.paidAt=p.date}
+    if(p.paid){const e=this.addExpense({category:'مشتريات مخزون',catId:'inventory',amount:p.total,method:p.method,note:item.name+(p.supplier?' — '+p.supplier:''),purchaseId:p.id});p.expenseId=e.id;p.paidAt=p.date}
     purchases.unshift(p);save(EXT_KEYS.purchases,purchases);save(EXT_KEYS.inventory,inventory);
     stockMove(item,'purchase',qty,{ref:p.id,note:p.supplier});log('شراء مخزون',p.total,p);return p},
   payPurchase(id,method){const p=purchases.find(x=>x.id===id);if(!p||p.voided||p.paid!==false)return false;
-    const e=this.addExpense({category:'مشتريات مخزون',amount:p.total,method:method||'cash',note:p.itemName+(p.supplier?' — '+p.supplier:''),purchaseId:p.id});
+    const e=this.addExpense({category:'مشتريات مخزون',catId:'inventory',amount:p.total,method:method||'cash',note:p.itemName+(p.supplier?' — '+p.supplier:''),purchaseId:p.id});
     p.paid=true;p.method=method||'cash';p.expenseId=e.id;p.paidAt=new Date().toISOString();save(EXT_KEYS.purchases,purchases);log('تسديد مشترى آجل',p.total,{id});return true},
   voidPurchase(id){const p=purchases.find(x=>x.id===id);if(!p||p.voided)return {ok:false,reason:'none'};
     const item=inventory.find(i=>i.id===p.inventoryId);
@@ -88,7 +88,7 @@
       const key = r.frequency==='monthly' ? monthKey : dayKey;
       // يُقبل المفتاح القديم المبني على UTC حتى لا يتكرر المصروف مرة عند التحويل للتوقيت المحلي
       if(r.lastAppliedPeriod===key||(r.frequency!=='monthly'&&r.lastAppliedPeriod===now.toISOString().slice(0,10))) return;
-      this.addExpense({category:r.name,amount:r.amount,method:'cash',note:'مصروف متكرر ('+(r.frequency==='monthly'?'شهري':'يومي')+')'});
+      this.addExpense({category:r.name,catId:r.catId||undefined,amount:r.amount,method:'cash',note:'مصروف متكرر ('+(r.frequency==='monthly'?'شهري':'يومي')+')'});
       r.lastAppliedPeriod=key; appliedCount++;
     });
     save(EXT_KEYS.recurringExpenses,recurringExpenses);
@@ -2289,34 +2289,34 @@
       sales: "المبيعات", sales_note: (n, p) => `${n} طلب مدفوع${p ? ` + ${p} باقة` : ""}`,
       collected: "المحصّل فعلياً", collected_note: "نقد + بطاقة + Benefit + تحويل − المرتجع",
       expenses: "المصروفات", expenses_note: "المسجّلة بالفترة",
-      profit: "الربح التقديري", profit_note: "الإيراد بدون ضريبة − المصروفات − المكافآت",
+      profit: "الربح التقديري", profit_note: "الإيراد بدون ضريبة − كل المصروفات (تشمل الرواتب)",
       receivables: "ديون العملاء", receivables_note: (n) => `${n} عميل عليه مبالغ (الآن)`,
       open_value: "طلبات لم تُدفع بعد", open_note: (n) => `${n} طلب قيد التنفيذ`,
       ready_note: "بانتظار التسليم للعميل",
       gross: "المبيعات (شامل الضريبة)", vat: "ضريبة القيمة المضافة", net_rev: "الإيراد الصافي (بدون ضريبة)",
-      staff: "مكافآت وعمولات الموظفين", avg: "متوسط قيمة الطلب", discounts: "الخصومات الممنوحة",
+      staff: "مكافآت وعمولات الموظفين", salaries: "الرواتب والأجور", government: "الجهات الحكومية", avg: "متوسط قيمة الطلب", discounts: "الخصومات الممنوحة",
       pkg_sales: "مبيعات الباقات", from_balance: "مدفوع من أرصدة العملاء", credit: "بيع آجل (دين جديد)",
       deposits: "إيداعات أرصدة وسداد ديون", refunds: "مبالغ مُرجَعة للعملاء", prepaid: "أرصدة العملاء المدفوعة مقدماً",
       by_day: "حسب اليوم", by_month: "حسب الشهر", ready_old: "جاهز منذ أكثر من 3 أيام — تواصل مع العميل",
       low_stock: (n, q, u) => `مخزون منخفض: ${n} — متبقي ${q} ${u}`, out_stock: (n) => `نفد من المخزون: ${n}`,
-      profit_hint: "ملاحظة: سجّل الرواتب المدفوعة كمصروف بتصنيف «رواتب» حتى يظهر الربح بدقة. مشتريات المخزون المدفوعة تُحسب مصروفاً عند الدفع.",
+      profit_hint: "الرواتب تُصرف من صفحة الموظفين (زر «صرف رواتب الشهر») والسلف تُسجَّل عند صرفها، فتدخل المصروفات تلقائياً. مشتريات المخزون تُحسب مصروفاً عند دفعها. التفاصيل الكاملة في «التقرير الشهري».",
       cash_in: "إجمالي المبالغ المستلمة", cash_methods: "التحصيل حسب طريقة الدفع", orders_count: "عدد الطلبات المدفوعة", created_count: "طلبات جديدة مستلمة",
     },
     en: {
       sales: "Sales", sales_note: (n, p) => `${n} paid orders${p ? ` + ${p} packages` : ""}`,
       collected: "Cash collected", collected_note: "Cash + card + Benefit + transfer − refunds",
       expenses: "Expenses", expenses_note: "Recorded in period",
-      profit: "Estimated profit", profit_note: "Revenue excl. VAT − expenses − bonuses",
+      profit: "Estimated profit", profit_note: "Revenue excl. VAT − all expenses (incl. salaries)",
       receivables: "Customer debts", receivables_note: (n) => `${n} customers owe money (now)`,
       open_value: "Not yet paid orders", open_note: (n) => `${n} orders in progress`,
       ready_note: "Waiting for customer pickup",
       gross: "Sales (incl. VAT)", vat: "VAT", net_rev: "Net revenue (excl. VAT)",
-      staff: "Staff bonuses & commissions", avg: "Average order value", discounts: "Discounts given",
+      staff: "Staff bonuses & commissions", salaries: "Salaries & wages", government: "Government fees", avg: "Average order value", discounts: "Discounts given",
       pkg_sales: "Package sales", from_balance: "Paid from customer balances", credit: "Credit sales (new debt)",
       deposits: "Balance deposits & debt payments", refunds: "Refunded to customers", prepaid: "Customer prepaid balances",
       by_day: "By day", by_month: "By month", ready_old: "Ready for over 3 days — contact the customer",
       low_stock: (n, q, u) => `Low stock: ${n} — ${q} ${u} left`, out_stock: (n) => `Out of stock: ${n}`,
-      profit_hint: "Note: record salary payments as an expense with category \"Salaries\" so profit is accurate. Paid stock purchases count as expenses when paid.",
+      profit_hint: "Salaries are paid from the Employees page (\"Pay this month's salaries\") and advances are recorded when given, so they enter expenses automatically. Stock purchases count when paid. Full details in the Monthly report.",
       cash_in: "Total money received", cash_methods: "Collected by payment method", orders_count: "Paid orders", created_count: "New orders received",
     },
   };
@@ -2412,7 +2412,8 @@
       line(FX("gross"), s.salesTotal, "var(--success)") +
       (s.vat > 0 ? line(FX("vat"), s.vat) + line(FX("net_rev"), s.netRevenue) : "") +
       line(FX("expenses"), s.expenses, "var(--danger)") +
-      (s.staffCosts > 0 ? line(FX("staff"), s.staffCosts, "var(--danger)") : "") +
+      (s.expensesByGroup.salaries ? line("  · " + FX("salaries"), s.expensesByGroup.salaries) : "") +
+      (s.expensesByGroup.government ? line("  · " + FX("government"), s.expensesByGroup.government) : "") +
       line(FX("profit"), s.profit, s.profit < 0 ? "var(--danger)" : "") +
       line(FX("collected"), s.collected) +
       line(FX("avg"), s.avgOrder);
@@ -2447,6 +2448,10 @@
     const stockAlerts = (window.L997Enterprise ? window.L997Enterprise.data.inventory : [])
       .filter((i) => Number(i.qty) <= Number(i.minQty || 0))
       .map((i) => (Number(i.qty) <= 0 ? FX("out_stock", esc(i.name)) : FX("low_stock", esc(i.name), round3(i.qty), esc(i.unit || ""))));
+    if (can("approve_closing") && window.L997Enterprise) {
+      const pend = FIN.unclosedDays(finData(), window.L997Enterprise.data.closures, FIN.addDays(FIN.todayStr(), -7), FIN.addDays(FIN.todayStr(), -1));
+      if (pend.length) stockAlerts.unshift(`📅 ${lang === "en" ? "Days not closed" : "أيام لم يُعتمد إغلاقها"}: ${pend.map((x) => x.slice(5)).join("، ")}`);
+    }
     const attList = document.getElementById("attentionList");
     attList.innerHTML = attention.length === 0 && stockAlerts.length === 0
       ? `<div class="empty-state compact">${t("empty_attention")}</div>`
@@ -2455,7 +2460,7 @@
           <div><strong>#${o.number} — ${cust ? esc(cust.name) : "—"}</strong><small>${reason} · ${money(o.payment.total)}</small></div>
           <span class="status-badge ${statusClass(o.status)}">${statusLabel(o.status)}</span>
         </div>`).join("") + stockAlerts.slice(0, 5).map((msg) => `
-        <div class="attention-item"><div><strong>📦 ${msg}</strong></div></div>`).join("");
+        <div class="attention-item"><div><strong>${/^📅/.test(msg) ? "" : "📦 "}${msg}</strong></div></div>`).join("");
 
     const actList = document.getElementById("activityList");
     actList.innerHTML = activity.length === 0
@@ -3206,7 +3211,11 @@
     wrap.innerHTML = fields.map((f) => {
       const id = `qf_${f.id}`;
       if (f.type === "select") {
-        return `<label><span>${esc(f.label)}</span><select id="${id}">${f.options.map((o) => `<option value="${esc(o.value)}" ${o.value === f.value ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select></label>`;
+        const opt = (o) => `<option value="${esc(o.value)}" ${o.value === f.value ? "selected" : ""}>${esc(o.label)}</option>`;
+        // خيارات مجمّعة (optgroup) إن وُجدت خاصية group
+        const groups = [...new Set(f.options.map((o) => o.group).filter(Boolean))];
+        const body = groups.length ? groups.map((g) => `<optgroup label="${esc(g)}">${f.options.filter((o) => o.group === g).map(opt).join("")}</optgroup>`).join("") + f.options.filter((o) => !o.group).map(opt).join("") : f.options.map(opt).join("");
+        return `<label><span>${esc(f.label)}</span><select id="${id}">${body}</select></label>`;
       }
       if (f.type === "checks") {
         const sel = new Set(f.value || []);
@@ -4279,14 +4288,101 @@
 
   /* ============================= صفحة التقارير ============================= */
   let activeReportType = "overview";
-  document.querySelectorAll(".report-tab").forEach((btn) => {
+  // تبويبات التقارير فقط (وليس تبويبات الإعدادات التي تستخدم نفس التنسيق — كانت تُفرغ صفحة التقارير)
+  document.querySelectorAll("#reportTypeTabs .report-tab").forEach((btn) => {
     btn.addEventListener("click", () => {
       activeReportType = btn.dataset.report;
-      document.querySelectorAll(".report-tab").forEach((b) => b.classList.toggle("active", b === btn));
+      document.querySelectorAll("#reportTypeTabs .report-tab").forEach((b) => b.classList.toggle("active", b === btn));
       renderReportsPage();
     });
   });
   document.getElementById("reportApplyBtn").addEventListener("click", renderReportsPage);
+
+  /* ============================= التقرير الشهري =============================
+     تقرير نهاية الشهر: الإيرادات، التحصيل، المصروفات (تشغيل / رواتب / جهات حكومية / مخزون / أخرى)،
+     صافي الربح، المقارنة بالشهر السابق، الذمم، وحالة الإغلاقات — للعرض والطباعة */
+  let reportMonthKey = null;
+  function monthlyReportHtml(mk) {
+    const en = lang === "en";
+    const mb = FIN.monthBounds(mk + "-01");
+    const prevKey = FIN.monthBounds(FIN.addDays(mb.from, -1)).key;
+    const pb = FIN.monthBounds(prevKey + "-01");
+    const d = finData();
+    const s = FIN.summarize(d, mb.from, mb.to), p = FIN.summarize(d, pb.from, pb.to), snap = FIN.snapshot(d);
+    const E = window.L997Enterprise ? window.L997Enterprise.data : { employees: [], closures: [] };
+    const gl = (id) => { const g = FIN.EXPENSE_GROUPS.find((x) => x.id === id); return g ? (en ? g.en : g.ar) : id; };
+    const cl = (id) => { const c = FIN.EXPENSE_CATEGORIES.find((x) => x.id === id); return c ? (en ? c.en : c.ar) : id; };
+    const pct = (a, b) => (b ? `${a >= b ? "▲" : "▼"} ${Math.abs(Math.round(((a - b) / Math.abs(b)) * 100))}%` : "—");
+    const row = (label, v, opt) => `<tr class="${opt && opt.cls ? opt.cls : ""}"><td>${label}</td><td>${typeof v === "number" ? money(v) : v}</td>${opt && opt.prev !== undefined ? `<td class="mr-prev">${money(opt.prev)}</td><td class="mr-prev">${pct(v, opt.prev)}</td>` : opt && opt.cmp ? "<td></td><td></td>" : ""}</tr>`;
+    const sec = (title, rows, cmp) => `<section class="mr-sec"><h4>${title}</h4><table>${cmp ? `<tr class="mr-head"><td></td><td>${mk}</td><td class="mr-prev">${prevKey}</td><td class="mr-prev">${en ? "Change" : "التغير"}</td></tr>` : ""}${rows}</table></section>`;
+    // المصروفات حسب المجموعة مع التفصيل
+    const expRows = FIN.EXPENSE_GROUPS.filter((g) => s.expensesByGroup[g.id] || p.expensesByGroup[g.id]).map((g) => {
+      const cats = s.expensesByGroupCat[g.id] || {};
+      const detail = g.id === "salaries" && Object.keys(s.salariesByEmployee).length
+        ? Object.entries(s.salariesByEmployee).map(([eid, v]) => row(`&nbsp;&nbsp;· ${esc((E.employees.find((x) => x.id === eid) || {}).name || "—")}`, v, { cls: "mr-sub", cmp: 1 })).join("")
+        : Object.entries(cats).map(([cid, v]) => row(`&nbsp;&nbsp;· ${esc(cl(cid))}`, v, { cls: "mr-sub", cmp: 1 })).join("");
+      return row(`<b>${gl(g.id)}</b>`, s.expensesByGroup[g.id] || 0, { prev: p.expensesByGroup[g.id] || 0 }) + detail;
+    }).join("") || `<tr><td colspan="4" class="inv-muted">${en ? "No expenses recorded" : "لا توجد مصروفات مسجّلة"}</td></tr>`;
+    const daily = E.closures.filter((c) => c.type === "daily" && c.forDate >= mb.from && c.forDate <= mb.to);
+    const variance = FIN.r3(daily.reduce((a, c) => a + Number(c.variance || 0), 0));
+    const unclosed = FIN.unclosedDays(d, E.closures, mb.from, mb.to < FIN.todayStr() ? mb.to : FIN.addDays(FIN.todayStr(), -1));
+    const monthly = E.closures.find((c) => c.type === "monthly" && c.forMonth === mk);
+    const margin = s.netRevenue ? Math.round((s.profit / s.netRevenue) * 100) : 0;
+    const profile = loadProfile();
+    return `<div class="mreport" dir="${en ? "ltr" : "rtl"}">
+      <div class="mr-title"><div><h3>${esc(profile.nameAr || "997 Laundry")}</h3><p>${en ? "Monthly report" : "التقرير الشهري"} — ${mk} (${mb.from} → ${mb.to})</p></div><small>${en ? "Generated" : "أُعدّ في"} ${fmtDT(new Date().toISOString())}</small></div>
+      <div class="mr-kpis">
+        <div><span>${FX("net_rev")}</span><b>${money(s.netRevenue)}</b></div>
+        <div><span>${en ? "Total expenses" : "إجمالي المصروفات"}</span><b>${money(s.expenses)}</b></div>
+        <div class="${s.profit < 0 ? "neg" : "pos"}"><span>${en ? "Net profit" : "صافي الربح"}</span><b>${money(s.profit)}</b>${Math.abs(margin) <= 100 ? `<small>${en ? "margin" : "هامش الربح"} ${margin}%</small>` : ""}</div>
+        <div><span>${FX("collected")}</span><b>${money(s.collected)}</b></div>
+      </div>
+      ${sec(en ? "1. Revenue" : "١. الإيرادات", [
+        row(en ? "Paid orders" : "عدد الطلبات المدفوعة", String(s.salesOrders), { cmp: 1 }),
+        row(en ? "Order sales (incl. VAT)" : "مبيعات الطلبات (شامل الضريبة)", s.grossOrderSales, { prev: p.grossOrderSales }),
+        row(FX("pkg_sales"), s.packageSales, { prev: p.packageSales }),
+        row(FX("discounts"), s.discounts, { cmp: 1 }),
+        s.vat ? row("− " + FX("vat"), s.vat, { prev: p.vat }) : "",
+        row(`<b>${FX("net_rev")}</b>`, s.netRevenue, { prev: p.netRevenue, cls: "mr-total" }),
+      ].join(""), true)}
+      ${sec(en ? "2. Money received" : "٢. المبالغ المحصّلة", [
+        ...FIN.CASH_METHODS.map((m) => row(paymentLabel(m), s.collectedBy[m] || 0, { cmp: 1 })),
+        row("− " + FX("refunds"), s.refunds, { cmp: 1 }),
+        row(`<b>${FX("collected")}</b>`, s.collected, { prev: p.collected, cls: "mr-total" }),
+        row(en ? "of which: balance deposits & debt payments" : "منها: إيداعات أرصدة وسداد ديون", s.deposits, { cls: "mr-sub", cmp: 1 }),
+        row(FX("from_balance"), s.paidFromBalance, { cmp: 1 }),
+        row(FX("credit"), s.creditGiven, { cmp: 1 }),
+      ].join(""), true)}
+      ${sec(en ? "3. Expenses" : "٣. المصروفات", expRows + row(`<b>${en ? "Total expenses" : "إجمالي المصروفات"}</b>`, s.expenses, { prev: p.expenses, cls: "mr-total" }), true)}
+      ${sec(en ? "4. Result" : "٤. النتيجة", [
+        row(FX("net_rev"), s.netRevenue, { prev: p.netRevenue }),
+        row("− " + (en ? "Total expenses" : "إجمالي المصروفات"), s.expenses, { prev: p.expenses }),
+        row(`<b>${en ? "Net profit" : "صافي الربح"}</b>`, s.profit, { prev: p.profit, cls: s.profit < 0 ? "mr-total neg" : "mr-total pos" }),
+      ].join(""), true)}
+      ${sec(en ? "5. Balances (as of today)" : "٥. الذمم والأرصدة (حسب الوضع الحالي)", [
+        row(FX("receivables"), snap.receivables), row(FX("prepaid"), snap.prepaid), row(FX("open_value"), snap.openValue),
+      ].join(""))}
+      ${sec(en ? "6. Closures" : "٦. الإغلاقات", [
+        row(en ? "Daily closures approved" : "أيام تم إغلاقها", String(daily.length)),
+        row(en ? "Total cash difference" : "مجموع فروقات الصندوق", variance, { cls: variance ? "neg" : "" }),
+        row(en ? "Days with activity not closed" : "أيام فيها حركة ولم تُغلق", unclosed.length ? unclosed.map((x) => x.slice(8)).join("، ") : "✓"),
+        row(en ? "Monthly closure" : "الإغلاق الشهري", monthly ? `✓ ${esc(monthly.by || "")} — ${fmtDT(monthly.date)}` : (en ? "Not approved yet" : "لم يُعتمد بعد")),
+      ].join(""))}
+      <p class="mr-note">${en ? "Profit = revenue excl. VAT − all recorded expenses (salaries, advances, government fees, stock purchases when paid)." : "صافي الربح = الإيراد بدون ضريبة − كل المصروفات المسجّلة (الرواتب والسلف والرسوم الحكومية ومشتريات المخزون عند دفعها)."}</p>
+    </div>`;
+  }
+  function printMonthlyReport(mk) {
+    const el = ensurePrintContainer();
+    el.innerHTML = monthlyReportHtml(mk);
+    logActivity(`طباعة التقرير الشهري ${mk}`);
+    window.print();
+  }
+  window.openMonthlyReport997 = (mk) => {
+    reportMonthKey = mk;
+    activeReportType = "monthly";
+    document.querySelectorAll("#reportTypeTabs .report-tab").forEach((b) => b.classList.toggle("active", b.dataset.report === "monthly"));
+    openPage("reports");
+  };
 
   function renderReportsPage() {
     if (!document.getElementById("reportFromDate").value) {
@@ -4295,6 +4391,17 @@
       document.getElementById("reportToDate").value = fmtDateInput(to);
     }
     const content = document.getElementById("reportContent");
+    const dateRow = document.querySelector(".report-date-row");
+    if (dateRow) dateRow.style.display = activeReportType === "monthly" ? "none" : "";
+    if (activeReportType === "monthly") {
+      if (!reportMonthKey) reportMonthKey = FIN.todayStr().slice(0, 7);
+      content.innerHTML = `<div class="panel"><div class="panel-header"><div><h3>${lang === "en" ? "Monthly report" : "التقرير الشهري"}</h3><p>${lang === "en" ? "Revenue, collections, expenses, salaries, government fees and profit" : "الإيرادات والتحصيل والمصروفات والرواتب والجهات الحكومية وصافي الربح"}</p></div>
+        <div class="row-actions"><input type="month" id="monthlyReportMonth" value="${reportMonthKey}" class="inv-search" style="width:auto;margin:0"><button class="primary-btn" type="button" id="monthlyReportPrint">🖨 ${lang === "en" ? "Print / PDF" : "طباعة / PDF"}</button></div></div>
+        ${monthlyReportHtml(reportMonthKey)}</div>`;
+      document.getElementById("monthlyReportMonth").addEventListener("change", (e) => { if (/^\d{4}-\d{2}$/.test(e.target.value)) { reportMonthKey = e.target.value; renderReportsPage(); } });
+      document.getElementById("monthlyReportPrint").addEventListener("click", () => printMonthlyReport(reportMonthKey));
+      return;
+    }
     const fromInput = document.getElementById("reportFromDate").value, toInput = document.getElementById("reportToDate").value;
     const s = FIN.summarize(finData(), fromInput, toInput);
     const snap = FIN.snapshot(finData());
@@ -4325,7 +4432,7 @@
         <div class="metrics-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
           ${metric(FX("net_rev"), money(s.netRevenue), "var(--success)")}
           ${metric(FX("expenses"), money(s.expenses), "var(--danger)")}
-          ${metric(FX("staff"), money(s.staffCosts), "var(--danger)")}
+          ${metric(FX("salaries"), money(s.expensesByGroup.salaries || 0), "var(--danger)")}
           ${metric(FX("profit"), money(s.profit), s.profit < 0 ? "var(--danger)" : "var(--success)")}
         </div>
         <div class="content-grid two-cols" style="margin-top:16px">
@@ -4335,7 +4442,7 @@
             ${s.vat ? row("− " + FX("vat"), s.vat) : ""}
             ${row(FX("net_rev"), s.netRevenue, "var(--success)", true)}
             ${row("− " + FX("expenses"), s.expenses, "var(--danger)")}
-            ${row("− " + FX("staff"), s.staffCosts, "var(--danger)")}
+            ${FIN.EXPENSE_GROUPS.filter((g) => s.expensesByGroup[g.id]).map((g) => row("  · " + (lang === "en" ? g.en : g.ar), s.expensesByGroup[g.id])).join("")}
             ${row(FX("profit"), s.profit, s.profit < 0 ? "var(--danger)" : "var(--success)", true)}
             <p class="inv-muted" style="margin-top:10px;font-size:12px">${FX("profit_hint")}</p>
           </div>
@@ -4628,6 +4735,12 @@
  function finData(){const E=L997Enterprise.data;const ls=k=>{try{return JSON.parse(localStorage.getItem(k)||'[]')}catch{return[]}};return{orders:orders(),ledger:ledger(),customers:ls('l997_customers'),customerPackages:ls('l997_customer_packages'),expenses:E.expenses,payroll:E.payroll}}
  // كل الأرقام المالية من المحرك الموحّد (finance.js) — نفس النتائج بالرئيسية والتقارير والإغلاق
  function calcRange(fromStr,toStr){return FIN.summarize(finData(),fromStr,toStr)}
+ const L4=()=>window.getLang997?window.getLang997():'ar';
+ const catLabel=c=>L4()==='en'?c.en:c.ar;
+ const groupLabel=id=>{const g=FIN.EXPENSE_GROUPS.find(x=>x.id===id);return g?(L4()==='en'?g.en:g.ar):id};
+ // قائمة تصنيفات المصروف مجمّعة حسب المجموعة (بدون مشتريات المخزون — تُسجَّل من صفحة المخزون)
+ const catOptions=(exclude=[])=>FIN.EXPENSE_CATEGORIES.filter(c=>!exclude.includes(c.id)).map(c=>({value:c.id,label:catLabel(c),group:groupLabel(c.group)}));
+ const METHOD_OPTS=[{value:'cash',label:'نقداً'},{value:'card',label:'بطاقة'},{value:'benefitpay',label:'Benefit Pay'},{value:'bank_transfer',label:'تحويل بنكي'}];
  function defaultFinanceDates(){const to=FIN.todayStr();return{from:FIN.addDays(to,-29),to}}
  function renderFinance(){
   if(!q('financeFromDate').value){const d=defaultFinanceDates();q('financeFromDate').value=d.from;q('financeToDate').value=d.to}
@@ -4644,7 +4757,7 @@
   } else if(reportType==='pnl'){
     body.innerHTML=`<div class="panel"><h3 style="margin:0 0 10px">${t('fin_pnl_title')}</h3>
       ${ms(FX('gross'),x.salesTotal)}${x.vat?ms('− '+FX('vat'),x.vat):''}${ms(FX('net_rev'),x.netRevenue,'kpi-positive')}
-      ${ms('− '+FX('expenses'),x.expenses,'kpi-negative')}${ms('− '+FX('staff'),x.staffCosts,'kpi-negative')}
+      ${ms('− '+FX('expenses'),x.expenses,'kpi-negative')}${FIN.EXPENSE_GROUPS.filter(g=>x.expensesByGroup[g.id]).map(g=>ms('  · '+groupLabel(g.id),x.expensesByGroup[g.id])).join('')}
       <hr>${ms(FX('profit'),x.profit,x.profit>=0?'kpi-positive':'kpi-negative')}<p class="subtle" style="font-size:12px;margin-top:8px">${FX('profit_hint')}</p></div>`;
   } else if(reportType==='expenses'){
     const filteredExp=L997Enterprise.data.expenses.filter(e=>inDateRange(e.date,fromStr,toStr));
@@ -4652,7 +4765,7 @@
     body.innerHTML=`<div class="panel"><h3 style="margin:0 0 10px">${t('fin_expenses_by_type')} (${filteredExp.length})</h3>${Object.entries(byCat).length?Object.entries(byCat).map(([k,v])=>`<div class="mini-stat"><span>${esc(k)}</span><b class="kpi-negative">${money(v)}</b></div>`).join(''):`<div class="empty-state compact">${t('no_expenses')}</div>`}</div>`;
   }
 
-  q('expenseList').innerHTML=L997Enterprise.data.expenses.slice(0,30).map(e=>`<div class="ledger-item"${e.voided?' style="opacity:.55"':''}><div><strong${e.voided?' style="text-decoration:line-through"':''}>${esc(e.category||'—')}</strong><small>${new Date(e.date).toLocaleString(window.getLang997?window.getLang997():'ar')} ${esc(e.note||'')}${e.voided?` — ❌ ملغي: ${esc(e.voidReason||'')}${e.voidedBy?' ('+esc(e.voidedBy)+')':''}`:''}</small></div><div class="row-actions"><b class="kpi-negative"${e.voided?' style="text-decoration:line-through"':''}>${money(e.amount)}</b>${!e.voided&&!e.purchaseId&&CAN('delete_records')?`<button class="mini-btn danger-mini" type="button" data-void-exp="${e.id}">إلغاء</button>`:''}</div></div>`).join('')||`<div class="empty-state compact">${t('no_expenses')}</div>`;
+  q('expenseList').innerHTML=L997Enterprise.data.expenses.slice(0,30).map(e=>`<div class="ledger-item"${e.voided?' style="opacity:.55"':''}><div><strong${e.voided?' style="text-decoration:line-through"':''}>${esc(e.category||'—')}</strong> <span class="inv-tag">${esc(groupLabel(FIN.expenseCategory(e).group))}</span><small>${new Date(e.date).toLocaleString(window.getLang997?window.getLang997():'ar')} ${esc(e.note||'')}${e.voided?` — ❌ ملغي: ${esc(e.voidReason||'')}${e.voidedBy?' ('+esc(e.voidedBy)+')':''}`:''}</small></div><div class="row-actions"><b class="kpi-negative"${e.voided?' style="text-decoration:line-through"':''}>${money(e.amount)}</b>${!e.voided&&!e.purchaseId&&CAN('delete_records')?`<button class="mini-btn danger-mini" type="button" data-void-exp="${e.id}">إلغاء</button>`:''}</div></div>`).join('')||`<div class="empty-state compact">${t('no_expenses')}</div>`;
   q('expenseList').querySelectorAll('[data-void-exp]').forEach(btn=>btn.addEventListener('click',()=>{
     const ex=L997Enterprise.data.expenses.find(x=>x.id===btn.dataset.voidExp);if(!ex)return;
     const day=FIN.localDay(ex.date),closed=L997Enterprise.data.closures.some(c=>c.type==='daily'&&c.forDate===day);
@@ -4697,14 +4810,15 @@
    window.openQuickForm({
      title:'مصروف متكرر جديد', sub:'إيجار، رواتب، اشتراكات...',
      fields:[
-       {id:'name',label:'اسم المصروف',type:'text'},
+       {id:'name',label:'اسم المصروف',type:'text',placeholder:'مثال: إيجار المحل'},
+       {id:'catId',label:'نوع المصروف',type:'select',value:'rent',options:catOptions(['inventory','advance'])},
        {id:'amount',label:'المبلغ (د.ب)',type:'number',step:'0.001',value:0,min:0},
        {id:'frequency',label:'التكرار',type:'select',value:'monthly',options:[{value:'daily',label:'يومي'},{value:'monthly',label:'شهري'}]},
      ],
      onSubmit:(v)=>{
        if(!v.name){window.toast('أدخل اسم المصروف');return false}
        if(!(v.amount>0)){window.toast('أدخل مبلغاً صحيحاً');return false}
-       L997Enterprise.addRecurringExpense({name:v.name,amount:v.amount,frequency:v.frequency});
+       L997Enterprise.addRecurringExpense({name:v.name,catId:v.catId,amount:v.amount,frequency:v.frequency});
        renderFinance();
        window.toast('تم إضافة المصروف المتكرر');
      }
@@ -5035,31 +5149,40 @@
   const rows=[...es,...all.filter(e=>e.active===false)];
   q('employeesBody').innerHTML=rows.length?rows.map(e=>{let mine=os.filter(o=>o.employeeId===e.id&&o.status!=='cancelled'),sales=mine.reduce((s,o)=>s+Number(pay(o).total||0),0);return `<tr${e.active===false?' style="opacity:.55"':''}><td><b>${esc(e.name)}</b><br><small class="inv-muted">#${esc(e.employeeNumber||'—')}</small> ${acct(e)}</td><td>${roleLabel997(e.role)||esc(e.role)}</td><td>${money(e.salary)}</td><td>${money(e.commission)}</td><td>${mine.length}</td><td>${money(sales)}</td><td>${P.canEdit&&P.canEdit(e.id)?`<button class="mini-btn" type="button" data-emp-edit="${e.id}">تعديل</button>`:''}</td></tr>`}).join(''):`<tr><td colspan="7" class="empty-state compact">${t('no_employees')}</td></tr>`;
   q('employeesBody').querySelectorAll('[data-emp-edit]').forEach(b=>b.addEventListener('click',()=>P.edit(b.dataset.empEdit)));
-  // صافي مستحق هذا الشهر: الراتب + العمولة الثابتة + المكافآت والعمولات − الخصومات − السلف
-  q('payrollSummary').innerHTML=es.length?`<div class="inv-muted" style="margin-bottom:6px">صافي المستحق لشهر ${mb.key}</div>`+es.map(e=>{const m=pr.filter(p=>p.employeeId===e.id&&inMonth(p.date));const sum=ty=>m.filter(p=>p.type===ty).reduce((s,p)=>s+Math.abs(Number(p.amount??p.net)||0),0);const extra=sum('bonus')+sum('commission'),ded=sum('deduction'),adv=sum('advance');const net=Number(e.salary||0)+Number(e.commission||0)+extra-ded-adv;const attCount=att.filter(a=>a.employeeId===e.id&&inMonth(a.date)&&a.status!=='absent').length;return `<div class="mini-stat"><span>${esc(e.name)} <small class="subtle">(${t('attendance_days_30').replace('{0}',attCount)}${extra?` · +${money(extra)}`:''}${ded?` · خصم ${money(ded)}`:''}${adv?` · سلف ${money(adv)}`:''})</small></span><b>${money(net)}</b></div>`}).join(''):`<div class="empty-state compact">${t('no_payroll_data')}</div>`;
+  // صافي مستحق هذا الشهر (نفس حساب «صرف الرواتب») مع حالة الصرف
+  q('payrollSummary').innerHTML=es.length?`<div class="inv-muted" style="margin-bottom:6px">صافي المستحق لشهر ${mb.key}</div>`+es.map(e=>{const d=FIN.salaryDue(e,pr,L997Enterprise.data.expenses,mb.key);const attCount=att.filter(a=>a.employeeId===e.id&&inMonth(a.date)&&a.status!=='absent').length;return `<div class="mini-stat"><span>${esc(e.name)} <small class="subtle">(${t('attendance_days_30').replace('{0}',attCount)}${d.bonuses?` · +${money(d.bonuses)}`:''}${d.deductions?` · خصم ${money(d.deductions)}`:''}${d.advances?` · سلف ${money(d.advances)}`:''})</small></span><b>${money(d.net)} ${d.paid?'<span class="status-badge status-ready">✓ صُرف</span>':''}</b></div>`}).join(''):`<div class="empty-state compact">${t('no_payroll_data')}</div>`;
  }
  function closureFor(type,key){return L997Enterprise.data.closures.find(c=>c.type===type&&(type==='daily'?c.forDate===key:c.forMonth===key))}
+ let clsMonth=null;
  function renderClosures(){
   if(!q('closureDate').value) q('closureDate').value=FIN.todayStr();
   const selDate=q('closureDate').value;
-  const mb=FIN.monthBounds(selDate);
+  if(!clsMonth)clsMonth=FIN.todayStr().slice(0,7);
+  const mb=FIN.monthBounds(clsMonth+'-01');
   const d=calcRange(selDate,selDate), m=calcRange(mb.from,mb.to), snap=FIN.snapshot(finData());
   const lang997=window.getLang997?window.getLang997():'ar';
   const ms=(label,v,style)=>`<div class="mini-stat"><span>${label}</span><b${style?` style="${style}"`:''}>${typeof v==='number'?money(v):v}</b></div>`;
   const done=closureFor('daily',selDate), mdone=closureFor('monthly',mb.key);
   const doneNote=c=>c?`<div class="mini-stat" style="color:var(--success)"><span>✓ ${lang997==='en'?'Closed by':'اعتمده'} ${esc(c.by||'')}</span><b>${new Date(c.date).toLocaleString(lang997)}</b></div>`:'';
-  q('dailyClosurePreview').innerHTML=`
+  const today=FIN.todayStr(),monthStart=today.slice(0,8)+'01';
+  const pending=FIN.unclosedDays(finData(),L997Enterprise.data.closures,FIN.addDays(monthStart,-31),FIN.addDays(today,-1));
+  const steps=done?'':`<ol class="cls-steps"><li>عُدّ النقد الموجود في الدرج</li><li>قارنه بـ «الصندوق المتبقي المتوقع» بالأسفل</li><li>اضغط «اعتماد إغلاق اليوم» وأدخل المبلغ الذي عددته</li></ol>`;
+  const chips=pending.length?`<div class="cls-pending">⚠ أيام فيها حركة ولم تُغلق: ${pending.map(x=>`<button type="button" class="cloth-chip${x===selDate?' active':''}" data-cls-day="${x}">${x.slice(5)}</button>`).join('')}</div>`:'';
+  q('dailyClosurePreview').innerHTML=chips+steps+`
     ${ms(FX('sales'),d.salesTotal)}${ms(FX('collected'),d.collected)}${ms('  · '+FX('deposits'),d.deposits)}${ms(FX('expenses'),d.expenses)}
     ${ms(t('cls_open_orders'),String(snap.openCount))}
     <hr>
     <div class="mini-stat" style="font-size:15px"><span><strong>${t('cls_remaining_cash')}</strong></span><b style="font-size:17px;${d.expectedCash<0?'color:var(--danger)':'color:var(--success)'}">${money(d.expectedCash)}</b></div>
     ${done?ms(lang997==='en'?'Counted cash / difference':'النقد الفعلي / الفرق',`${money(done.cashActual)} / ${money(done.variance)}`,done.variance?'color:var(--danger)':''):''}${doneNote(done)}`;
-  q('monthlyClosurePreview').innerHTML=`<div class="mini-stat"><span><strong>${mb.key}</strong></span><b>${mb.from} → ${mb.to}</b></div>${ms(FX('sales'),m.salesTotal)}${m.vat?ms(FX('net_rev'),m.netRevenue):''}${ms(FX('expenses'),m.expenses)}${ms(FX('staff'),m.staffCosts)}${ms(FX('profit'),m.profit,m.profit<0?'color:var(--danger)':'')}${ms(FX('collected'),m.collected)}${doneNote(mdone)}`;
+  q('monthlyClosurePreview').innerHTML=`<div class="cls-month-bar"><input type="month" id="closureMonth" value="${mb.key}" class="inv-search" style="width:auto;margin:0"><button type="button" class="secondary-btn" id="openMonthlyReportBtn">📄 ${lang997==='en'?'Full monthly report':'التقرير الشهري الكامل'}</button></div><div class="mini-stat"><span><strong>${mb.key}</strong></span><b>${mb.from} → ${mb.to}</b></div>${ms(FX('sales'),m.salesTotal)}${m.vat?ms(FX('net_rev'),m.netRevenue):''}${ms(FX('expenses'),m.expenses)}${ms(groupLabel('salaries'),m.expensesByGroup.salaries||0)}${ms(groupLabel('government'),m.expensesByGroup.government||0)}${ms(lang997==='en'?'Net profit':'صافي الربح',m.profit,m.profit<0?'color:var(--danger)':'color:var(--success)')}${ms(FX('collected'),m.collected)}${doneNote(mdone)}`;
   q('closuresList').innerHTML=L997Enterprise.data.closures.length?L997Enterprise.data.closures.slice(0,30).map(c=>`<div class="ledger-item"><div><strong>${c.type==='daily'?t('cls_daily_label'):t('cls_monthly_label')}</strong><small>${c.forDate?(t('cls_for_date')+' '+c.forDate+' — '):c.forMonth?(c.forMonth+' — '):''}${new Date(c.date).toLocaleString(lang997)}${c.by?' — '+esc(c.by):''}${c.variance?` — ${lang997==='en'?'difference':'فرق'} ${money(c.variance)}`:''}</small></div><b>${money(c.revenue||0)}</b></div>`).join(''):`<div class="empty-state compact">${t('no_closures')}</div>`;
   const methods={cash:t('opt_cash'),card:t('opt_card'),benefitpay:'Benefit Pay',bank_transfer:t('opt_bank_transfer')};
   const allMethods=Array.from(new Set([...Object.keys(methods),...Object.keys(d.salesCashBy),...Object.keys(d.expensesBy),...Object.keys(d.depositsBy),...Object.keys(d.refundsBy)]));
   const cell=v=>v?money(v):'--';
   q('registerDetailsBody').innerHTML=allMethods.map(m2=>`<tr><td>${methods[m2]||esc(m2)}</td><td>${money(d.salesCashBy[m2]||0)}</td><td>${cell(d.depositsBy[m2])}</td><td>${cell(d.expensesBy[m2])}</td><td>${cell(d.refundsBy[m2])}</td></tr>`).join('')+`<tr style="font-weight:800;background:var(--panel-soft)"><td>${t('th_total_row')}</td><td>${money(d.orderPayments+d.packageSales)}</td><td>${money(d.deposits)}</td><td>${money(d.expenses)}</td><td>${money(d.refunds)}</td></tr>`;
+  q('dailyClosurePreview').querySelectorAll('[data-cls-day]').forEach(b=>b.addEventListener('click',()=>{q('closureDate').value=b.dataset.clsDay;renderClosures()}));
+  q('closureMonth')?.addEventListener('change',e=>{if(/^\d{4}-\d{2}$/.test(e.target.value)){clsMonth=e.target.value;renderClosures()}});
+  q('openMonthlyReportBtn')?.addEventListener('click',()=>window.openMonthlyReport997&&window.openMonthlyReport997(clsMonth));
  }
  q('closureDate')?.addEventListener('change',renderClosures);
  /* ===================== سجل النشاط والتدقيق (نسخة موسّعة) ===================== */
@@ -5199,17 +5322,21 @@
  q('addExpenseBtn')?.addEventListener('click',()=>{
    if(!CAN('add_expense')){window.toast('ليست لديك صلاحية لهذا الإجراء');return}
    window.openQuickForm({
-     title: 'إضافة مصروف', sub: 'نوع المصروف والمبلغ وطريقة الدفع',
+     title: 'إضافة مصروف', sub: 'اختر نوع المصروف من القائمة — الرواتب تُصرف من صفحة الموظفين، ومشتريات المخزون من صفحة المخزون',
      fields: [
-       { id:'category', label:'نوع المصروف', type:'text', value:'مصروف تشغيلي' },
-       { id:'amount', label:'المبلغ (د.ب)', type:'number', step:'0.001', value:0, min:0 },
-       { id:'method', label:'طريقة الدفع', type:'select', value:'cash', options:[{value:'cash',label:'نقداً'},{value:'card',label:'بطاقة'},{value:'benefitpay',label:'Benefit Pay'},{value:'bank_transfer',label:'تحويل بنكي'}] },
-       { id:'note', label:'ملاحظة (اختياري)', type:'text' },
+       { id:'catId', label:'نوع المصروف', type:'select', value:'rent', options:catOptions(['inventory','salary']) },
+       { id:'amount', label:'المبلغ (د.ب)', type:'number', step:'0.001', value:'', min:0 },
+       { id:'method', label:'طريقة الدفع', type:'select', value:'cash', options:METHOD_OPTS },
+       { id:'date', label:'تاريخ الدفع', type:'date', value:FIN.todayStr() },
+       { id:'note', label:'تفاصيل (مثال: فاتورة كهرباء شهر 10، تجديد سجل)', type:'text' },
      ],
      onSubmit: (v) => {
-       if (!v.category){window.toast('أدخل نوع المصروف');return false}
+       const cat=FIN.EXPENSE_CATEGORIES.find(c=>c.id===v.catId);
+       if (!cat){window.toast('اختر نوع المصروف');return false}
        if (!(v.amount>0)){window.toast('أدخل مبلغاً صحيحاً');return false}
-       L997Enterprise.addExpense({category:v.category,amount:v.amount,method:v.method,note:v.note});
+       if (!v.date||v.date>FIN.todayStr()){window.toast('تاريخ الدفع غير صحيح');return false}
+       const date=v.date===FIN.todayStr()?new Date().toISOString():new Date(v.date+'T12:00:00').toISOString();
+       L997Enterprise.addExpense({catId:cat.id,group:cat.group,category:cat.ar,amount:FIN.r3(v.amount),method:v.method,note:v.note,date});
        renderFinance(); typeof renderClosures==='function'&&renderClosures();
        window.toast('تم تسجيل المصروف');
      }
@@ -5224,12 +5351,15 @@
    let x=calcRange(selDate,selDate);
    window.openQuickForm({
      title:'اعتماد الإغلاق اليومي', sub:`ليوم ${selDate} — أدخل النقد الفعلي الموجود بالصندوق`,
-     fields:[{ id:'cash', label:'النقد الفعلي بالصندوق (د.ب)', type:'number', step:'0.001', value:x.expectedCash>0?x.expectedCash:0, min:0 }],
+     fields:[{ id:'cash', label:`النقد الذي عددته في الدرج (د.ب) — المتوقع ${money(x.expectedCash)}`, type:'number', step:'0.001', value:'', min:0 },
+       { id:'note', label:'سبب الفرق (إلزامي إذا اختلف المبلغ عن المتوقع)', type:'text' }],
      submitLabel:'اعتماد الإغلاق',
      onSubmit:(v)=>{
        if(closureFor('daily',selDate))return;
+       const diff=FIN.r3(v.cash-x.expectedCash);
+       if(diff!==0&&!v.note){window.toast(`يوجد فرق ${money(diff)} عن المتوقع — اكتب سببه قبل الاعتماد`);return false}
        const me=window.L997Auth?window.L997Auth.user():null;
-       L997Enterprise.closeDay({revenue:x.salesTotal,sales:x.salesTotal,collected:x.collected,collectedBy:x.collectedBy,expenses:x.expenses,profit:x.profit,deposits:x.deposits,refunds:x.refunds,cashExpected:x.expectedCash,cashActual:FIN.r3(v.cash),variance:FIN.r3(v.cash-x.expectedCash),forDate:selDate,by:me?me.name:''});
+       L997Enterprise.closeDay({revenue:x.salesTotal,sales:x.salesTotal,collected:x.collected,collectedBy:x.collectedBy,expenses:x.expenses,profit:x.profit,deposits:x.deposits,refunds:x.refunds,cashExpected:x.expectedCash,cashActual:FIN.r3(v.cash),variance:diff,varianceNote:v.note||'',forDate:selDate,by:me?me.name:''});
        renderClosures();
        window.toast('تم اعتماد الإغلاق اليومي');
      }
@@ -5237,14 +5367,16 @@
  });
  q('closeMonthBtn')?.addEventListener('click',()=>{
    if(!CAN('approve_closing')){window.toast('ليست لديك صلاحية لهذا الإجراء');return}
-   const mb=FIN.monthBounds(q('closureDate').value||FIN.todayStr());
+   const mb=FIN.monthBounds((clsMonth||FIN.todayStr().slice(0,7))+'-01');
    const prev=closureFor('monthly',mb.key);
    if(prev){window.toast(`تم اعتماد إغلاق شهر ${mb.key} مسبقاً — لا يمكن تكراره`);return}
+   if(mb.to>=FIN.todayStr()){window.toast(`شهر ${mb.key} لم ينتهِ بعد — يُعتمد إغلاقه من أول يوم في الشهر التالي`);return}
    let x=calcRange(mb.from,mb.to);
-   window.confirmAction(`اعتماد الإغلاق الشهري لشهر ${mb.key} (${mb.from} → ${mb.to})؟`, ()=>{
+   const open=FIN.unclosedDays(finData(),L997Enterprise.data.closures,mb.from,mb.to);
+   window.confirmAction(`اعتماد الإغلاق الشهري لشهر ${mb.key}: صافي الإيراد ${money(x.netRevenue)} − المصروفات ${money(x.expenses)} = صافي الربح ${money(x.profit)}.${open.length?` ⚠ يوجد ${open.length} يوم لم يُغلق (${open.map(d=>d.slice(8)).join('، ')}) — يُفضّل إغلاقها أولاً.`:''}`, ()=>{
      if(closureFor('monthly',mb.key))return;
      const me=window.L997Auth?window.L997Auth.user():null;
-     L997Enterprise.closeMonth({revenue:x.salesTotal,sales:x.salesTotal,netRevenue:x.netRevenue,expenses:x.expenses,staffCosts:x.staffCosts,payroll:x.staffCosts,profit:x.profit,collected:x.collected,forMonth:mb.key,by:me?me.name:''});
+     L997Enterprise.closeMonth({revenue:x.salesTotal,sales:x.salesTotal,netRevenue:x.netRevenue,expenses:x.expenses,expensesByGroup:x.expensesByGroup,payroll:x.expensesByGroup.salaries||0,government:x.expensesByGroup.government||0,profit:x.profit,unclosedDays:open,collected:x.collected,forMonth:mb.key,by:me?me.name:''});
      renderClosures();
      window.toast('تم اعتماد الإغلاق الشهري');
    });
@@ -5280,13 +5412,51 @@
        { id:'employeeId', label:'الموظف', type:'select', options: es.map(e=>({value:e.id,label:e.name})) },
        { id:'type', label:'النوع', type:'select', value:'bonus', options:[{value:'advance',label:'سلفة'},{value:'deduction',label:'خصم'},{value:'bonus',label:'مكافأة'},{value:'commission',label:'عمولة'}] },
        { id:'amount', label:'المبلغ (د.ب)', type:'number', step:'0.001', value:0, min:0 },
+       { id:'method', label:'طريقة الصرف (للسلفة فقط — تخرج من الصندوق الآن)', type:'select', value:'cash', options:METHOD_OPTS },
        { id:'note', label:'ملاحظة (اختياري)', type:'text' },
      ],
      onSubmit:(v)=>{
        if(!(v.amount>0)){window.toast('أدخل مبلغاً صحيحاً');return false}
-       L997Enterprise.addPayrollTx({employeeId:v.employeeId,type:v.type,amount:v.amount,note:v.note});
-       renderEmployees();
-       window.toast('تم تسجيل حركة الراتب');
+       const emp=es.find(e=>e.id===v.employeeId);
+       const amount=FIN.r3(v.amount),period=FIN.todayStr().slice(0,7);
+       L997Enterprise.addPayrollTx({employeeId:v.employeeId,type:v.type,amount,note:v.note});
+       // السلفة نقد يخرج الآن: تُسجَّل مصروفاً (رواتب) وتُخصم من راتب الشهر عند الصرف
+       if(v.type==='advance')L997Enterprise.addExpense({catId:'advance',group:'salaries',category:'سلفة راتب — '+(emp?emp.name:''),amount,method:v.method,employeeId:v.employeeId,period,note:v.note});
+       renderEmployees(); typeof renderFinance==='function'&&renderFinance(); typeof renderClosures==='function'&&renderClosures();
+       window.toast(v.type==='advance'?'تم تسجيل السلفة وخصمها من الصندوق':'تم تسجيل حركة الراتب');
+     }
+   });
+ });
+ // صرف رواتب الشهر دفعة واحدة: صافي كل موظف نشط يُسجَّل مصروف «رواتب» مرتبطاً بالموظف والشهر (لا يُصرف مرتين)
+ q('payMonthSalariesBtn')?.addEventListener('click',()=>{
+   if(!CAN('payroll')||!CAN('add_expense')){window.toast('صرف الرواتب يتطلب صلاحية الرواتب والمصروفات');return}
+   const es=L997Enterprise.data.employees.filter(e=>e.active!==false);
+   if(!es.length){window.toast('أضف موظفاً أولاً');return}
+   const E2=L997Enterprise.data;
+   const preview=mk=>es.map(e=>{const d=FIN.salaryDue(e,E2.payroll,E2.expenses,mk);return `${e.name}: ${d.paid?'✓ مصروف مسبقاً':money(d.net)}`}).join(' · ');
+   const mk0=FIN.todayStr().slice(0,7);
+   window.openQuickForm({
+     title:'💵 صرف رواتب الشهر', sub:`صافي كل موظف = الراتب + العمولة + المكافآت − الخصومات − السلف. شهر ${mk0}: ${preview(mk0)}`,
+     fields:[
+       {id:'month',label:'شهر الرواتب',type:'month',value:mk0},
+       {id:'method',label:'طريقة الصرف',type:'select',value:'bank_transfer',options:METHOD_OPTS},
+     ],
+     submitLabel:'صرف الرواتب',
+     onSubmit:v=>{
+       if(!/^\d{4}-\d{2}$/.test(v.month||'')){window.toast('اختر الشهر');return false}
+       const me=window.L997Auth?window.L997Auth.user():null;
+       let n=0,total=0;
+       es.forEach(e=>{
+         const d=FIN.salaryDue(e,E2.payroll,E2.expenses,v.month);
+         if(d.paid||!(d.net>0))return;
+         L997Enterprise.addExpense({catId:'salary',group:'salaries',category:'رواتب — '+e.name,amount:d.net,method:v.method,employeeId:e.id,period:v.month,
+           note:`راتب ${v.month}: أساسي ${money(d.salary)}${d.commission?` + عمولة ${money(d.commission)}`:''}${d.bonuses?` + مكافآت ${money(d.bonuses)}`:''}${d.deductions?` − خصومات ${money(d.deductions)}`:''}${d.advances?` − سلف ${money(d.advances)}`:''}`,paidBy:me?me.name:''});
+         n++;total+=d.net;
+       });
+       if(!n){window.toast(`لا توجد رواتب مستحقة غير مصروفة لشهر ${v.month}`);return false}
+       L997Enterprise.log(`صرف رواتب شهر ${v.month} — ${n} موظف`,total,{month:v.month});
+       renderEmployees(); typeof renderFinance==='function'&&renderFinance(); typeof renderClosures==='function'&&renderClosures();
+       window.toast(`تم صرف رواتب ${n} موظف — الإجمالي ${money(total)}`);
      }
    });
  });

@@ -89,7 +89,7 @@ test("VAT is separated from net revenue; profit uses net revenue", () => {
     payroll: [{ type: "bonus", amount: 0.1, net: 0.1, date: at(D1) }, { type: "advance", amount: 5, net: -5, date: at(D1) }],
   }, D1, D1);
   assert.equal(s.netRevenue, 1);
-  assert.equal(s.profit, 0.7); // 1.000 − 0.200 expenses − 0.100 bonus; the advance is not a cost
+  assert.equal(s.profit, 0.8); // 1.000 − 0.200 expenses; bonuses are paid inside the salary expense, not a second cost
   assert.equal(s.advances, 5);
   assert.equal(s.expectedCash, 0.9);
 });
@@ -194,4 +194,44 @@ test("voided expenses are excluded from expenses, profit and drawer", () => {
   ] }, D1, D1);
   assert.equal(s.expenses, 5);
   assert.equal(s.expectedCash, -5);
+});
+
+test("expense categories: groups for operating, salaries, government; old free-text expenses mapped", () => {
+  const s = F.summarize({ expenses: [
+    { amount: 300, catId: "rent", category: "إيجار المحل", date: at(D1) },
+    { amount: 40, category: "كهرباء شهر 9", date: at(D1) },
+    { amount: 25, catId: "lmra", category: "هيئة تنظيم سوق العمل (LMRA)", date: at(D1) },
+    { amount: 200, catId: "salary", category: "رواتب — Ali", employeeId: "e1", date: at(D1) },
+    { amount: 50, catId: "advance", category: "سلفة راتب — Ali", employeeId: "e1", date: at(D1) },
+    { amount: 20, category: "مشتريات مخزون", purchaseId: "p1", date: at(D1) },
+    { amount: 7, category: "شي غريب", date: at(D1) },
+  ] }, D1, D1);
+  assert.deepEqual(s.expensesByGroup, { operating: 340, government: 25, salaries: 250, inventory: 20, other: 7 });
+  assert.equal(s.expensesByGroupCat.operating.ewa, 40);
+  assert.equal(s.salariesByEmployee.e1, 250);
+  assert.equal(s.expenses, 642);
+});
+
+test("salary due for the month = salary + commission + bonuses − deductions − advances", () => {
+  const emp = { id: "e1", salary: 300, commission: 20 };
+  const m = "2026-10";
+  const payroll = [
+    { employeeId: "e1", type: "bonus", amount: 15, date: at(D1) },
+    { employeeId: "e1", type: "deduction", amount: 10, date: at(D1) },
+    { employeeId: "e1", type: "advance", amount: 50, date: at(D1) },
+    { employeeId: "e1", type: "bonus", amount: 99, date: at("2026-09-15") }, // other month
+  ];
+  const d = F.salaryDue(emp, payroll, [], m);
+  assert.deepEqual([d.net, d.gross, d.bonuses, d.advances, d.paid], [275, 325, 15, 50, null]);
+  const paidExp = [{ catId: "salary", employeeId: "e1", period: m, amount: 275 }];
+  assert.ok(F.salaryDue(emp, payroll, paidExp, m).paid);
+});
+
+test("unclosed days: days with activity and no daily closure", () => {
+  const data = {
+    orders: [order({ id: "a", total: 1, paidAt: at(D1) })],
+    expenses: [{ amount: 1, date: at(D2) }, { amount: 5, date: at("2026-10-19"), voided: true }],
+  };
+  assert.deepEqual(F.unclosedDays(data, [], "2026-10-01", D2), [D1, D2]);
+  assert.deepEqual(F.unclosedDays(data, [{ type: "daily", forDate: D1 }], "2026-10-01", D2), [D2]);
 });

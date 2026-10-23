@@ -19,6 +19,50 @@
   "use strict";
 
   const CASH_METHODS = ["cash", "card", "benefitpay", "bank_transfer"];
+
+  // تصنيفات المصروفات الثابتة — مجمّعة حتى يخرج تقرير نهاية الشهر مرتباً
+  const EXPENSE_GROUPS = [
+    { id: "operating", ar: "مصروفات تشغيل المحل", en: "Shop operating costs" },
+    { id: "salaries", ar: "الرواتب والأجور", en: "Salaries & wages" },
+    { id: "government", ar: "الجهات الحكومية والرسوم", en: "Government fees" },
+    { id: "inventory", ar: "مشتريات المخزون", en: "Stock purchases" },
+    { id: "other", ar: "مصروفات أخرى", en: "Other expenses" },
+  ];
+  const EXPENSE_CATEGORIES = [
+    { id: "rent", group: "operating", ar: "إيجار المحل", en: "Shop rent" },
+    { id: "ewa", group: "operating", ar: "كهرباء وماء (EWA)", en: "Electricity & water (EWA)" },
+    { id: "supplies", group: "operating", ar: "مواد تنظيف ومستلزمات", en: "Cleaning supplies" },
+    { id: "maintenance", group: "operating", ar: "صيانة وإصلاح المكائن", en: "Maintenance & repairs" },
+    { id: "transport", group: "operating", ar: "توصيل ومواصلات ووقود", en: "Delivery, transport & fuel" },
+    { id: "telecom", group: "operating", ar: "إنترنت واتصالات", en: "Internet & phone" },
+    { id: "marketing", group: "operating", ar: "تسويق وإعلانات", en: "Marketing & ads" },
+    { id: "bank_fees", group: "operating", ar: "رسوم بنكية وأجهزة الدفع", en: "Bank & card-machine fees" },
+    { id: "salary", group: "salaries", ar: "رواتب", en: "Salaries" },
+    { id: "advance", group: "salaries", ar: "سلفة راتب", en: "Salary advance" },
+    { id: "cr", group: "government", ar: "السجل التجاري (وزارة الصناعة والتجارة)", en: "Commercial registration (MOIC)" },
+    { id: "lmra", group: "government", ar: "هيئة تنظيم سوق العمل (LMRA)", en: "Labour Market Regulatory Authority (LMRA)" },
+    { id: "sio", group: "government", ar: "التأمينات الاجتماعية (SIO)", en: "Social Insurance (SIO)" },
+    { id: "municipality", group: "government", ar: "البلدية", en: "Municipality" },
+    { id: "residency", group: "government", ar: "الجوازات والإقامات (NPRA)", en: "Residency & visas (NPRA)" },
+    { id: "health", group: "government", ar: "الفحص الطبي والتأمين الصحي", en: "Medical checks & health insurance" },
+    { id: "gov_other", group: "government", ar: "رسوم حكومية أخرى", en: "Other government fees" },
+    { id: "inventory", group: "inventory", ar: "مشتريات مخزون", en: "Stock purchases" },
+    { id: "other", group: "other", ar: "أخرى", en: "Other" },
+  ];
+  // تصنيف المصروف: catId المحفوظ، أو يُستنتج من النص للمصروفات القديمة
+  function expenseCategory(e) {
+    const byId = EXPENSE_CATEGORIES.find((c) => c.id === e.catId);
+    if (byId) return byId;
+    const txt = String(e.category || "");
+    if (e.purchaseId || txt === "مشتريات مخزون") return EXPENSE_CATEGORIES.find((c) => c.id === "inventory");
+    const exact = EXPENSE_CATEGORIES.find((c) => c.ar === txt || c.en === txt);
+    if (exact) return exact;
+    if (/راتب|رواتب|salary/i.test(txt)) return EXPENSE_CATEGORIES.find((c) => c.id === "salary");
+    if (/إيجار|rent/i.test(txt)) return EXPENSE_CATEGORIES.find((c) => c.id === "rent");
+    if (/كهرباء|ماء|EWA/i.test(txt)) return EXPENSE_CATEGORIES.find((c) => c.id === "ewa");
+    if (/سجل|LMRA|تأمينات|بلدية|إقام|جواز|حكوم/i.test(txt)) return EXPENSE_CATEGORIES.find((c) => c.id === "gov_other");
+    return EXPENSE_CATEGORIES.find((c) => c.id === "other");
+  }
   const r3 = (n) => { const x = Number(n) || 0; return Math.round((x + (x >= 0 ? Number.EPSILON : -Number.EPSILON)) * 1000) / 1000; };
   const pad = (n) => String(n).padStart(2, "0");
 
@@ -86,7 +130,7 @@
       paidFromBalance: 0, creditGiven: 0, ordersCreated: 0,
       cashIn: 0, cashOut: 0, collected: 0, collectedBy: {}, refundsBy: {}, salesCashBy: {}, depositsBy: {},
       orderPayments: 0, deposits: 0, refunds: 0,
-      expenses: 0, expensesBy: {}, expensesByCat: {},
+      expenses: 0, expensesBy: {}, expensesByCat: {}, expensesByGroup: {}, expensesByGroupCat: {}, salariesByEmployee: {},
       staffCosts: 0, advances: 0, deductions: 0, profit: 0, expectedCash: 0,
       piecesByService: {}, piecesByGarment: {}, salesByDay: {}, salesByMonth: {}, salesList: [],
     };
@@ -149,6 +193,11 @@
       s.expenses = r3(s.expenses + a);
       addTo(s.expensesBy, e.method || "cash", a);
       addTo(s.expensesByCat, e.category || "—", a);
+      const cat = expenseCategory(e);
+      addTo(s.expensesByGroup, cat.group, a);
+      s.expensesByGroupCat[cat.group] = s.expensesByGroupCat[cat.group] || {};
+      addTo(s.expensesByGroupCat[cat.group], cat.id, a);
+      if (cat.group === "salaries" && e.employeeId) addTo(s.salariesByEmployee, e.employeeId, a);
     });
 
     payroll.forEach((p) => {
@@ -164,7 +213,8 @@
     s.cashIn = r3(Object.values(s.collectedBy).reduce((a, v) => a + v, 0));
     s.cashOut = s.refunds;
     s.collected = r3(s.cashIn - s.cashOut);
-    s.profit = r3(s.netRevenue - s.expenses - s.staffCosts);
+    // الرواتب والسلف تدخل كمصروفات فعلية عند صرفها؛ المكافآت جزء من الراتب المصروف (لا تُخصم مرتين)
+    s.profit = r3(s.netRevenue - s.expenses);
     s.expectedCash = r3((s.collectedBy.cash || 0) - (s.refundsBy.cash || 0) - (s.expensesBy.cash || 0));
     s.avgOrder = s.salesOrders ? r3(s.grossOrderSales / s.salesOrders) : 0;
     return s;
@@ -260,5 +310,28 @@
       });
   }
 
-  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, customerSummary, packageUsage };
+  // راتب الموظف لشهر معيّن: الأساسي + العمولة الثابتة + المكافآت والعمولات − الخصومات − السلف (السلف صُرفت مسبقاً)
+  function salaryDue(emp, payroll, expenses, monthKey) {
+    const inMonth = (d) => d && localDay(d).slice(0, 7) === monthKey;
+    const tx = (payroll || []).filter((p) => p.employeeId === emp.id && inMonth(p.date));
+    const sum = (ty) => r3(tx.filter((p) => p.type === ty).reduce((a, p) => a + Math.abs(Number(p.amount ?? p.net) || 0), 0));
+    const salary = r3(emp.salary), commission = r3(emp.commission);
+    const bonuses = r3(sum("bonus") + sum("commission")), deductions = sum("deduction"), advances = sum("advance");
+    const net = r3(salary + commission + bonuses - deductions - advances);
+    const paid = (expenses || []).find((e) => !e.voided && e.catId === "salary" && e.employeeId === emp.id && e.period === monthKey) || null;
+    return { salary, commission, bonuses, deductions, advances, net, gross: r3(net + advances), paid };
+  }
+
+  // أيام فيها حركة (بيع/تحصيل/مصروف) ولم يُعتمد إغلاقها — لتذكير المدير
+  function unclosedDays(data, closures, from, to) {
+    const days = new Set();
+    const add = (iso) => { if (iso && inRange(iso, from, to)) days.add(localDay(iso)); };
+    (data.orders || []).forEach((o) => { if (isSale(o)) add(orderPaidAt(o)); if (o.refund) add(o.refund.at); });
+    (data.ledger || []).forEach((tx) => { if (ledgerCashEffect(tx, data.customerPackages) !== 0) add(tx.at); });
+    (data.expenses || []).forEach((e) => { if (!e.voided) add(e.date); });
+    const closed = new Set((closures || []).filter((c) => c.type === "daily").map((c) => c.forDate));
+    return [...days].filter((d) => !closed.has(d)).sort();
+  }
+
+  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, customerSummary, packageUsage, EXPENSE_GROUPS, EXPENSE_CATEGORIES, expenseCategory, salaryDue, unclosedDays };
 });

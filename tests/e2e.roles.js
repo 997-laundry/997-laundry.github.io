@@ -63,7 +63,7 @@ function check(name, cond, detail) {
   // Log out, log in as worker, change temp password
   await closeDialogs();
   await page.click("#logoutBtn");
-  await page.waitForSelector("#au_user");
+  await page.waitForSelector("#au_user"); await page.waitForTimeout(150); // let the login screen finish its auto-focus
   await page.fill("#au_user", "worker1"); await page.fill("#au_pass", tempPw);
   await page.click("#au_form button[type=submit]");
   await page.waitForSelector("#au_pw");
@@ -111,7 +111,7 @@ function check(name, cond, detail) {
   // Back to owner: restore the earlier backup → order returns to its pre-credit state
   await closeDialogs();
   await page.click("#logoutBtn");
-  await page.waitForSelector("#au_user");
+  await page.waitForSelector("#au_user"); await page.waitForTimeout(150); // let the login screen finish its auto-focus
   await page.fill("#au_user", "owner"); await page.fill("#au_pass", OWNER_PW);
   await page.click("#au_form button[type=submit]");
   await page.waitForSelector("body:not(.auth-locked)");
