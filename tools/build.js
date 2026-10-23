@@ -13,4 +13,6 @@ if (/<script src=|href="styles\.css"/.test(html)) throw new Error("build: an ass
 
 const out = path.join(root, "laundry-997-full.html");
 fs.writeFileSync(out, html);
+// نسخة باسم index.html ليفتحها رابط الموقع (GitHub Pages) مباشرة من الجوال
+fs.writeFileSync(path.join(root, "index.html"), html);
 console.log(`built ${path.relative(root, out)} (${(html.length / 1024).toFixed(0)} KB)`);
