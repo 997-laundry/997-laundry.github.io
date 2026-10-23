@@ -168,3 +168,21 @@ test("customer file: paid, remaining and total owed per customer", () => {
   const s2 = F.customerSummary({ id: "c1", balance: 0 }, [o1]);
   assert.deepEqual([s2.rows[0].paid, s2.rows[0].remaining, s2.rows[0].state], [0.8, 0, "paid"]);
 });
+
+test("package usage: used pieces come from real orders; cancelled orders give pieces back", () => {
+  const cp = { id: "p1", customerId: "c1", name: "Iron 50", totalPieces: 50, remainingPieces: 42, purchasedAt: at(D1) };
+  const pkgItem = (qty) => [{ clothingId: "shirt", serviceId: "iron", qty, total: 0, fromPackageId: "p1" }, { clothingId: "thob_cotton", serviceId: "wash", qty: 3, total: 1.2 }];
+  const orders = [
+    order({ id: "a", total: 1.2, items: pkgItem(5) }),
+    order({ id: "b", total: 1.2, items: pkgItem(3), createdAt: at(D2) }),
+    order({ id: "c", total: 1.2, items: pkgItem(10), status: "cancelled" }),
+  ];
+  const [u] = F.packageUsage([cp], orders, "c1");
+  assert.equal(u.used, 8);
+  assert.equal(u.remaining, 42);
+  assert.equal(u.consistent, true);
+  assert.deepEqual(u.uses.map((x) => [x.orderId, x.qty]), [["b", 3], ["a", 5]]);
+  // stored balance out of sync → flagged
+  assert.equal(F.packageUsage([{ ...cp, remainingPieces: 40 }], orders, "c1")[0].consistent, false);
+  assert.equal(F.packageUsage([cp], orders, "other").length, 0);
+});

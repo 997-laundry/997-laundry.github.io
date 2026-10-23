@@ -240,5 +240,25 @@
     };
   }
 
-  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, customerSummary };
+  // باقات العميل: المستهلك من كل باقة يُحسب من الطلبات الفعلية (غير الملغاة) — مع سجل الاستخدام لكل طلب
+  // ويُقارن بالرصيد المخزّن للتأكد من سلامته
+  function packageUsage(customerPackages, orders, customerId) {
+    return (customerPackages || []).filter((cp) => !customerId || cp.customerId === customerId)
+      .sort((a, b) => String(b.purchasedAt).localeCompare(String(a.purchasedAt)))
+      .map((cp) => {
+        const uses = [];
+        (orders || []).forEach((o) => {
+          if (o.status === "cancelled") return;
+          const qty = (o.items || []).filter((it) => it.fromPackageId === cp.id).reduce((a, it) => a + (Number(it.qty) || 0), 0);
+          if (qty > 0) uses.push({ orderId: o.id, number: o.number, at: o.createdAt, qty });
+        });
+        uses.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+        const used = uses.reduce((a, u) => a + u.qty, 0);
+        const total = Number(cp.totalPieces) || 0;
+        const remaining = Math.max(0, total - used);
+        return { pkg: cp, total, used, remaining, stored: Number(cp.remainingPieces) || 0, consistent: remaining === (Number(cp.remainingPieces) || 0), uses, finished: remaining <= 0 };
+      });
+  }
+
+  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, customerSummary, packageUsage };
 });

@@ -359,3 +359,19 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
 .cp-order-nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:8px;align-items:end;margin-top:8px;font-size:12px;color:var(--muted)}
 .cp-order-nums b{display:block;font-size:14px;color:var(--text)}
 @media (max-width:700px){.cp-metrics{grid-template-columns:1fr 1fr}#customerProfileDialog .modal-header{padding-bottom:8px}}
+/* باقات العميل داخل ملف العميل */
+.cp-packages{margin-top:14px}
+.cp-packages h4{margin:0 0 8px}
+.cp-pkg{border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:var(--panel-soft)}
+.cp-pkg.done{opacity:.6}
+.cp-pkg-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cp-pkg-top small{margin-inline-start:auto}
+.cp-pkg-bar{height:8px;border-radius:999px;background:#e3ebef;overflow:hidden;margin:8px 0}
+.cp-pkg-bar div{height:100%;background:var(--primary);border-radius:999px}
+.cp-pkg-nums{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.cp-pkg-nums b{font-size:15px;color:var(--text);margin-inline-start:4px}
+.cp-pkg-warn{margin-top:6px;color:var(--warning);font-weight:700;font-size:12px}
+.cp-pkg details{margin-top:6px;font-size:12px}
+.cp-pkg summary{cursor:pointer;color:var(--primary-dark);font-weight:700}
+.cp-pkg-use{display:flex;gap:10px;align-items:center;padding:3px 0}
+.cp-pkg-use b{margin-inline-start:auto;color:var(--danger)}

@@ -186,6 +186,35 @@ function check(name, cond, detail) {
     /إجمالي المشتريات ?1\.400/.test(prof) && /إجمالي المدفوع ?1\.400/.test(prof) && /قيد التنفيذ ?0\.600/.test(prof) && /المستحق عليه الآن ?0\.000/.test(prof), prof.slice(0, 300));
   await page.click("#closeCustomerProfile");
 
+  // 6g) Packages: define "Iron 2" (2 pieces, 0.500), sell to a new customer, consume via quick tap
+  await page.click('.nav-item[data-page="settings"]');
+  await page.click('[data-settings-tab="packages"]');
+  await page.click("#addPackageDefBtn");
+  await page.fill("#qf_name", "Iron 2");
+  await page.selectOption("#qf_serviceType", "iron");
+  await page.fill("#qf_pieceCount", "2");
+  await page.fill("#qf_price", "0.5");
+  await quickSubmit();
+  await newOrder("Sara", "33445566", []); // creates the customer; empty cart → nothing saved
+  await page.click("#posCancelBtn");
+  await page.click('.nav-item[data-page="customers"]');
+  await page.fill("#customerSearch", "Sara");
+  await page.click("#customersBody tr:first-child [data-sell-package]");
+  await quickSubmit();
+  await newOrder("Sara", "33445566", ["shirt", "shirt", "shirt"]);
+  const pk = await page.evaluate(() => ({ cps: JSON.parse(localStorage.getItem("l997_customer_packages")), orders: JSON.parse(localStorage.getItem("l997_orders")), ledger: JSON.parse(localStorage.getItem("l997_ledger")) }));
+  const sOrder = pk.orders[0];
+  const pkgQty = sOrder.items.filter((i) => i.fromPackageId).reduce((a, i) => a + i.qty, 0);
+  const paidQty = sOrder.items.filter((i) => !i.fromPackageId).reduce((a, i) => a + i.qty, 0);
+  check("package covers 2 pieces, 3rd charged normally (0.200)", pkgQty === 2 && paidQty === 1 && sOrder.payment.total === 0.2, JSON.stringify([pkgQty, paidQty, sOrder.payment.total]));
+  check("package balance now 0 and sale price recorded", pk.cps[0].remainingPieces === 0 && pk.ledger.some((t) => t.type === "package_purchase" && t.price === 0.5));
+  await page.click('.nav-item[data-page="customers"]');
+  await page.fill("#customerSearch", "Sara");
+  await page.click("#customersBody tr:first-child [data-profile]");
+  const pkText = (await page.textContent(".cp-packages")).replace(/\s+/g, " ");
+  check("customer file shows package used 2 / left 0", /المستهلك ?2/.test(pkText) && /المتبقي ?0/.test(pkText) && !/لا يطابق/.test(pkText), pkText.slice(0, 200));
+  await page.click("#closeCustomerProfile");
+
   // 7) Language persists across reload
   await page.selectOption("#langSelectTop", "en");
   await page.reload();

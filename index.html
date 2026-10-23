@@ -373,6 +373,22 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
 .cp-order-nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:8px;align-items:end;margin-top:8px;font-size:12px;color:var(--muted)}
 .cp-order-nums b{display:block;font-size:14px;color:var(--text)}
 @media (max-width:700px){.cp-metrics{grid-template-columns:1fr 1fr}#customerProfileDialog .modal-header{padding-bottom:8px}}
+/* باقات العميل داخل ملف العميل */
+.cp-packages{margin-top:14px}
+.cp-packages h4{margin:0 0 8px}
+.cp-pkg{border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:var(--panel-soft)}
+.cp-pkg.done{opacity:.6}
+.cp-pkg-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cp-pkg-top small{margin-inline-start:auto}
+.cp-pkg-bar{height:8px;border-radius:999px;background:#e3ebef;overflow:hidden;margin:8px 0}
+.cp-pkg-bar div{height:100%;background:var(--primary);border-radius:999px}
+.cp-pkg-nums{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.cp-pkg-nums b{font-size:15px;color:var(--text);margin-inline-start:4px}
+.cp-pkg-warn{margin-top:6px;color:var(--warning);font-weight:700;font-size:12px}
+.cp-pkg details{margin-top:6px;font-size:12px}
+.cp-pkg summary{cursor:pointer;color:var(--primary-dark);font-weight:700}
+.cp-pkg-use{display:flex;gap:10px;align-items:center;padding:3px 0}
+.cp-pkg-use b{margin-inline-start:auto;color:var(--danger)}
 
 </style>
 </head>
@@ -1124,7 +1140,27 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
     };
   }
 
-  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, customerSummary };
+  // باقات العميل: المستهلك من كل باقة يُحسب من الطلبات الفعلية (غير الملغاة) — مع سجل الاستخدام لكل طلب
+  // ويُقارن بالرصيد المخزّن للتأكد من سلامته
+  function packageUsage(customerPackages, orders, customerId) {
+    return (customerPackages || []).filter((cp) => !customerId || cp.customerId === customerId)
+      .sort((a, b) => String(b.purchasedAt).localeCompare(String(a.purchasedAt)))
+      .map((cp) => {
+        const uses = [];
+        (orders || []).forEach((o) => {
+          if (o.status === "cancelled") return;
+          const qty = (o.items || []).filter((it) => it.fromPackageId === cp.id).reduce((a, it) => a + (Number(it.qty) || 0), 0);
+          if (qty > 0) uses.push({ orderId: o.id, number: o.number, at: o.createdAt, qty });
+        });
+        uses.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+        const used = uses.reduce((a, u) => a + u.qty, 0);
+        const total = Number(cp.totalPieces) || 0;
+        const remaining = Math.max(0, total - used);
+        return { pkg: cp, total, used, remaining, stored: Number(cp.remainingPieces) || 0, consistent: remaining === (Number(cp.remainingPieces) || 0), uses, finished: remaining <= 0 };
+      });
+  }
+
+  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, customerSummary, packageUsage };
 });
 
 </script>
@@ -3652,31 +3688,37 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
     if (!match) { notice.innerHTML = ""; quickAddUsePackage = false; return; }
     quickAddUsePackage = true;
     notice.innerHTML = `<label class="package-notice"><input type="checkbox" id="quickAddPackageCheckbox" checked />
-      خصم من باقة «${esc(match.name)}» — متبقي ${match.remainingPieces} من ${match.totalPieces} قطعة</label>`;
+      خصم من باقة «${esc(match.name)}» — متبقي ${Math.max(0, pkgLeftInDraft(match))} من ${match.totalPieces} قطعة</label>`;
     document.getElementById("quickAddPackageCheckbox").addEventListener("change", (e) => { quickAddUsePackage = e.target.checked; });
   }
 
+  // القطع المتبقية بالباقة بعد احتساب ما في السلة الحالية
+  function pkgLeftInDraft(cp) {
+    return cp.remainingPieces - draftItems.filter((it) => it.fromPackageId === cp.id).reduce((s, it) => s + it.qty, 0);
+  }
+  // باقة العميل المناسبة لهذا الصنف: خدمة الباقة متاحة له ولا تزال فيها قطع
+  function packageForGarment(clothingId) {
+    if (!draftCustomerId) return null;
+    return activePackagesForCustomer(draftCustomerId).find((cp) => priceFor(clothingId, cp.serviceType) > 0 && pkgLeftInDraft(cp) > 0) || null;
+  }
   function defaultServiceFor(clothingId) {
     if (priceFor(clothingId, "washiron") > 0) return "washiron";
     const found = SERVICES_DEFAULT.find((s) => priceFor(clothingId, s.id) > 0);
     return found ? found.id : null;
   }
   function quickTapAdd(clothingId) {
-    const svc = defaultServiceFor(clothingId);
+    // إن كان للعميل باقة تغطي هذا الصنف تُستخدم خدمة الباقة تلقائياً (مثلاً باقة كوي)
+    const pkgFirst = packageForGarment(clothingId);
+    const svc = pkgFirst ? pkgFirst.serviceType : defaultServiceFor(clothingId);
     if (!svc) { toast("لا توجد خدمة متاحة لهذا الصنف"); return; }
     // تحقق أولاً من وجود باقة نشطة للعميل تغطي هذه الخدمة تحديداً — قبل تحصيل السعر الكامل
     const activePkg = draftCustomerId ? activePackagesForCustomer(draftCustomerId).find((cp) => cp.serviceType === svc) : null;
-    if (activePkg && activePkg.remainingPieces > 0) {
+    if (activePkg && pkgLeftInDraft(activePkg) > 0) {
       const existingPkgItem = draftItems.find((it) => it.clothingId === clothingId && it.serviceId === svc && it.fromPackageId === activePkg.id);
-      const usedSoFar = draftItems.filter((it) => it.fromPackageId === activePkg.id).reduce((s, it) => s + it.qty, 0);
-      if (usedSoFar >= activePkg.remainingPieces) {
-        toast(`انتهت قطع باقة «${activePkg.name}» — سيُحصَّل السعر العادي للقطع الإضافية`);
-      } else if (existingPkgItem) {
-        existingPkgItem.qty += 1;
-      } else {
-        draftItems.push({ id: uid(), clothingId, serviceId: svc, qty: 1, unit: 0, total: 0, note: "", fromPackageId: activePkg.id, packageName: activePkg.name });
-        toast(`تمت الإضافة من باقة «${activePkg.name}»`);
-      }
+      if (existingPkgItem) existingPkgItem.qty += 1;
+      else draftItems.push({ id: uid(), clothingId, serviceId: svc, qty: 1, unit: 0, total: 0, note: "", fromPackageId: activePkg.id, packageName: activePkg.name });
+      const left = pkgLeftInDraft(activePkg);
+      toast(left > 0 ? `من باقة «${activePkg.name}» — متبقي ${left} قطعة` : `آخر قطعة في باقة «${activePkg.name}» — القطع التالية بالسعر العادي`);
       renderOrderItemsTable();
       updateSummary();
       renderProductGrid();
@@ -3737,15 +3779,16 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
     if (quickAddUsePackage) {
       usedPackage = activePackagesForCustomer(draftCustomerId).find((cp) => cp.serviceType === quickAddServiceId);
     }
-    if (usedPackage && usedPackage.remainingPieces >= quickQty) {
-      draftItems.push({ id: uid(), clothingId: quickAddClothingId, serviceId: quickAddServiceId, qty: quickQty, unit: 0, total: 0, note, fromPackageId: usedPackage.id, packageName: usedPackage.name });
-      toast(`تمت الإضافة من باقة «${usedPackage.name}»`);
-    } else {
-      if (usedPackage && usedPackage.remainingPieces < quickQty) toast(`القطع المتبقية بالباقة (${usedPackage.remainingPieces}) أقل من الكمية المطلوبة — تمت الإضافة بالسعر العادي`);
+    const left = usedPackage ? Math.max(0, pkgLeftInDraft(usedPackage)) : 0;
+    const fromPkg = Math.min(left, quickQty), paidQty = quickQty - fromPkg;
+    if (fromPkg > 0) draftItems.push({ id: uid(), clothingId: quickAddClothingId, serviceId: quickAddServiceId, qty: fromPkg, unit: 0, total: 0, note, fromPackageId: usedPackage.id, packageName: usedPackage.name });
+    if (paidQty > 0) {
       const unit = priceFor(quickAddClothingId, quickAddServiceId);
-      draftItems.push({ id: uid(), clothingId: quickAddClothingId, serviceId: quickAddServiceId, qty: quickQty, unit, total: round3(unit * quickQty), note });
-      if (!usedPackage) { const g2 = allGarments().find((g) => g.id === quickAddClothingId); toast(`تمت إضافة ${g2 ? (g2.key ? t(g2.key) : g2.name) : ""} للسلة`); }
+      draftItems.push({ id: uid(), clothingId: quickAddClothingId, serviceId: quickAddServiceId, qty: paidQty, unit, total: round3(unit * paidQty), note });
     }
+    if (usedPackage && paidQty > 0) toast(`الباقة «${usedPackage.name}» غطّت ${fromPkg} قطعة فقط — ${paidQty} قطعة بالسعر العادي`);
+    else if (fromPkg > 0) toast(`تمت الإضافة من باقة «${usedPackage.name}» — متبقي ${pkgLeftInDraft(usedPackage)} قطعة`);
+    else { const g2 = allGarments().find((g) => g.id === quickAddClothingId); toast(`تمت إضافة ${g2 ? (g2.key ? t(g2.key) : g2.name) : ""} للسلة`); }
     quickAddDialog.close();
     renderOrderItemsTable();
     updateSummary();
@@ -3768,7 +3811,7 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
           <div class="pos-cart-row-title">${clothingName(it.clothingId)}</div>
           <div class="pos-cart-row-sub">
             ${it.fromPackageId
-              ? `<span style="color:var(--success);font-weight:800">من الباقة (${it.packageName})</span>`
+              ? `<span style="color:var(--success);font-weight:800">🎟 من الباقة (${esc(it.packageName)})${(() => { const cp = customerPackages.find((p) => p.id === it.fromPackageId); return cp ? ` — متبقي ${Math.max(0, pkgLeftInDraft(cp))}` : ""; })()}</span>`
               : `<select class="pos-cart-row-service-select" data-service-change="${it.id}">
                   ${SERVICES_DEFAULT.filter((s) => priceFor(it.clothingId, s.id) > 0).map((s) => `<option value="${s.id}" ${s.id === it.serviceId ? "selected" : ""}>${t(s.key)}</option>`).join("")}
                 </select> · ${money(it.unit)} × ${it.qty}`}
@@ -3896,6 +3939,15 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
   });
 
   function selectCustomerForOrder(cust, silent) {
+    let converted = 0;
+    draftItems.forEach((it) => {
+      if (!it.fromPackageId) return;
+      const cp = customerPackages.find((p) => p.id === it.fromPackageId);
+      if (cp && cp.customerId === cust.id) return;
+      delete it.fromPackageId; delete it.packageName;
+      it.unit = priceFor(it.clothingId, it.serviceId); it.total = round3(it.unit * it.qty); converted += it.qty;
+    });
+    if (converted) { toast(`تم تغيير العميل — ${converted} قطعة كانت من باقة العميل السابق أصبحت بالسعر العادي`); renderOrderItemsTable(); }
     draftCustomerId = cust.id;
     const card = document.getElementById("selectedCustomerCard");
     card.classList.remove("empty-state", "compact");
@@ -3979,6 +4031,14 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
     opts = opts || {};
     if (!draftCustomerId) { toast(t("toast_pick_customer")); return null; }
     if (draftItems.length === 0) { toast(t("toast_add_one_item")); return null; }
+    // حماية الباقات: لا يُسمح باستهلاك أكثر من المتبقي، ولا باستخدام باقة عميل آخر (مثلاً طلب معلّق قديم)
+    const pkgUse = {};
+    draftItems.forEach((it) => { if (it.fromPackageId) pkgUse[it.fromPackageId] = (pkgUse[it.fromPackageId] || 0) + it.qty; });
+    for (const [pid, qty] of Object.entries(pkgUse)) {
+      const cp = customerPackages.find((p) => p.id === pid);
+      if (!cp || cp.customerId !== draftCustomerId) { toast("قطع من باقة لا تخص هذا العميل — احذفها من السلة وأضفها من جديد"); return null; }
+      if (qty > cp.remainingPieces) { toast(`باقة «${cp.name}» متبقي فيها ${cp.remainingPieces} قطعة فقط والسلة تستخدم ${qty} — قلّل الكمية`); return null; }
+    }
     const tt = currentTotals();
     const now = new Date().toISOString();
     // نحسب رقم الطلب من أعلى رقم موجود فعلياً بالتخزين (مو فقط العداد الداخلي) لتفادي تصادم الأرقام
@@ -4169,6 +4229,17 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
     list.querySelectorAll("[data-print-order]").forEach((btn) => btn.addEventListener("click", () => printOrder(btn.dataset.printOrder)));
   }
 
+  // سطور رصيد الباقات المستخدمة بالطلب: «باقة كوي: استُخدم 5 — متبقي 37 من 50»
+  function orderPackageLines(order) {
+    const ids = [...new Set(order.items.filter((it) => it.fromPackageId).map((it) => it.fromPackageId))];
+    return ids.map((id) => {
+      const cp = customerPackages.find((p) => p.id === id);
+      if (!cp) return "";
+      const usedHere = order.items.filter((it) => it.fromPackageId === id).reduce((s, it) => s + it.qty, 0);
+      return lang === "en" ? `Package «${cp.name}»: ${usedHere} used — ${cp.remainingPieces} of ${cp.totalPieces} left`
+        : `باقة «${cp.name}»: استُخدم ${usedHere} قطعة — متبقي ${cp.remainingPieces} من ${cp.totalPieces}`;
+    }).filter(Boolean);
+  }
   function sendOrderConfirmation(order, cust) {
     if (!cust) return;
     const pieces = order.items.reduce((s, it) => s + it.qty, 0);
@@ -4176,6 +4247,7 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
       `${t("wa_order_number")}: #${order.number}\n${t("wa_pieces_count")}: ${pieces}\n${t("wa_order_value")}: ${money(order.payment.total)}\n` +
       `${t("wa_order_status")}: ${statusLabel(order.status)}\n` +
       (order.priority === "urgent" ? `${t("wa_urgent_flag")}\n` : "") +
+      (orderPackageLines(order).length ? `\n${orderPackageLines(order).join("\n")}\n` : "") +
       `\n${t("wa_thanks")}`;
     openWhatsApp(cust.phone, text);
   }
@@ -4297,6 +4369,7 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
           <tbody>${order.items.map((it) => `<tr><td>${clothingName(it.clothingId)}</td><td>${serviceName(it.serviceId)}</td><td>${it.qty}</td><td>${money(it.total)}</td></tr>`).join("")}</tbody>
         </table>
         ${order.notes ? `<div class="receipt-notes"><strong>⚠ ${t("dlg_notes")}:</strong> ${esc(order.notes)}</div>` : ""}
+        ${orderPackageLines(order).map((l) => `<div class="receipt-notes">🎟 ${esc(l)}</div>`).join("")}
         <div class="receipt-divider"></div>
 
         <div class="receipt-line"><span>${t("sum_subtotal")}</span><span>${money(p.subtotal)}</span></div>
@@ -4894,6 +4967,17 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
       : { orders: "عدد الطلبات", spent: "إجمالي المشتريات", paid: "إجمالي المدفوع", owed: "المستحق عليه الآن", debt: "دين آجل", due: "يُدفع عند الاستلام", prog: "قيد التنفيذ", prepaid: "رصيد مقدّم",
           th: ["الطلب", "التاريخ", "الحالة", "الإجمالي", "المدفوع", "المتبقي", ""], view: "عرض", settle: "💵 تحصيل دفعة", stmt: "كشف الحساب", wa: "تذكير واتساب", neworder: "+ طلب جديد",
           st: { paid: "مدفوع ✓", debt: "دين", due_now: "يُدفع عند الاستلام", in_progress: "قيد التنفيذ", cancelled: "ملغي" }, none: "لا توجد طلبات بعد", since: "عميل منذ" };
+    const pu = FIN.packageUsage(customerPackages, orders, c.id);
+    const packagesHtml = pu.length ? `<div class="cp-packages"><h4>🎟 ${en ? "Packages" : "الباقات"}</h4>${pu.map((u) => {
+      const pct = u.total ? Math.round((u.used / u.total) * 100) : 0;
+      return `<div class="cp-pkg${u.finished ? " done" : ""}">
+        <div class="cp-pkg-top"><strong>${esc(u.pkg.name)}</strong><span>${serviceName(u.pkg.serviceType)}</span><small class="inv-muted">${en ? "Bought" : "شراء"} ${fmtDT(u.pkg.purchasedAt)} · ${money(u.pkg.price)}</small></div>
+        <div class="cp-pkg-bar"><div style="width:${pct}%"></div></div>
+        <div class="cp-pkg-nums"><span>${en ? "Total" : "الإجمالي"} <b>${u.total}</b></span><span>${en ? "Used" : "المستهلك"} <b>${u.used}</b></span><span>${en ? "Left" : "المتبقي"} <b style="color:${u.finished ? "var(--muted)" : "var(--success)"}">${u.remaining}${u.finished ? (en ? " (finished)" : " (منتهية)") : ""}</b></span></div>
+        ${u.consistent ? "" : `<div class="cp-pkg-warn">⚠ ${en ? `Stored balance (${u.stored}) differs from order history (${u.remaining})` : `الرصيد المحفوظ (${u.stored}) لا يطابق سجل الطلبات (${u.remaining})`}${can("admin_settings") ? ` <button class="mini-btn" type="button" data-pkg-fix="${u.pkg.id}">${en ? "Fix" : "تصحيح"}</button>` : ""}</div>`}
+        ${u.uses.length ? `<details><summary>${en ? "Usage history" : "سجل الاستهلاك"} (${u.uses.length})</summary>${u.uses.map((x) => `<div class="cp-pkg-use"><button class="link-btn" type="button" data-cp-view="${x.orderId}">#${x.number}</button><span>${fmtDT(x.at)}</span><b>−${x.qty}</b></div>`).join("")}</details>` : ""}
+      </div>`;
+    }).join("")}</div>` : "";
     const stColor = { paid: "var(--success)", debt: "var(--danger)", due_now: "var(--warning)", in_progress: "var(--muted)", cancelled: "var(--muted)" };
     const card = (label, value, color) => `<div class="metric-card"><div class="metric-top"><span>${label}</span></div><div class="metric-value"${color ? ` style="color:${color}"` : ""}>${value}</div></div>`;
     const rowsHtml = cs.rows.map((r) => `<div class="cp-order"${r.state === "cancelled" ? ' style="opacity:.55"' : ""}>
@@ -4920,8 +5004,10 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
           ${card(L.paid, money(cs.totalPaid), "var(--success)")}
           ${cs.prepaid > 0 ? card(L.prepaid, money(cs.prepaid), "var(--success)") : ""}
         </div>
+        ${packagesHtml}
         <div class="row-actions" style="margin:14px 0;flex-wrap:wrap">
           <button class="primary-btn" type="button" id="cpNewOrder">${L.neworder}</button>
+          ${settings.packageDefs.length ? `<button class="secondary-btn" type="button" id="cpSellPkg">🎟 ${en ? "Sell package" : "بيع باقة"}</button>` : ""}
           ${cs.debt > 0 && can("balance_tx") ? `<button class="secondary-btn" type="button" id="cpSettle">${L.settle}</button>` : ""}
           ${cs.totalOwed > 0 ? `<button class="whatsapp-btn" type="button" id="cpRemind">${L.wa}</button>` : ""}
           <button class="ghost-btn" type="button" id="cpStatement">${L.stmt}</button>
@@ -4938,6 +5024,15 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
       logActivity(`تذكير واتساب بالمستحق — ${c.name} — ${money(cs.totalOwed)}`);
     };
     q("cpStatement").onclick = () => { customerProfileDialog.close(); bv.stmt = c.id; openPage("balances"); };
+    if (q("cpSellPkg")) q("cpSellPkg").onclick = () => requireOverride("balance_tx", "بيع باقة لعميل", () => sellPackageToCustomer(c.id));
+    document.querySelectorAll("#customerProfileContent [data-pkg-fix]").forEach((b) => b.addEventListener("click", () => {
+      const u = pu.find((x) => x.pkg.id === b.dataset.pkgFix); if (!u) return;
+      confirmAction(`تصحيح رصيد باقة «${u.pkg.name}» من ${u.stored} إلى ${u.remaining} قطعة حسب سجل الطلبات؟`, () => {
+        u.pkg.remainingPieces = u.remaining;
+        logActivity(`تصحيح رصيد باقة «${u.pkg.name}» — ${c.name}: ${u.stored} → ${u.remaining}`);
+        persistAll(); renderCustomerProfile();
+      });
+    }));
     document.querySelectorAll("#customerProfileContent [data-cp-view]").forEach((b) => b.addEventListener("click", () => openOrderDialog(b.dataset.cpView)));
   }
   // تحديث ملف العميل تلقائياً بعد أي دفع/تسليم/سداد يتم من فوقه
@@ -5547,6 +5642,7 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
         logActivity(`${cust.name} اشترى باقة «${def.name}» (${def.pieceCount} قطعة، ${money(def.price)})`, def.price);
         toast(`تم تفعيل باقة «${def.name}» للعميل — ${def.pieceCount} قطعة متاحة`);
         renderCustomersPage();
+        if (customerProfileDialog.open) setTimeout(renderCustomerProfile, 150);
       },
     });
   }
