@@ -70,6 +70,8 @@ function check(name, cond, detail) {
   await page.fill("#au_pw", WORKER_PW); await page.fill("#au_pw2", WORKER_PW);
   await page.click("#au_form button[type=submit]");
   await page.waitForSelector("body:not(.auth-locked)");
+  // employees start their shift right after logging in (attendance + cash custody)
+  await page.waitForSelector("#qf_opening"); await page.fill("#qf_opening", "0"); await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(300);
   check("worker logs in with forced password change", true);
 
   // Worker must not see money figures or restricted pages
@@ -111,6 +113,7 @@ function check(name, cond, detail) {
   // Back to owner: restore the earlier backup → order returns to its pre-credit state
   await closeDialogs();
   await page.click("#logoutBtn");
+  if (await page.isVisible("#qf_what").catch(() => false)) { await page.selectOption("#qf_what", "break"); await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(300); } // worker has an open shift
   await page.waitForSelector("#au_user"); await page.waitForTimeout(150); // let the login screen finish its auto-focus
   await page.fill("#au_user", "owner"); await page.fill("#au_pass", OWNER_PW);
   await page.click("#au_form button[type=submit]");

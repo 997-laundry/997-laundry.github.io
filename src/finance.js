@@ -333,5 +333,43 @@
     return [...days].filter((d) => !closed.has(d)).sort();
   }
 
-  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, customerSummary, packageUsage, EXPENSE_GROUPS, EXPENSE_CATEGORIES, expenseCategory, salaryDue, unclosedDays };
+  // ملخص وردية موظف: كل حركة مالية قام بها هو (byId) بين بداية الوردية ونهايتها
+  // النقد المتوقع بالدرج = نقد الاستلام + النقد المحصّل − النقد المُرجَع − المصروفات النقدية
+  function shiftSummary(data, shift, untilIso) {
+    const uid = shift.employeeId;
+    const t0 = new Date(shift.startAt).getTime();
+    const t1 = new Date(shift.endAt || untilIso || new Date().toISOString()).getTime();
+    const inWin = (iso) => { if (!iso) return false; const t = new Date(iso).getTime(); return t >= t0 && t <= t1; };
+    const s = { orders: 0, sales: 0, inBy: {}, outBy: {}, expensesBy: {}, deposits: 0, refunds: 0, expenses: 0, delivered: 0 };
+    (data.orders || []).forEach((o) => {
+      const p = pay(o);
+      if (o.paymentById === uid && inWin(o.paidAt)) {
+        if (isSale(o)) { s.orders++; s.sales = r3(s.sales + r3(p.total)); }
+        const cin = orderCashIn(o);
+        if (cin > 0) addTo(s.inBy, p.method, cin);
+      }
+      if (o.deliveredById === uid && inWin(o.deliveredAt)) s.delivered++;
+      if (o.refund && o.refund.byId === uid && o.refund.mode === "cash" && inWin(o.refund.at)) {
+        addTo(s.outBy, o.refund.method, r3(o.refund.amount)); s.refunds = r3(s.refunds + r3(o.refund.amount));
+      }
+    });
+    (data.ledger || []).forEach((tx) => {
+      if (tx.byId !== uid || !inWin(tx.at)) return;
+      const eff = ledgerCashEffect(tx, data.customerPackages);
+      if (eff > 0) { addTo(s.inBy, tx.method, eff); if (tx.type !== "package_purchase") s.deposits = r3(s.deposits + eff); }
+      else if (eff < 0) { addTo(s.outBy, tx.method, -eff); s.refunds = r3(s.refunds - eff); }
+    });
+    (data.expenses || []).forEach((e) => {
+      if (e.voided || e.byId !== uid || !inWin(e.date)) return;
+      addTo(s.expensesBy, e.method || "cash", r3(e.amount)); s.expenses = r3(s.expenses + r3(e.amount));
+    });
+    s.cashIn = r3(s.inBy.cash || 0);
+    s.collected = r3(Object.values(s.inBy).reduce((a, v) => a + v, 0) - s.refunds);
+    s.opening = r3(shift.openingCash);
+    s.expectedCash = r3(s.opening + (s.inBy.cash || 0) - (s.outBy.cash || 0) - (s.expensesBy.cash || 0));
+    s.hours = Math.max(0, Math.round(((t1 - t0) / 3600000) * 100) / 100);
+    return s;
+  }
+
+  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, customerSummary, packageUsage, EXPENSE_GROUPS, EXPENSE_CATEGORIES, expenseCategory, salaryDue, unclosedDays, shiftSummary };
 });

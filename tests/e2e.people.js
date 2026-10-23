@@ -98,6 +98,8 @@ function check(name, cond, detail) {
   await page.fill("#au_pw", ACC_PW); await page.fill("#au_pw2", ACC_PW);
   await page.click("#au_form button[type=submit]");
   await page.waitForSelector("body:not(.auth-locked)");
+  // employees start their shift right after logging in (attendance + cash custody)
+  await page.waitForSelector("#qf_opening"); await page.fill("#qf_opening", "0"); await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(300);
   await nav("employees");
   const before = (await emps()).length;
   await page.click("#addEmployeeBtn");

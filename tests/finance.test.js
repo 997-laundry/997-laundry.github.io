@@ -235,3 +235,26 @@ test("unclosed days: days with activity and no daily closure", () => {
   assert.deepEqual(F.unclosedDays(data, [], "2026-10-01", D2), [D1, D2]);
   assert.deepEqual(F.unclosedDays(data, [{ type: "daily", forDate: D1 }], "2026-10-01", D2), [D2]);
 });
+
+test("shift summary: only this employee's money inside the shift window", () => {
+  const shift = { employeeId: "u1", startAt: at(D1, "08:00"), endAt: at(D1, "16:00"), openingCash: 20 };
+  const o1 = order({ id: "a", total: 3, paidAt: at(D1, "09:00") }); o1.paymentById = "u1";
+  const o2 = order({ id: "b", total: 2, method: "card", paidAt: at(D1, "10:00") }); o2.paymentById = "u1";
+  const o3 = order({ id: "c", total: 9, paidAt: at(D1, "11:00") }); o3.paymentById = "u2"; // other employee
+  const o4 = order({ id: "d", total: 4, paidAt: at(D1, "17:00") }); o4.paymentById = "u1"; // after shift
+  const o5 = order({ id: "e", total: 1, status: "cancelled", paidAt: at(D1, "09:30"), refund: { mode: "cash", method: "cash", amount: 1, at: at(D1, "12:00"), byId: "u1" } }); o5.paymentById = "u1";
+  const data = {
+    orders: [o1, o2, o3, o4, o5],
+    ledger: [{ type: "credit", amount: 5, method: "cash", byId: "u1", at: at(D1, "13:00") }, { type: "credit", amount: 7, method: "cash", byId: "u2", at: at(D1, "13:00") }],
+    expenses: [{ amount: 1.5, method: "cash", byId: "u1", date: at(D1, "14:00") }, { amount: 9, method: "cash", byId: "u1", date: at(D1, "14:00"), voided: true }],
+  };
+  const s = F.shiftSummary(data, shift);
+  assert.equal(s.orders, 2); // a, b (e is cancelled → not a sale)
+  assert.equal(s.sales, 5);
+  assert.equal(s.inBy.cash, 3 + 1 + 5); // a + e's original payment + deposit
+  assert.equal(s.inBy.card, 2);
+  assert.equal(s.refunds, 1);
+  // drawer: 20 opening + 9 cash in − 1 refund − 1.5 expense = 26.5
+  assert.equal(s.expectedCash, 26.5);
+  assert.equal(s.hours, 8);
+});

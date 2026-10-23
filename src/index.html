@@ -77,6 +77,7 @@
           <div class="user-avatar" id="userAvatar">?</div>
           <div class="user-meta"><b id="userName">—</b><span class="role-chip" id="roleChip">—</span></div>
         </div>
+        <div id="shiftBox" class="shift-box"></div>
         <div class="user-actions">
           <button type="button" class="ghost-btn" id="changePwBtn">🔑 كلمة المرور</button>
           <button type="button" class="secondary-btn" id="logoutBtn">⎋ خروج</button>
@@ -103,6 +104,7 @@
             <span>⌕</span>
             <input id="globalSearch" data-i18n-placeholder="search_orders_ph" placeholder="ابحث برقم الطلب أو العميل أو الجوال" />
           </div>
+          <button type="button" class="ghost-btn shift-chip" id="shiftChip" style="display:none"></button>
           <select class="ghost-btn" id="langSelectTop" style="min-width:90px">
             <option value="ar">العربية</option>
             <option value="en">English</option>
@@ -403,6 +405,7 @@
           </div>
           <div class="panel"><div class="panel-header"><div><h3 data-i18n="cls_monthly_title">الإغلاق الشهري</h3><p data-i18n="cls_monthly_sub">تجميع المبيعات والمصروفات والرواتب والجرد والربحية</p></div><button class="primary-btn" id="closeMonthBtn" data-i18n="cls_approve_month">اعتماد إغلاق الشهر</button></div><div id="monthlyClosurePreview"></div></div>
         </div>
+        <div class="panel" style="margin-top:18px" id="shiftsPanel"></div>
         <div class="panel" style="margin-top:18px"><div class="panel-header"><div><h3 data-i18n="cls_register_title">تفاصيل الصندوق</h3><p data-i18n="cls_register_sub">البيع والمصروف لكل طريقة دفع، والصندوق المتبقي المتوقع لليوم المحدد</p></div></div><div class="table-wrap"><table><thead><tr><th data-i18n="th_payment_method">طريقة الدفع</th><th data-i18n="th_sell">بيع</th><th data-i18n="th_deposit_col">إيداع أرصدة</th><th data-i18n="th_expense_col">مصروف</th><th data-i18n="th_refund_col">استرداد نقدي</th></tr></thead><tbody id="registerDetailsBody"></tbody></table></div></div>
         <div class="panel" style="margin-top:18px"><div class="panel-header"><div><h3 data-i18n="cls_history_title">سجل الإغلاقات</h3><p data-i18n="cls_history_sub">جميع الإغلاقات المعتمدة</p></div></div><div id="closuresList"></div></div>
       </section>

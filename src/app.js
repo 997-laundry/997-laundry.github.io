@@ -38,7 +38,7 @@
  const stockMove=(it,type,qty,extra={})=>{const m={id:uid(),at:new Date().toISOString(),itemId:it.id,itemName:it.name,unit:it.unit,type,qty:r3(qty),balanceAfter:r3(it.qty),user:lsStr('l997_role',''),...extra};stockMoves.unshift(m);if(stockMoves.length>3000)stockMoves.length=3000;save(EXT_KEYS.stockMoves,stockMoves);return m};
  window.L997Enterprise={
   data:{get expenses(){return expenses},get inventory(){return inventory},get purchases(){return purchases},get suppliers(){return suppliers},get employees(){return employees},get attendance(){return attendance},get payroll(){return payroll},get closures(){return closures},get audit(){return audit},get recurringExpenses(){return recurringExpenses},get stockMoves(){return stockMoves}},
-  addExpense(x){x={id:uid(),date:new Date().toISOString(),...x};expenses.unshift(x);save(EXT_KEYS.expenses,expenses);log('إضافة مصروف',x.amount,x);return x},
+  addExpense(x){const u=window.L997Auth&&window.L997Auth.user?window.L997Auth.user():null;x={id:uid(),date:new Date().toISOString(),byId:u?u.id:'',by:u?u.name:'',...x};expenses.unshift(x);save(EXT_KEYS.expenses,expenses);log('إضافة مصروف',x.amount,x);return x},
   deleteExpense(id){expenses=expenses.filter(x=>x.id!==id);save(EXT_KEYS.expenses,expenses)},
   // إلغاء مصروف خاطئ: يبقى ظاهراً (مشطوباً) للتدقيق ويُستبعد من كل الحسابات
   voidExpense(id,reason,by){const x=expenses.find(e=>e.id===id);if(!x||x.voided||x.purchaseId)return false;x.voided=true;x.voidedAt=new Date().toISOString();x.voidReason=reason;x.voidedBy=by||'';save(EXT_KEYS.expenses,expenses);log('إلغاء مصروف: '+(x.category||'')+' — السبب: '+reason,x.amount,{id,category:x.category});return true},
@@ -1076,7 +1076,7 @@
     "l997_customer_packages", "l997_custom_garments", "l997_profile", "l997_branches",
     "l997_perm_matrix", "l997_expenses", "l997_inventory", "l997_purchases", "l997_suppliers",
     "l997_employees", "l997_attendance", "l997_payroll", "l997_closures", "l997_audit",
-    "l997_recurring_expenses", "l997_suspended_orders", "l997_stock_moves", "l997_security",
+    "l997_recurring_expenses", "l997_suspended_orders", "l997_stock_moves", "l997_security", "l997_shifts",
   ];
   document.getElementById("exportBackupBtn").addEventListener("click", () => {
     if (!can("export_data")) { denied(); return; }
@@ -1898,6 +1898,8 @@
     document.getElementById("sidebar")?.classList.remove("open");
     // المالك الذي لا يملك رمز استرداد (نظام مُرحَّل من نسخة قديمة) يُطلب منه إنشاؤه فوراً
     if (role === "owner" && !sec.recoveryHash) setTimeout(() => issueRecovery("rec_title", () => hideAuth()), 400);
+    // الموظف يبدأ ورديته عند الدخول (= تسجيل حضور)
+    else if (role !== "owner" && !openShiftOf(emp.id)) setTimeout(() => openStartShift(), 450);
   }
   function doLogout(reason) {
     if (me) {
@@ -1940,6 +1942,7 @@
     $a("roleChip").textContent = me ? roleLabel() : "—";
     $a("changePwBtn").textContent = AX("btn_changepw");
     $a("logoutBtn").textContent = AX("btn_logout");
+    try { refreshShiftUi(); } catch (e) { /* قبل تهيئة الورديات */ }
   }
   function applyRole() {
     refreshUserCard();
@@ -2244,7 +2247,7 @@
     });
   }
   $a("changePwBtn").addEventListener("click", openChangePw);
-  $a("logoutBtn").addEventListener("click", () => doLogout("out"));
+  $a("logoutBtn").addEventListener("click", () => logoutClicked());
 
   function initAuth() {
     migrateAccounts();
@@ -3428,20 +3431,21 @@
       order.paymentConfirmed = true;
       order.paidAt = now;
       order.paymentBy = me ? me.name : "";
+      order.paymentById = me ? me.id : "";
       order.creditApprovedBy = owed > 0 && overridden ? sup.name : "";
       if (method === "balance" && cust) {
         cust.balance = round3(cust.balance - total);
-        ledger.unshift({ id: uid(), customerId: cust.id, type: "order_charge", amount: -total, balanceAfter: cust.balance, method, orderId: order.id, note: `طلب #${order.number}`, at: now });
+        ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId: cust.id, type: "order_charge", amount: -total, balanceAfter: cust.balance, method, orderId: order.id, note: `طلب #${order.number}`, at: now });
       }
       if (overpay > 0 && cust) {
         cust.balance = round3(cust.balance + overpay);
-        ledger.unshift({ id: uid(), customerId: cust.id, type: "credit", amount: overpay, balanceAfter: cust.balance, method, orderId: order.id, note: `فائض دفعة طلب #${order.number} — أُضيف كرصيد`, at: now });
+        ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId: cust.id, type: "credit", amount: overpay, balanceAfter: cust.balance, method, orderId: order.id, note: `فائض دفعة طلب #${order.number} — أُضيف كرصيد`, at: now });
         toast(`تم تحصيل ${money(overpay)} زيادة عن قيمة الطلب — أُضيفت كرصيد للعميل`);
       }
       if (owed > 0 && cust) {
         cust.balance = round3(cust.balance - owed);
         order.debtRecorded = true;
-        ledger.unshift({ id: uid(), customerId: cust.id, type: "order_charge", amount: -owed, balanceAfter: cust.balance, method: "unpaid", orderId: order.id, note: `طلب #${order.number} — ${paid > 0 ? "متبقي غير مسدد" : "آجل"}`, at: now });
+        ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId: cust.id, type: "order_charge", amount: -owed, balanceAfter: cust.balance, method: "unpaid", orderId: order.id, note: `طلب #${order.number} — ${paid > 0 ? "متبقي غير مسدد" : "آجل"}`, at: now });
       }
       logActivity(`تأكيد دفع طلب #${order.number} — ${money(method === "balance" ? total : paid)}${owed > 0 ? ` — دين مسجّل ${money(owed)}${overridden ? " اعتمده " + sup.name : ""}` : ""}`);
       onDone(now);
@@ -3464,6 +3468,7 @@
     const cust = customers.find((c) => c.id === order.customerId);
     const total = order.payment.total;
     if (order.status !== "received") { toast("تم تجهيز هذا الطلب مسبقاً"); return; }
+    if (!shiftGuard()) return;
     openQuickForm({
       title: "✓ تجهيز الطلب — جاهز للتسليم",
       sub: `طلب #${order.number} — ${cust ? cust.name : ""} — المستحق: ${money(total)}${cust && Number(cust.balance) ? ` — رصيد العميل: ${money(cust.balance)}` : ""}. اختر «الدفع لاحقاً» إذا سيدفع العميل عند الاستلام.`,
@@ -3502,6 +3507,7 @@
     const cust = customers.find((c) => c.id === order.customerId);
     if (order.status !== "ready") return;
     const needPay = !order.paymentConfirmed;
+    if (needPay && !shiftGuard()) return;
     const pieces = order.items.reduce((n, it) => n + it.qty, 0);
     const fields = [
       { id: "count", label: `عدد القطع المسلّمة — عُدّها واكتب الرقم (المطلوب ${pieces})`, type: "number", value: "", min: 0 },
@@ -3528,6 +3534,7 @@
           order.status = "delivered";
           order.deliveredAt = now;
           order.deliveredBy = me ? me.name : "";
+          order.deliveredById = me ? me.id : "";
           order.receiver = v.receiver || "";
           order.statusHistory.push({ status: "delivered", at: now, by: me ? me.name : "" });
           logActivity(`${t("dlg_advance_to", statusLabel("delivered"))} — #${order.number}${v.receiver ? " — المستلم: " + v.receiver : ""}`);
@@ -3698,6 +3705,7 @@
     document.getElementById("editOrderBtn")?.addEventListener("click", () => openEditOrderForm(order));
     document.getElementById("orderDlgCustomer")?.addEventListener("click", () => { orderDialog.close(); openCustomerProfile(cust.id); });
     document.getElementById("cancelOrderBtn")?.addEventListener("click", () => {
+      if (order.payment.paid > 0 && order.payment.method !== "balance" && !shiftGuard()) return;
       requireOverride("cancel_order", `إلغاء الطلب #${order.number}`, (sup, overridden) => {
       const paidCash = order.payment.method !== "balance" && order.payment.method !== "unpaid" && order.payment.paid > 0;
       const cancelFields = [{ id: "reason", label: "سبب الإلغاء", type: "text", placeholder: "مثال: طلب مكرر، طلب العميل، خطأ إدخال" }];
@@ -3718,7 +3726,7 @@
           if (order.payment.method === "balance" && cust) {
             const refundAmount = order.payment.total;
             cust.balance = round3(cust.balance + refundAmount);
-            ledger.unshift({ id: uid(), customerId: cust.id, type: "order_refund", amount: refundAmount, balanceAfter: cust.balance, method: "balance", orderId: order.id, note: `استرداد إلغاء طلب #${order.number} — ${v.reason}`, at: now });
+            ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId: cust.id, type: "order_refund", amount: refundAmount, balanceAfter: cust.balance, method: "balance", orderId: order.id, note: `استرداد إلغاء طلب #${order.number} — ${v.reason}`, at: now });
             refundNote = ` — تم استرداد ${money(refundAmount)} لرصيد العميل تلقائياً`;
           }
           // مدفوع نقداً/بطاقة/تحويل: يُسجَّل الاسترداد فعلياً حتى يتطابق الصندوق والتقارير
@@ -3726,11 +3734,11 @@
             const amt = round3(order.payment.paid);
             if (v.refund === "balance" && cust) {
               cust.balance = round3(cust.balance + amt);
-              ledger.unshift({ id: uid(), customerId: cust.id, type: "order_refund", amount: amt, balanceAfter: cust.balance, method: "balance", orderId: order.id, note: `إلغاء طلب #${order.number} — المدفوع أُضيف للرصيد — ${v.reason}`, at: now });
-              order.refund = { mode: "balance", method: "balance", amount: amt, at: now, by: me ? me.name : "" };
+              ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId: cust.id, type: "order_refund", amount: amt, balanceAfter: cust.balance, method: "balance", orderId: order.id, note: `إلغاء طلب #${order.number} — المدفوع أُضيف للرصيد — ${v.reason}`, at: now });
+              order.refund = { mode: "balance", method: "balance", amount: amt, at: now, by: me ? me.name : "", byId: me ? me.id : "" };
               refundNote = ` — أُضيف ${money(amt)} لرصيد العميل`;
             } else {
-              order.refund = { mode: "cash", method: order.payment.method, amount: amt, at: now, by: me ? me.name : "" };
+              order.refund = { mode: "cash", method: order.payment.method, amount: amt, at: now, by: me ? me.name : "", byId: me ? me.id : "" };
               refundNote = ` — يجب إرجاع ${money(amt)} (${paymentLabel(order.payment.method)}) للعميل الآن`;
             }
           }
@@ -3748,7 +3756,7 @@
           order.cancelApprovedBy = overridden ? sup.name : "";
           if (order.debtRecorded && order.payment.outstanding > 0 && cust) {
             cust.balance = round3(cust.balance + order.payment.outstanding);
-            ledger.unshift({ id: uid(), customerId: cust.id, type: "order_refund", amount: order.payment.outstanding, balanceAfter: cust.balance, method: "unpaid", orderId: order.id, note: `إلغاء طلب #${order.number} — إسقاط الدين`, at: now });
+            ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId: cust.id, type: "order_refund", amount: order.payment.outstanding, balanceAfter: cust.balance, method: "unpaid", orderId: order.id, note: `إلغاء طلب #${order.number} — إسقاط الدين`, at: now });
             refundNote += ` — أُسقط دين ${money(order.payment.outstanding)} عن العميل`;
           }
           order.statusHistory.push({ status: "cancelled", at: now });
@@ -4197,6 +4205,7 @@
     const cust = customers.find((c) => c.id === opts.custId) || customers[0];
     const allowedTypes = ["credit", "cash_refund", "debit", "adj_plus", "adj_minus"].filter((ty) => (ty === "credit" ? can("balance_tx") : can("balance_adjust")));
     if (!allowedTypes.length) { denied(); return; }
+    if (!shiftGuard()) return;
     const type = allowedTypes.includes(opts.type) ? opts.type : allowedTypes[0];
     window.openQuickForm({
       title: BX("t_op"), sub: `${cust.name} — ${BX("current_balance")}: ${money(cust.balance)}`,
@@ -4221,7 +4230,7 @@
         const amount = (v.type === "cash_refund" || v.type === "debit" || v.type === "adj_minus") ? -amountRaw : amountRaw;
         const hasMethod = real === "credit" || real === "cash_refund";
         c.balance = round3(c.balance + amount);
-        ledger.unshift({ id: uid(), customerId: c.id, type: real, amount, balanceAfter: c.balance, method: hasMethod ? v.method : "", note: v.note || "", orderId: null, at: new Date().toISOString() });
+        ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId: c.id, type: real, amount, balanceAfter: c.balance, method: hasMethod ? v.method : "", note: v.note || "", orderId: null, at: new Date().toISOString() });
         logActivity(`${BX((TX_META[real] || {}).k || "tx_adjust")} — ${c.name}: ${money(Math.abs(amount))}`, Math.abs(amount));
         persistAll(); renderBalancesPage(); toast(BX("ok_tx") + (c.balance < 0 ? " — " + BX("now_debtor") : ""));
         if (v.notify === "yes") sendBalanceMessage(c, amount);
@@ -4238,7 +4247,7 @@
       const newBal = round3(c.balance - tx.amount);
       if (tx.type === "credit" && newBal < 0) { toast(BX("e_rev_neg")); return false; }
       c.balance = newBal;
-      const r = { id: uid(), customerId: c.id, type: "reversal", amount: -tx.amount, balanceAfter: c.balance, method: tx.method || "", cashRev: tx.type === "credit" || tx.type === "cash_refund", reverses: tx.id, note: BX("rev_note", txLabel(tx) + " " + money(Math.abs(tx.amount))), orderId: null, at: new Date().toISOString() };
+      const r = { id: uid(), byId: me ? me.id : "", customerId: c.id, type: "reversal", amount: -tx.amount, balanceAfter: c.balance, method: tx.method || "", cashRev: tx.type === "credit" || tx.type === "cash_refund", reverses: tx.id, note: BX("rev_note", txLabel(tx) + " " + money(Math.abs(tx.amount))), orderId: null, at: new Date().toISOString() };
       tx.reversedBy = r.id; ledger.unshift(r);
       logActivity(`${BX("tx_reversal")} — ${c.name}: ${money(Math.abs(tx.amount))}`, Math.abs(tx.amount));
       persistAll(); renderBalancesPage(); toast(BX("ok_rev"));
@@ -4689,6 +4698,7 @@
   function sellPackageToCustomer(customerId) {
     const cust = customers.find((c) => c.id === customerId);
     if (!cust) return;
+    if (!shiftGuard()) return;
     if (settings.packageDefs.length === 0) { toast("لا توجد باقات معرّفة — أضف باقة من الإعدادات أولاً"); return; }
     openQuickForm({
       title: `بيع باقة لـ ${cust.name}`, sub: "اختر الباقة وطريقة التحصيل",
@@ -4705,7 +4715,7 @@
         const now = new Date().toISOString();
         const cp = { id: uid(), customerId, defId: def.id, name: def.name, serviceType: def.serviceType, garments: Array.isArray(def.garments) ? [...def.garments] : [], totalPieces: def.pieceCount, remainingPieces: def.pieceCount, price: def.price, purchasedAt: now };
         customerPackages.unshift(cp);
-        ledger.unshift({ id: uid(), customerId, type: "package_purchase", amount: 0, price: round3(def.price), packageId: cp.id, balanceAfter: cust.balance, method: v.method, note: `شراء باقة: ${def.name} — ${money(def.price)}`, orderId: null, at: now });
+        ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId, type: "package_purchase", amount: 0, price: round3(def.price), packageId: cp.id, balanceAfter: cust.balance, method: v.method, note: `شراء باقة: ${def.name} — ${money(def.price)}`, orderId: null, at: now });
         persistAll();
         logActivity(`${cust.name} اشترى باقة «${def.name}» (${def.pieceCount} قطعة، ${money(def.price)})`, def.price);
         toast(`تم تفعيل باقة «${def.name}» للعميل — ${def.pieceCount} قطعة متاحة`);
@@ -4714,6 +4724,145 @@
       },
     });
   }
+
+  /* ============================= الورديات (حضور وانصراف + عهدة الصندوق) =============================
+     كل موظف يبدأ ورديته عند الدخول (= حضور) بعدّ النقد المستلم، وكل حركة مالية يقوم بها تُسجَّل باسمه،
+     وعند نهاية ورديته يُغلقها (= انصراف) بعدّ النقد الفعلي ومقارنته بالمتوقع. المالك معفى (اختياري له). */
+  const SHIFT_KEY = "l997_shifts";
+  let shifts = load(SHIFT_KEY, []);
+  const saveShifts = () => { shifts = mergeSaveById(SHIFT_KEY, shifts); };
+  const openShiftOf = (empId) => shifts.find((x) => x.employeeId === empId && !x.endAt) || null;
+  const myShift = () => (me ? openShiftOf(me.id) : null);
+  const lastClosedShift = () => shifts.filter((x) => x.endAt).sort((a, b) => String(b.endAt).localeCompare(String(a.endAt)))[0] || null;
+  const shiftNeeded = () => !!me && role !== "owner";
+  const hhmm = (iso) => { const d = new Date(iso); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+  const durTxt = (h) => { const m = Math.round(h * 60); return `${Math.floor(m / 60)}س ${m % 60}د`; };
+  // يمنع العمليات المالية بدون وردية مفتوحة (حتى تُنسب كل حركة لوردية وموظف)
+  function shiftGuard() {
+    if (!shiftNeeded() || myShift()) return true;
+    toast(lang === "en" ? "Start your shift first — money actions are recorded on your shift" : "ابدأ ورديتك أولاً — كل عملية مالية تُسجَّل على ورديتك");
+    setTimeout(() => openStartShift(), 250);
+    return false;
+  }
+  function openStartShift(after) {
+    if (!me) return;
+    if (myShift()) { if (after) after(); return; }
+    const last = lastClosedShift();
+    openQuickForm({
+      title: "▶ بدء الوردية (تسجيل حضور)",
+      sub: `${me.name} — وقت البدء يُسجَّل حضوراً الآن (${hhmm(new Date().toISOString())}).${last ? ` آخر وردية: ${last.employeeName} سلّمت ${money(last.countedCash)} نقداً في الدرج.` : ""} عُدّ النقد الموجود في الدرج وأدخله.`,
+      fields: [
+        { id: "opening", label: "النقد الموجود في الدرج عند الاستلام (د.ب)", type: "number", step: "0.001", value: "", min: 0 },
+        { id: "note", label: "ملاحظة (إلزامية إذا اختلف عن تسليم الوردية السابقة)", type: "text" },
+      ],
+      submitLabel: "▶ بدء الوردية", cancelLabel: "لاحقاً",
+      onSubmit: (v) => {
+        if (myShift()) return;
+        if (v.opening < 0) { toast("المبلغ لا يمكن أن يكون سالباً"); return false; }
+        const opening = round3(v.opening);
+        const diff = last ? round3(opening - (Number(last.countedCash) || 0)) : 0;
+        if (diff !== 0 && !v.note) { toast(`المبلغ يختلف عن تسليم الوردية السابقة (${money(last.countedCash)}) بـ ${money(diff)} — اكتب ملاحظة`); return false; }
+        shifts.unshift({ id: uid(), employeeId: me.id, employeeName: me.name, startAt: new Date().toISOString(), openingCash: opening, handoverDiff: diff, startNote: v.note || "", prevShiftId: last ? last.id : null });
+        saveShifts();
+        logActivity(`بدء وردية — ${me.name} — نقد الاستلام ${money(opening)}${diff ? ` (فرق عن التسليم ${money(diff)}: ${v.note})` : ""}`, opening);
+        refreshShiftUi();
+        toast("تم بدء الوردية — بالتوفيق");
+        if (after) setTimeout(after, 250);
+      },
+    });
+  }
+  const methodTxt = (by) => FIN.CASH_METHODS.filter((m) => by[m]).map((m) => `${paymentLabel(m)} ${money(by[m])}`).join(" · ") || money(0);
+  function openCloseShift(shift, opts) {
+    opts = opts || {};
+    const sum = FIN.shiftSummary(finData(), shift);
+    const forced = !me || shift.employeeId !== me.id;
+    openQuickForm({
+      title: forced ? `⏹ إغلاق وردية ${shift.employeeName}` : "⏹ إغلاق الوردية (تسجيل انصراف)",
+      sub: `من ${fmtDT(shift.startAt)} (${durTxt(sum.hours)}) — طلبات مدفوعة: ${sum.orders} بقيمة ${money(sum.sales)} — المحصّل: ${methodTxt(sum.inBy)}${sum.refunds ? ` — مرتجع ${money(sum.refunds)}` : ""}${sum.expenses ? ` — مصروفات ${money(sum.expenses)}` : ""} — نقد الاستلام ${money(sum.opening)} — 💵 النقد المتوقع في الدرج: ${money(sum.expectedCash)}`,
+      fields: [
+        { id: "counted", label: `النقد الذي عددته في الدرج الآن (المتوقع ${money(sum.expectedCash)})`, type: "number", step: "0.001", value: "", min: 0 },
+        { id: "note", label: "سبب الفرق (إلزامي إذا اختلف عن المتوقع)", type: "text" },
+      ],
+      submitLabel: "⏹ إغلاق الوردية",
+      onSubmit: (v) => {
+        if (shift.endAt) return;
+        const now = new Date().toISOString();
+        const fin = FIN.shiftSummary(finData(), { ...shift, endAt: now });
+        const counted = round3(Math.max(0, v.counted));
+        const diff = round3(counted - fin.expectedCash);
+        if (diff !== 0 && !v.note) { toast(`يوجد فرق ${money(diff)} عن المتوقع — اكتب سببه`); return false; }
+        Object.assign(shift, {
+          endAt: now, countedCash: counted, expectedCash: fin.expectedCash, variance: diff, endNote: v.note || "", closedBy: me ? me.name : "", forced,
+          summary: { orders: fin.orders, sales: fin.sales, inBy: fin.inBy, outBy: fin.outBy, expenses: fin.expenses, refunds: fin.refunds, deposits: fin.deposits, delivered: fin.delivered, hours: fin.hours },
+        });
+        saveShifts();
+        logActivity(`إغلاق وردية — ${shift.employeeName} — ${durTxt(fin.hours)} — المتوقع ${money(fin.expectedCash)}، الفعلي ${money(counted)}، الفرق ${money(diff)}${forced ? ` (أغلقها ${me ? me.name : ""})` : ""}`, diff);
+        refreshShiftUi();
+        if (typeof window.renderClosures997 === "function" && document.getElementById("page-closures").classList.contains("active")) window.renderClosures997();
+        toast(diff === 0 ? "تم إغلاق الوردية — الصندوق مطابق ✓" : `تم إغلاق الوردية — فرق ${money(diff)}`);
+        if (opts.then) setTimeout(opts.then, 300);
+      },
+    });
+  }
+  function refreshShiftUi() {
+    const sh = myShift();
+    const chip = document.getElementById("shiftChip"), box = document.getElementById("shiftBox");
+    if (!me) { if (chip) chip.style.display = "none"; if (box) box.innerHTML = ""; return; }
+    const label = sh ? `🟢 ${lang === "en" ? "On shift since" : "في الوردية منذ"} ${hhmm(sh.startAt)}` : (lang === "en" ? "⚪ Start shift" : "⚪ بدء الوردية");
+    if (chip) {
+      chip.style.display = shiftNeeded() || sh ? "" : "none";
+      chip.innerHTML = `<span class="sc-full">${esc(label)}</span><span class="sc-short">${sh ? "🟢 " + hhmm(sh.startAt) : "⚪ ▶"}</span>`;
+      chip.title = label;
+      chip.classList.toggle("on", !!sh);
+    }
+    if (box) box.innerHTML = `<button type="button" class="${sh ? "secondary-btn" : "primary-btn"} full" id="shiftBoxBtn">${sh ? (lang === "en" ? "⏹ Close my shift" : "⏹ إغلاق ورديتي") : (lang === "en" ? "▶ Start my shift" : "▶ بدء ورديتي")}</button>${sh ? `<small class="inv-muted">${label}</small>` : ""}`;
+    document.getElementById("shiftBoxBtn")?.addEventListener("click", shiftButton);
+  }
+  function shiftButton() { const sh = myShift(); if (sh) openCloseShift(sh); else openStartShift(); }
+  document.getElementById("shiftChip")?.addEventListener("click", shiftButton);
+  setInterval(() => { if (me) refreshShiftUi(); }, 60000);
+  // الخروج: إن كانت الوردية مفتوحة يُسأل الموظف — إغلاقها أو خروج مؤقت (استراحة)
+  function logoutClicked() {
+    const sh = myShift();
+    if (!sh) { doLogout("out"); return; }
+    openQuickForm({
+      title: "تسجيل الخروج", sub: `ورديتك مفتوحة منذ ${hhmm(sh.startAt)}. هل انتهت ورديتك؟`,
+      fields: [{ id: "what", label: "اختر", type: "select", value: "close", options: [
+        { value: "close", label: "⏹ نعم — أغلق الوردية (انصراف) ثم اخرج" },
+        { value: "break", label: "☕ لا — خروج مؤقت (استراحة) والوردية تبقى مفتوحة" },
+      ] }],
+      submitLabel: "متابعة",
+      onSubmit: (v) => {
+        if (v.what === "close") setTimeout(() => openCloseShift(sh, { then: () => doLogout("out") }), 150);
+        else { logActivity(`خروج مؤقت (الوردية مفتوحة) — ${me.name}`); setTimeout(() => doLogout("out"), 50); }
+      },
+    });
+  }
+  // لوحة الورديات في صفحة الإغلاقات (للمدير): ورديات اليوم المختار + المفتوحة
+  function renderShiftsPanel(dayStr) {
+    const el = document.getElementById("shiftsPanel"); if (!el) return;
+    const list = shifts.filter((x) => !x.endAt || FIN.localDay(x.startAt) === dayStr || FIN.localDay(x.endAt) === dayStr);
+    const rows = list.map((x) => {
+      const sm = x.endAt ? x.summary || FIN.shiftSummary(finData(), x) : FIN.shiftSummary(finData(), x);
+      const exp = x.endAt ? x.expectedCash : sm.expectedCash;
+      return `<tr><td><b>${esc(x.employeeName)}</b>${x.endAt ? "" : ' <span class="status-badge status-ready">مفتوحة</span>'}</td>
+        <td>${fmtDT(x.startAt)}</td><td>${x.endAt ? fmtDT(x.endAt) : "—"}</td><td>${durTxt(sm.hours)}</td>
+        <td>${sm.orders} / ${money(sm.sales)}</td><td>${methodTxt(sm.inBy)}</td><td>${money(x.openingCash)}</td><td>${money(exp)}</td>
+        <td>${x.endAt ? money(x.countedCash) : "—"}</td>
+        <td style="font-weight:800;color:${x.variance ? "var(--danger)" : "var(--success)"}">${x.endAt ? money(x.variance) + (x.endNote ? `<br><small class="inv-muted">${esc(x.endNote)}</small>` : "") : "—"}</td>
+        <td>${!x.endAt && can("approve_closing") && (!me || x.employeeId !== me.id) ? `<button class="mini-btn" type="button" data-force-close="${x.id}">إغلاق</button>` : ""}</td></tr>`;
+    }).join("");
+    el.innerHTML = `<div class="panel-header"><div><h3>🕐 ${lang === "en" ? "Shifts" : "الورديات"}</h3><p>${lang === "en" ? "Attendance and cash custody per employee" : "الحضور والانصراف وعهدة الصندوق لكل موظف"} — ${dayStr}</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>الموظف</th><th>البداية</th><th>النهاية</th><th>المدة</th><th>طلبات / مبيعات</th><th>المحصّل</th><th>نقد الاستلام</th><th>المتوقع</th><th>الفعلي</th><th>الفرق</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="11" class="empty-state compact">لا توجد ورديات لهذا اليوم</td></tr>`}</tbody></table></div>`;
+    el.querySelectorAll("[data-force-close]").forEach((b) => b.addEventListener("click", () => { const x = shifts.find((y) => y.id === b.dataset.forceClose); if (x) openCloseShift(x); }));
+  }
+  window.L997Shift = {
+    guard: shiftGuard, renderPanel: renderShiftsPanel,
+    list: () => shifts,
+    hoursInMonth: (empId, monthKey) => Math.round(shifts.filter((x) => x.employeeId === empId && x.endAt && FIN.localDay(x.startAt).slice(0, 7) === monthKey).reduce((a, x) => a + ((x.summary && x.summary.hours) || 0), 0) * 10) / 10,
+    daysInMonth: (empId, monthKey) => new Set(shifts.filter((x) => x.employeeId === empId && FIN.localDay(x.startAt).slice(0, 7) === monthKey).map((x) => FIN.localDay(x.startAt))),
+  };
 
   /* ============================= الإقلاع ============================= */
   applyStaticI18n();
@@ -5150,7 +5299,7 @@
   q('employeesBody').innerHTML=rows.length?rows.map(e=>{let mine=os.filter(o=>o.employeeId===e.id&&o.status!=='cancelled'),sales=mine.reduce((s,o)=>s+Number(pay(o).total||0),0);return `<tr${e.active===false?' style="opacity:.55"':''}><td><b>${esc(e.name)}</b><br><small class="inv-muted">#${esc(e.employeeNumber||'—')}</small> ${acct(e)}</td><td>${roleLabel997(e.role)||esc(e.role)}</td><td>${money(e.salary)}</td><td>${money(e.commission)}</td><td>${mine.length}</td><td>${money(sales)}</td><td>${P.canEdit&&P.canEdit(e.id)?`<button class="mini-btn" type="button" data-emp-edit="${e.id}">تعديل</button>`:''}</td></tr>`}).join(''):`<tr><td colspan="7" class="empty-state compact">${t('no_employees')}</td></tr>`;
   q('employeesBody').querySelectorAll('[data-emp-edit]').forEach(b=>b.addEventListener('click',()=>P.edit(b.dataset.empEdit)));
   // صافي مستحق هذا الشهر (نفس حساب «صرف الرواتب») مع حالة الصرف
-  q('payrollSummary').innerHTML=es.length?`<div class="inv-muted" style="margin-bottom:6px">صافي المستحق لشهر ${mb.key}</div>`+es.map(e=>{const d=FIN.salaryDue(e,pr,L997Enterprise.data.expenses,mb.key);const attCount=att.filter(a=>a.employeeId===e.id&&inMonth(a.date)&&a.status!=='absent').length;return `<div class="mini-stat"><span>${esc(e.name)} <small class="subtle">(${t('attendance_days_30').replace('{0}',attCount)}${d.bonuses?` · +${money(d.bonuses)}`:''}${d.deductions?` · خصم ${money(d.deductions)}`:''}${d.advances?` · سلف ${money(d.advances)}`:''})</small></span><b>${money(d.net)} ${d.paid?'<span class="status-badge status-ready">✓ صُرف</span>':''}</b></div>`}).join(''):`<div class="empty-state compact">${t('no_payroll_data')}</div>`;
+  q('payrollSummary').innerHTML=es.length?`<div class="inv-muted" style="margin-bottom:6px">صافي المستحق لشهر ${mb.key}</div>`+es.map(e=>{const d=FIN.salaryDue(e,pr,L997Enterprise.data.expenses,mb.key);const SH=window.L997Shift;const days=SH?SH.daysInMonth(e.id,mb.key):new Set();att.filter(a=>a.employeeId===e.id&&inMonth(a.date)&&a.status!=='absent').forEach(a=>days.add(FIN.localDay(a.date)));const attCount=days.size;const hrs=SH?SH.hoursInMonth(e.id,mb.key):0;return `<div class="mini-stat"><span>${esc(e.name)} <small class="subtle">(${t('attendance_days_30').replace('{0}',attCount)}${hrs?` · ${hrs} ساعة`:''}${d.bonuses?` · +${money(d.bonuses)}`:''}${d.deductions?` · خصم ${money(d.deductions)}`:''}${d.advances?` · سلف ${money(d.advances)}`:''})</small></span><b>${money(d.net)} ${d.paid?'<span class="status-badge status-ready">✓ صُرف</span>':''}</b></div>`}).join(''):`<div class="empty-state compact">${t('no_payroll_data')}</div>`;
  }
  function closureFor(type,key){return L997Enterprise.data.closures.find(c=>c.type===type&&(type==='daily'?c.forDate===key:c.forMonth===key))}
  let clsMonth=null;
@@ -5180,6 +5329,7 @@
   const allMethods=Array.from(new Set([...Object.keys(methods),...Object.keys(d.salesCashBy),...Object.keys(d.expensesBy),...Object.keys(d.depositsBy),...Object.keys(d.refundsBy)]));
   const cell=v=>v?money(v):'--';
   q('registerDetailsBody').innerHTML=allMethods.map(m2=>`<tr><td>${methods[m2]||esc(m2)}</td><td>${money(d.salesCashBy[m2]||0)}</td><td>${cell(d.depositsBy[m2])}</td><td>${cell(d.expensesBy[m2])}</td><td>${cell(d.refundsBy[m2])}</td></tr>`).join('')+`<tr style="font-weight:800;background:var(--panel-soft)"><td>${t('th_total_row')}</td><td>${money(d.orderPayments+d.packageSales)}</td><td>${money(d.deposits)}</td><td>${money(d.expenses)}</td><td>${money(d.refunds)}</td></tr>`;
+  if(window.L997Shift)window.L997Shift.renderPanel(selDate);
   q('dailyClosurePreview').querySelectorAll('[data-cls-day]').forEach(b=>b.addEventListener('click',()=>{q('closureDate').value=b.dataset.clsDay;renderClosures()}));
   q('closureMonth')?.addEventListener('change',e=>{if(/^\d{4}-\d{2}$/.test(e.target.value)){clsMonth=e.target.value;renderClosures()}});
   q('openMonthlyReportBtn')?.addEventListener('click',()=>window.openMonthlyReport997&&window.openMonthlyReport997(clsMonth));
@@ -5321,6 +5471,7 @@
 
  q('addExpenseBtn')?.addEventListener('click',()=>{
    if(!CAN('add_expense')){window.toast('ليست لديك صلاحية لهذا الإجراء');return}
+   if(window.L997Shift&&!window.L997Shift.guard())return;
    window.openQuickForm({
      title: 'إضافة مصروف', sub: 'اختر نوع المصروف من القائمة — الرواتب تُصرف من صفحة الموظفين، ومشتريات المخزون من صفحة المخزون',
      fields: [
@@ -5430,6 +5581,7 @@
  // صرف رواتب الشهر دفعة واحدة: صافي كل موظف نشط يُسجَّل مصروف «رواتب» مرتبطاً بالموظف والشهر (لا يُصرف مرتين)
  q('payMonthSalariesBtn')?.addEventListener('click',()=>{
    if(!CAN('payroll')||!CAN('add_expense')){window.toast('صرف الرواتب يتطلب صلاحية الرواتب والمصروفات');return}
+   if(window.L997Shift&&!window.L997Shift.guard())return;
    const es=L997Enterprise.data.employees.filter(e=>e.active!==false);
    if(!es.length){window.toast('أضف موظفاً أولاً');return}
    const E2=L997Enterprise.data;
