@@ -5667,3 +5667,8 @@
  window.renderAudit997 = renderAudit;
  const obs=new MutationObserver(()=>{});document.addEventListener('DOMContentLoaded',()=>{renderFinance();renderInventory();renderEmployees();renderClosures();renderAudit()});
 })();
+// Offline app: once opened from the site link, the phone keeps a copy that works without internet
+(function(){
+  if (!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return;
+  window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+})();

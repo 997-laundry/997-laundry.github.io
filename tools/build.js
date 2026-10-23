@@ -15,4 +15,6 @@ const out = path.join(root, "laundry-997-full.html");
 fs.writeFileSync(out, html);
 // نسخة باسم index.html ليفتحها رابط الموقع (GitHub Pages) مباشرة من الجوال
 fs.writeFileSync(path.join(root, "index.html"), html);
+// ملفات التطبيق على الجوال (العمل بدون إنترنت + الأيقونة) تُنسخ بجانب index.html
+for (const f of fs.readdirSync(path.join(root, "src", "pwa"))) fs.copyFileSync(path.join(root, "src", "pwa", f), path.join(root, f));
 console.log(`built ${path.relative(root, out)} (${(html.length / 1024).toFixed(0)} KB)`);
