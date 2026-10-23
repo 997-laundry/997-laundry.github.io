@@ -356,6 +356,12 @@ html,body{max-width:100%;overflow-x:hidden}
   .permission-table th:first-child,.permission-table td:first-child{width:auto}
   .permission-table th:not(:first-child),.permission-table td:not(:first-child){width:52px}
 }
+/* الرسائل فوق النوافذ المفتوحة (popover) — نفس موضع وشكل الرسالة العادية */
+.toast[popover]{inset:auto;left:24px;bottom:24px;margin:0;border:0;overflow:visible;max-width:min(520px,calc(100vw - 32px));z-index:100000}
+html[dir="ltr"] .toast[popover]{left:auto;right:24px}
+@media (max-width:700px){.toast[popover]{left:16px;right:16px;bottom:16px;max-width:none;text-align:center}}
+#quickFormError{margin:4px 20px 0;color:var(--danger);font-weight:700;font-size:13px;min-height:0}
+#quickFormError:empty{display:none}
 
 </style>
 </head>
@@ -911,7 +917,9 @@ html,body{max-width:100%;overflow-x:hidden}
   // تاريخ تحصيل الطلب: وقت تأكيد الدفع (وليس وقت إنشاء الطلب)
   function orderPaidAt(o) { return o.paidAt || o.readyAt || o.deliveredAt || o.createdAt; }
   // الطلب يُحسب مبيعاً فقط بعد تأكيد دفعه (جاهز أو مُسلَّم) — الملغي والمستلم غير المدفوع لا يُحسبان
-  function isSale(o) { return o.status === "ready" || o.status === "delivered"; }
+  // «الدفع لاحقاً»: الطلب الجاهز غير المدفوع (paymentConfirmed === false) لا يُحسب مبيعاً حتى يُدفع عند التسليم
+  function isSale(o) { return (o.status === "ready" || o.status === "delivered") && o.paymentConfirmed !== false; }
+  function isUnpaidOpen(o) { return o.status === "received" || (o.status === "ready" && o.paymentConfirmed === false); }
   // المبلغ المحصَّل نقداً/بطاقة/تحويل على الطلب نفسه (الدفع من الرصيد ليس نقداً جديداً)
   function orderCashIn(o) {
     const p = pay(o);
@@ -1035,7 +1043,7 @@ html,body{max-width:100%;overflow-x:hidden}
     const customers = data.customers || [], orders = data.orders || [];
     const nowMs = now ? new Date(now).getTime() : Date.now();
     const debtors = customers.filter((c) => Number(c.balance) < 0);
-    const open = orders.filter((o) => o.status === "received");
+    const open = orders.filter(isUnpaidOpen);
     const ready = orders.filter((o) => o.status === "ready");
     return {
       receivables: r3(debtors.reduce((a, c) => a - Number(c.balance), 0)),
@@ -1065,7 +1073,7 @@ html,body{max-width:100%;overflow-x:hidden}
     return out;
   }
 
-  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, packagePrice, summarize, snapshot, allocateDebts };
+  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts };
 });
 
 </script>
@@ -2008,12 +2016,26 @@ html,body{max-width:100%;overflow-x:hidden}
   /* -------------------------------- Toast -------------------------------- */
   const toastEl = document.getElementById("toast");
   let toastTimer = null;
+  // الرسالة تظهر فوق أي نافذة مفتوحة (طبقة popover العليا)، وتُكتب أيضاً داخل النموذج المفتوح
+  // حتى لا تختفي رسائل الخطأ خلف النوافذ (كان سبب «زر التسليم لا يعمل» على الجوال)
   function toast(msg) {
     if (!toastEl) return;
     toastEl.textContent = msg;
+    if (typeof toastEl.showPopover === "function") {
+      try {
+        if (!toastEl.hasAttribute("popover")) toastEl.setAttribute("popover", "manual");
+        if (toastEl.matches(":popover-open")) toastEl.hidePopover();
+        toastEl.showPopover();
+      } catch (e) { /* متصفح قديم — يبقى العرض العادي */ }
+    }
+    const qfErr = document.getElementById("quickFormError");
+    if (qfErr && document.getElementById("quickFormDialog")?.open) qfErr.textContent = msg;
     toastEl.classList.add("show");
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2600);
+    toastTimer = setTimeout(() => {
+      toastEl.classList.remove("show");
+      setTimeout(() => { try { if (!toastEl.classList.contains("show") && toastEl.matches(":popover-open")) toastEl.hidePopover(); } catch (e) { /* تجاهل */ } }, 300);
+    }, 3200);
   }
 
   /* ------------------------------ اللغة ------------------------------ */
@@ -4140,6 +4162,13 @@ html,body{max-width:100%;overflow-x:hidden}
     document.getElementById("quickFormSubmitBtn").textContent = submitLabel || "حفظ";
     document.getElementById("quickFormCancelBtn").textContent = cancelLabel || "إلغاء";
     const wrap = document.getElementById("quickFormFields");
+    let qfErr = document.getElementById("quickFormError");
+    if (!qfErr) {
+      qfErr = document.createElement("div");
+      qfErr.id = "quickFormError"; qfErr.className = "auth-err"; qfErr.setAttribute("role", "alert");
+      wrap.insertAdjacentElement("afterend", qfErr);
+    }
+    qfErr.textContent = "";
     wrap.innerHTML = fields.map((f) => {
       const id = `qf_${f.id}`;
       if (f.type === "select") {
@@ -4224,7 +4253,7 @@ html,body{max-width:100%;overflow-x:hidden}
         ${p.discount > 0 ? `<div class="receipt-line"><span>${t("sum_discount")}</span><span>-${money(p.discount)}</span></div>` : ""}
         ${p.vat > 0 ? `<div class="receipt-line"><span>ضريبة القيمة المضافة (${p.vatPercent}%)</span><span>${money(p.vat)}</span></div>` : ""}
         <div class="receipt-line receipt-total"><span>${t("receipt_total")}</span><span>${money(p.total)}</span></div>
-        <div class="receipt-line"><span>${t("dlg_payment_method")}</span><span>${paymentLabel(p.method)}</span></div>
+        <div class="receipt-line"><span>${t("dlg_payment_method")}</span><span>${orderPayLabel(order)}</span></div>
         <div class="receipt-line"><span>${t("dlg_paid")}</span><span>${money(p.paid)}</span></div>
         ${p.balanceUse > 0 ? `<div class="receipt-line"><span>${t("lbl_balance_use")}</span><span>${money(p.balanceUse)}</span></div>` : ""}
         <div class="receipt-line receipt-total"><span>${t("receipt_remaining")}</span><span>${money(p.outstanding)}</span></div>
@@ -4288,7 +4317,7 @@ html,body{max-width:100%;overflow-x:hidden}
       return `<tr>
         <td><strong>#${o.number}</strong></td><td>${cust ? esc(cust.name) : "—"}</td><td>${pieces}</td><td>${money(o.payment.total)}</td>
         <td><span class="priority-badge ${o.priority === "urgent" ? "priority-urgent" : "priority-normal"}">${o.priority === "urgent" ? t("opt_urgent") : t("opt_normal")}</span></td>
-        <td><span class="status-badge ${statusClass(o.status)}">${statusLabel(o.status)}</span></td>
+        <td><span class="status-badge ${statusClass(o.status)}">${statusLabel(o.status)}</span>${o.status === "ready" && !o.paymentConfirmed ? ` <span class="priority-badge priority-urgent">${lang === "en" ? "Unpaid" : "غير مدفوع"}</span>` : ""}</td>
         <td>${o.expectedDelivery ? fmtDT(o.expectedDelivery) : "—"}</td>
         <td class="row-actions"><button class="mini-btn" data-view="${o.id}">${lang === "ar" ? "عرض" : "View"}</button></td>
       </tr>`;
@@ -4297,7 +4326,7 @@ html,body{max-width:100%;overflow-x:hidden}
     cards.innerHTML = list.map((o) => {
       const cust = customers.find((c) => c.id === o.customerId);
       return `<div class="order-card-mobile">
-        <div class="top"><strong>#${o.number} — ${cust ? esc(cust.name) : "—"}</strong><span class="status-badge ${statusClass(o.status)}">${statusLabel(o.status)}</span></div>
+        <div class="top"><strong>#${o.number} — ${cust ? esc(cust.name) : "—"}</strong><span class="status-badge ${statusClass(o.status)}">${statusLabel(o.status)}${o.status === "ready" && !o.paymentConfirmed ? (lang === "en" ? " · Unpaid" : " · غير مدفوع") : ""}</span></div>
         <div class="meta">${money(o.payment.total)} · ${o.priority === "urgent" ? t("opt_urgent") : t("opt_normal")}</div>
         <div class="actions"><button class="mini-btn" data-view="${o.id}">${lang === "ar" ? "عرض التفاصيل" : "View details"}</button></div>
       </div>`;
@@ -4309,109 +4338,148 @@ html,body{max-width:100%;overflow-x:hidden}
   /* ------------------------ مربع حوار تفاصيل الطلب ------------------------ */
   const orderDialog = document.getElementById("orderDialog");
   /* ---- تأكيد الدفع وتجهيز الطلب (مع ضوابط منع التحايل) ---- */
+  const PAY_OPTIONS = [
+    { value: "cash", label: "نقداً" }, { value: "card", label: "بطاقة" },
+    { value: "benefitpay", label: "Benefit Pay" }, { value: "balance", label: "من رصيد العميل" },
+    { value: "bank_transfer", label: "تحويل بنكي" }, { value: "unpaid", label: "آجل (دين على العميل)" },
+  ];
+  // وصف حالة الدفع للعرض: الطلب الجاهز بدون دفع = "يُدفع عند الاستلام"
+  function orderPayLabel(order) {
+    if (!order.paymentConfirmed && order.status !== "cancelled") return order.payLater ? (lang === "en" ? "⏳ Pay on pickup" : "⏳ يُدفع عند الاستلام") : (lang === "en" ? "Not paid yet" : "لم يُدفع بعد");
+    return paymentLabel(order.payment.method);
+  }
+  // يتحقق من مدخلات الدفع ويسجّلها على الطلب ثم يستدعي onDone(now).
+  // يرجع false عند خطأ بالإدخال (تبقى النافذة مفتوحة). الآجل/الجزئي يحتاج صلاحية allow_credit أو موافقة مشرف.
+  function applyOrderPayment(order, cust, v, what, onDone) {
+    const total = order.payment.total;
+    const method = v.method;
+    let paid = Math.max(0, round3(v.paid) || 0);
+    if (method === "balance") {
+      if (!cust || round3(cust.balance) < total) { toast(`رصيد العميل (${money(cust ? cust.balance : 0)}) لا يكفي لسداد ${money(total)} — اختر طريقة دفع أخرى`); return false; }
+      paid = 0;
+    } else if (method === "unpaid") paid = 0;
+    else if (paid <= 0 && total > 0) { toast("أدخل المبلغ المحصّل أو اختر «آجل»"); return false; }
+    let overpay = 0;
+    if (method !== "balance" && method !== "unpaid" && paid > total) { overpay = round3(paid - total); paid = total; }
+    const owed = method === "balance" ? 0 : round3(Math.max(0, total - paid));
+    const finalize = (sup, overridden) => {
+      if (order.paymentConfirmed) { toast("تم تأكيد دفع هذا الطلب مسبقاً"); return; }
+      const now = new Date().toISOString();
+      order.payment.method = method;
+      order.payment.paid = paid;
+      order.payment.outstanding = owed;
+      order.paymentConfirmed = true;
+      order.paidAt = now;
+      order.paymentBy = me ? me.name : "";
+      order.creditApprovedBy = owed > 0 && overridden ? sup.name : "";
+      if (method === "balance" && cust) {
+        cust.balance = round3(cust.balance - total);
+        ledger.unshift({ id: uid(), customerId: cust.id, type: "order_charge", amount: -total, balanceAfter: cust.balance, method, orderId: order.id, note: `طلب #${order.number}`, at: now });
+      }
+      if (overpay > 0 && cust) {
+        cust.balance = round3(cust.balance + overpay);
+        ledger.unshift({ id: uid(), customerId: cust.id, type: "credit", amount: overpay, balanceAfter: cust.balance, method, orderId: order.id, note: `فائض دفعة طلب #${order.number} — أُضيف كرصيد`, at: now });
+        toast(`تم تحصيل ${money(overpay)} زيادة عن قيمة الطلب — أُضيفت كرصيد للعميل`);
+      }
+      if (owed > 0 && cust) {
+        cust.balance = round3(cust.balance - owed);
+        order.debtRecorded = true;
+        ledger.unshift({ id: uid(), customerId: cust.id, type: "order_charge", amount: -owed, balanceAfter: cust.balance, method: "unpaid", orderId: order.id, note: `طلب #${order.number} — ${paid > 0 ? "متبقي غير مسدد" : "آجل"}`, at: now });
+      }
+      logActivity(`تأكيد دفع طلب #${order.number} — ${money(method === "balance" ? total : paid)}${owed > 0 ? ` — دين مسجّل ${money(owed)}${overridden ? " اعتمده " + sup.name : ""}` : ""}`);
+      onDone(now);
+    };
+    if (owed > 0.0004 && !can("allow_credit")) {
+      setTimeout(() => requireOverride("allow_credit", `${what} بدين ${money(owed)}`, finalize), 80);
+      return;
+    }
+    finalize(null, false);
+  }
+  function refreshAfterOrderChange() {
+    persistAll();
+    renderOrderDialog();
+    renderOrdersPage();
+    if (document.getElementById("page-dashboard").classList.contains("active")) renderDashboard();
+  }
+
+  /* ---- تجهيز الطلب: الدفع الآن، أو «الدفع لاحقاً عند الاستلام» ---- */
   function openReadyPaymentForm(order) {
     const cust = customers.find((c) => c.id === order.customerId);
     const total = order.payment.total;
-    if (order.paymentConfirmed || order.status !== "received") { toast("تم تأكيد دفع هذا الطلب مسبقاً"); return; }
+    if (order.status !== "received") { toast("تم تجهيز هذا الطلب مسبقاً"); return; }
     openQuickForm({
-      title: "💳 تأكيد الدفع — الطلب جاهز للتسليم",
-      sub: `طلب #${order.number} — ${cust ? cust.name : ""} — المستحق: ${money(total)}${cust && Number(cust.balance) ? ` — رصيد العميل: ${money(cust.balance)}` : ""}. الدفع الكامل مطلوب؛ الآجل أو الجزئي يحتاج موافقة مشرف.`,
+      title: "✓ تجهيز الطلب — جاهز للتسليم",
+      sub: `طلب #${order.number} — ${cust ? cust.name : ""} — المستحق: ${money(total)}${cust && Number(cust.balance) ? ` — رصيد العميل: ${money(cust.balance)}` : ""}. اختر «الدفع لاحقاً» إذا سيدفع العميل عند الاستلام.`,
       fields: [
-        { id: "method", label: "طريقة الدفع", type: "select", value: "cash", options: [
-          { value: "cash", label: "نقداً" }, { value: "card", label: "بطاقة" },
-          { value: "benefitpay", label: "Benefit Pay" }, { value: "balance", label: "من رصيد العميل" },
-          { value: "bank_transfer", label: "تحويل بنكي" }, { value: "unpaid", label: "آجل (دين على العميل)" },
-        ] },
-        { id: "paid", label: "المبلغ المحصّل (د.ب)", type: "number", step: "0.001", value: total, min: 0 },
+        { id: "method", label: "طريقة الدفع", type: "select", value: "cash", options: [{ value: "later", label: "⏳ الدفع لاحقاً — عند استلام العميل" }, ...PAY_OPTIONS] },
+        { id: "paid", label: "المبلغ المحصّل (د.ب) — يُتجاهل عند «الدفع لاحقاً»", type: "number", step: "0.001", value: total, min: 0 },
       ],
-      submitLabel: "تأكيد الدفع",
+      submitLabel: "تأكيد التجهيز",
       onSubmit: (v) => {
-        const method = v.method;
-        let paid = Math.max(0, round3(v.paid) || 0);
-        if (method === "balance") {
-          if (!cust || round3(cust.balance) < total) { toast(`رصيد العميل (${money(cust ? cust.balance : 0)}) لا يكفي لسداد ${money(total)} — اختر طريقة دفع أخرى`); return false; }
-          paid = 0;
-        } else if (method === "unpaid") paid = 0;
-        else if (paid <= 0 && total > 0) { toast("أدخل المبلغ المحصّل أو اختر «آجل»"); return false; }
-        let overpay = 0;
-        if (method !== "balance" && method !== "unpaid" && paid > total) { overpay = round3(paid - total); paid = total; }
-        const owed = method === "balance" ? 0 : round3(Math.max(0, total - paid));
-        const finalize = (sup, overridden) => {
-          if (order.paymentConfirmed || order.status !== "received") { toast("تم تأكيد دفع هذا الطلب مسبقاً"); return; }
-          const now = new Date().toISOString();
-          order.payment.method = method;
-          order.payment.paid = paid;
-          order.payment.outstanding = owed;
-          order.paymentConfirmed = true;
-          order.paymentBy = me ? me.name : "";
-          order.creditApprovedBy = owed > 0 && overridden ? sup.name : "";
+        const markReady = (now, note) => {
+          if (order.status !== "received") return;
           order.status = "ready";
           order.readyAt = now;
-          order.paidAt = now;
-          order.statusHistory.push({ status: "ready", at: now, by: me ? me.name : "" });
-          if (method === "balance" && cust) {
-            cust.balance = round3(cust.balance - total);
-            ledger.unshift({ id: uid(), customerId: cust.id, type: "order_charge", amount: -total, balanceAfter: cust.balance, method, orderId: order.id, note: `طلب #${order.number}`, at: now });
-          }
-          if (overpay > 0 && cust) {
-            cust.balance = round3(cust.balance + overpay);
-            ledger.unshift({ id: uid(), customerId: cust.id, type: "credit", amount: overpay, balanceAfter: cust.balance, method, orderId: order.id, note: `فائض دفعة طلب #${order.number} — أُضيف كرصيد`, at: now });
-            toast(`تم تحصيل ${money(overpay)} زيادة عن قيمة الطلب — أُضيفت كرصيد للعميل`);
-          }
-          if (owed > 0 && cust) {
-            cust.balance = round3(cust.balance - owed);
-            order.debtRecorded = true;
-            ledger.unshift({ id: uid(), customerId: cust.id, type: "order_charge", amount: -owed, balanceAfter: cust.balance, method: "unpaid", orderId: order.id, note: `طلب #${order.number} — ${paid > 0 ? "متبقي غير مسدد" : "آجل"}`, at: now });
-          }
-          logActivity(`تأكيد دفع وتجهيز طلب #${order.number} — ${money(method === "balance" ? total : paid)}${owed > 0 ? ` — دين مسجّل ${money(owed)}${overridden ? " اعتمده " + sup.name : ""}` : ""}`);
-          persistAll();
-          renderOrderDialog();
-          renderOrdersPage();
-          typeof renderDashboard === "function" && document.getElementById("page-dashboard").classList.contains("active") && renderDashboard();
-          showReadyPrompt(order, cust);
+          order.statusHistory.push({ status: "ready", at: now, by: me ? me.name : "", note });
         };
-        if (owed > 0.0004 && !can("allow_credit")) {
-          setTimeout(() => requireOverride("allow_credit", `تسليم طلب #${order.number} بدين ${money(owed)}`, finalize), 80);
+        if (v.method === "later") {
+          const now = new Date().toISOString();
+          order.payLater = true;
+          markReady(now, "الدفع عند الاستلام");
+          logActivity(`تجهيز طلب #${order.number} — الدفع لاحقاً عند الاستلام (${money(total)})`);
+          refreshAfterOrderChange();
+          waPrompt(`✓ الطلب #${order.number} جاهز — الدفع عند الاستلام`, `هل ترسل رسالة «طلبك جاهز» مع المبلغ المستحق للعميل على واتساب؟`, "📲 إرسال رسالة الجاهزية", () => { sendReadyMessage(order, cust); logActivity(`إرسال رسالة جاهزية واتساب — طلب #${order.number}`); });
           return;
         }
-        finalize(null, false);
+        return applyOrderPayment(order, cust, v, `تجهيز طلب #${order.number}`, (now) => {
+          markReady(now);
+          refreshAfterOrderChange();
+          showReadyPrompt(order, cust);
+        });
       },
     });
   }
 
-  /* ---- تأكيد التسليم: مطابقة عدد القطع أمام العميل ---- */
+  /* ---- تأكيد التسليم: مطابقة عدد القطع أمام العميل + تحصيل المبلغ إن كان «الدفع لاحقاً» ---- */
   function openDeliveryForm(order) {
     const cust = customers.find((c) => c.id === order.customerId);
-    if (!order.paymentConfirmed) { toast("يجب تأكيد الدفع أولاً قبل التسليم"); return; }
     if (order.status !== "ready") return;
+    const needPay = !order.paymentConfirmed;
     const pieces = order.items.reduce((n, it) => n + it.qty, 0);
+    const fields = [
+      { id: "count", label: `عدد القطع المسلّمة — عُدّها واكتب الرقم (المطلوب ${pieces})`, type: "number", value: "", min: 0 },
+      { id: "receiver", label: "اسم المستلم (اختياري)", type: "text", value: "" },
+    ];
+    if (needPay) fields.push(
+      { id: "method", label: "💳 طريقة الدفع", type: "select", value: "cash", options: PAY_OPTIONS },
+      { id: "paid", label: "المبلغ المحصّل (د.ب)", type: "number", step: "0.001", value: order.payment.total, min: 0 },
+    );
     openQuickForm({
       title: `📦 تسليم الطلب #${order.number}`,
-      sub: `${cust ? cust.name : ""} — عُدّ القطع أمام العميل وأدخل العدد الفعلي (المطلوب ${pieces}).${order.debtRecorded && order.payment.outstanding > 0 ? ` ⚠ دين مسجّل على العميل: ${money(order.payment.outstanding)}` : ""}`,
-      fields: [
-        { id: "count", label: "عدد القطع المسلّمة", type: "number", value: "", min: 0 },
-        { id: "receiver", label: "اسم المستلم (اختياري)", type: "text", value: "" },
-      ],
-      submitLabel: "✓ تأكيد التسليم",
+      sub: `${cust ? cust.name : ""} — عُدّ القطع أمام العميل وأدخل العدد الفعلي.${needPay ? ` 💳 المستحق الآن: ${money(order.payment.total)}` : ""}${order.debtRecorded && order.payment.outstanding > 0 ? ` ⚠ دين مسجّل على العميل: ${money(order.payment.outstanding)}` : ""}`,
+      fields,
+      submitLabel: needPay ? "✓ تحصيل وتسليم" : "✓ تأكيد التسليم",
       onSubmit: (v) => {
         if (Number(v.count) !== pieces) {
           logActivity(`عدد قطع غير مطابق عند تسليم طلب #${order.number} (أُدخل ${v.count || 0} والمطلوب ${pieces}) بواسطة ${me ? me.name : ""}`);
-          toast(`العدد غير مطابق — الطلب ${pieces} قطعة. راجع القطع قبل التسليم`);
+          toast(v.count ? `العدد غير مطابق — الطلب ${pieces} قطعة وأدخلت ${v.count}. راجع القطع قبل التسليم` : `اكتب عدد القطع المسلّمة (${pieces}) بعد عدّها أمام العميل`);
           return false;
         }
-        const now = new Date().toISOString();
-        order.status = "delivered";
-        order.deliveredAt = now;
-        order.deliveredBy = me ? me.name : "";
-        order.receiver = v.receiver || "";
-        order.statusHistory.push({ status: "delivered", at: now, by: me ? me.name : "" });
-        logActivity(`${t("dlg_advance_to", statusLabel("delivered"))} — #${order.number}${v.receiver ? " — المستلم: " + v.receiver : ""}`);
-        persistAll();
-        renderOrderDialog();
-        renderOrdersPage();
-        typeof renderDashboard === "function" && document.getElementById("page-dashboard").classList.contains("active") && renderDashboard();
-        toast(t("toast_status_updated"));
-        showDeliveredPrompt(order, cust);
+        const deliver = () => {
+          if (order.status !== "ready") return;
+          const now = new Date().toISOString();
+          order.status = "delivered";
+          order.deliveredAt = now;
+          order.deliveredBy = me ? me.name : "";
+          order.receiver = v.receiver || "";
+          order.statusHistory.push({ status: "delivered", at: now, by: me ? me.name : "" });
+          logActivity(`${t("dlg_advance_to", statusLabel("delivered"))} — #${order.number}${v.receiver ? " — المستلم: " + v.receiver : ""}`);
+          refreshAfterOrderChange();
+          toast(t("toast_status_updated"));
+          showDeliveredPrompt(order, cust);
+        };
+        if (needPay) return applyOrderPayment(order, cust, v, `تسليم طلب #${order.number}`, deliver);
+        deliver();
       },
     });
   }
@@ -4528,7 +4596,7 @@ html,body{max-width:100%;overflow-x:hidden}
         </div>
         <div class="details-box">
           <h4>${t("dlg_payment")}</h4>
-          <div class="details-line"><span>${t("dlg_payment_method")}</span><strong>${paymentLabel(order.payment.method)}</strong></div>
+          <div class="details-line"><span>${t("dlg_payment_method")}</span><strong>${orderPayLabel(order)}</strong></div>
           <div class="details-line"><span>${t("dlg_total")}</span><strong>${money(order.payment.total)}</strong></div>
           <div class="details-line"><span>${t("dlg_paid")}</span><strong>${money(order.payment.paid)}</strong></div>
           <div class="details-line"><span>${t("dlg_remaining")}</span><strong>${money(order.payment.outstanding)}</strong></div>
@@ -4546,7 +4614,7 @@ html,body{max-width:100%;overflow-x:hidden}
         ${order.notes ? `<div class="details-box full-span" style="grid-column:1/-1"><h4>${t("dlg_notes")}</h4><p>${esc(order.notes)}</p></div>` : ""}
       </div>
       <div class="details-actions">
-        ${next ? `<button class="primary-btn" id="advanceStatusBtn">${lang === "ar" ? (next === "ready" ? "💳 تأكيد الدفع وتجهيز الطلب" : next === "delivered" ? "📦 تسليم الطلب للعميل" : t("dlg_advance_to", statusLabel(next))) : t("dlg_advance_to", statusLabel(next))}</button>` : ""}
+        ${next ? `<button class="primary-btn" id="advanceStatusBtn">${lang === "ar" ? (next === "ready" ? "✓ تجهيز الطلب (الدفع الآن أو لاحقاً)" : next === "delivered" ? (order.paymentConfirmed ? "📦 تسليم الطلب للعميل" : "💳📦 تحصيل المبلغ وتسليم الطلب") : t("dlg_advance_to", statusLabel(next))) : t("dlg_advance_to", statusLabel(next))}</button>` : ""}
         ${order.status === "received" && !order.paymentConfirmed && can("create_order") ? `<button class="secondary-btn" id="editOrderBtn">✏️ ${lang === "en" ? "Edit order" : "تعديل الطلب"}</button>` : ""}
         ${order.status !== "cancelled" && order.status !== "delivered" ? `<button class="secondary-btn" id="cancelOrderBtn">${t("dlg_cancel_order")}</button>` : ""}
         ${can("cancel_order") && order.status === "delivered" && order.deliveredAt && (Date.now() - new Date(order.deliveredAt).getTime() <= 24 * 3600 * 1000) ? `<button class="secondary-btn" id="revertDeliveryBtn">↩ إرجاع من التسليم (خلال 24 ساعة)</button>` : ""}

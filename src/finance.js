@@ -49,7 +49,9 @@
   // تاريخ تحصيل الطلب: وقت تأكيد الدفع (وليس وقت إنشاء الطلب)
   function orderPaidAt(o) { return o.paidAt || o.readyAt || o.deliveredAt || o.createdAt; }
   // الطلب يُحسب مبيعاً فقط بعد تأكيد دفعه (جاهز أو مُسلَّم) — الملغي والمستلم غير المدفوع لا يُحسبان
-  function isSale(o) { return o.status === "ready" || o.status === "delivered"; }
+  // «الدفع لاحقاً»: الطلب الجاهز غير المدفوع (paymentConfirmed === false) لا يُحسب مبيعاً حتى يُدفع عند التسليم
+  function isSale(o) { return (o.status === "ready" || o.status === "delivered") && o.paymentConfirmed !== false; }
+  function isUnpaidOpen(o) { return o.status === "received" || (o.status === "ready" && o.paymentConfirmed === false); }
   // المبلغ المحصَّل نقداً/بطاقة/تحويل على الطلب نفسه (الدفع من الرصيد ليس نقداً جديداً)
   function orderCashIn(o) {
     const p = pay(o);
@@ -173,7 +175,7 @@
     const customers = data.customers || [], orders = data.orders || [];
     const nowMs = now ? new Date(now).getTime() : Date.now();
     const debtors = customers.filter((c) => Number(c.balance) < 0);
-    const open = orders.filter((o) => o.status === "received");
+    const open = orders.filter(isUnpaidOpen);
     const ready = orders.filter((o) => o.status === "ready");
     return {
       receivables: r3(debtors.reduce((a, c) => a - Number(c.balance), 0)),
@@ -203,5 +205,5 @@
     return out;
   }
 
-  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, packagePrice, summarize, snapshot, allocateDebts };
+  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts };
 });

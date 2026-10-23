@@ -342,3 +342,9 @@ html,body{max-width:100%;overflow-x:hidden}
   .permission-table th:first-child,.permission-table td:first-child{width:auto}
   .permission-table th:not(:first-child),.permission-table td:not(:first-child){width:52px}
 }
+/* الرسائل فوق النوافذ المفتوحة (popover) — نفس موضع وشكل الرسالة العادية */
+.toast[popover]{inset:auto;left:24px;bottom:24px;margin:0;border:0;overflow:visible;max-width:min(520px,calc(100vw - 32px));z-index:100000}
+html[dir="ltr"] .toast[popover]{left:auto;right:24px}
+@media (max-width:700px){.toast[popover]{left:16px;right:16px;bottom:16px;max-width:none;text-align:center}}
+#quickFormError{margin:4px 20px 0;color:var(--danger);font-weight:700;font-size:13px;min-height:0}
+#quickFormError:empty{display:none}

@@ -152,6 +152,29 @@ function check(name, cond, detail) {
   check("edited order total recalculated", orders[0].payment.total === 0.6 && orders[0].items[0].qty === 3 && orders[0].editHistory.length === 1, orders[0].payment.total);
   if (await page.isVisible("#closeOrderDialog2")) await page.click("#closeOrderDialog2");
 
+  // 6e) Pay later: mark ready without payment, then collect cash + deliver at pickup
+  await newOrder("Ali", "33001122", ["shirt", "shirt"]);
+  await page.click('.nav-item[data-page="orders"]');
+  await page.click("#ordersBody tr:nth-child(1) [data-view]");
+  await page.click("#advanceStatusBtn");
+  await page.selectOption("#qf_method", "later");
+  await quickSubmit();
+  await quickCancelIfOpen();
+  orders = await page.evaluate(() => JSON.parse(localStorage.getItem("l997_orders")));
+  check("pay later: order ready and unpaid", orders[0].status === "ready" && orders[0].paymentConfirmed === false && orders[0].payLater === true);
+  await page.click("#advanceStatusBtn");
+  await quickSubmit(); // empty piece count → must show a visible error inside the form
+  const errText = await page.textContent("#quickFormError");
+  const onTop = await page.evaluate(() => { const r = document.getElementById("quickFormError").getBoundingClientRect(); const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!el && el.id === "quickFormError"; });
+  check("empty count shows a visible error message", !!errText && onTop, errText);
+  await page.fill("#qf_count", "2");
+  await page.selectOption("#qf_method", "cash");
+  await quickSubmit();
+  await quickCancelIfOpen();
+  orders = await page.evaluate(() => JSON.parse(localStorage.getItem("l997_orders")));
+  check("pay later: collected and delivered at pickup", orders[0].status === "delivered" && orders[0].paymentConfirmed && orders[0].payment.paid === 0.4, JSON.stringify([orders[0].status, orders[0].payment.paid]));
+  if (await page.isVisible("#closeOrderDialog2")) await page.click("#closeOrderDialog2");
+
   // 7) Language persists across reload
   await page.selectOption("#langSelectTop", "en");
   await page.reload();

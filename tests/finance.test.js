@@ -127,3 +127,19 @@ test("month bounds and day arithmetic", () => {
   assert.deepEqual(F.monthBounds("2026-02-14"), { from: "2026-02-01", to: "2026-02-28", key: "2026-02" });
   assert.equal(F.addDays("2026-03-01", -1), "2026-02-28");
 });
+
+test("pay later: ready-but-unpaid order is not a sale until paid at pickup", () => {
+  const o = order({ id: "a", total: 1, method: "unpaid", paid: 0, readyAt: at(D1) });
+  o.paymentConfirmed = false; o.payLater = true;
+  const s1 = F.summarize({ orders: [o] }, D1, D2);
+  assert.equal(s1.salesTotal, 0);
+  assert.equal(s1.collected, 0);
+  assert.equal(F.snapshot({ orders: [o] }).openValue, 1);
+  // paid in cash on pickup the next day → sale + cash dated D2
+  Object.assign(o, { paymentConfirmed: true, paidAt: at(D2), status: "delivered" });
+  Object.assign(o.payment, { method: "cash", paid: 1 });
+  assert.equal(F.summarize({ orders: [o] }, D1, D1).salesTotal, 0);
+  assert.equal(F.summarize({ orders: [o] }, D2, D2).salesTotal, 1);
+  assert.equal(F.summarize({ orders: [o] }, D2, D2).expectedCash, 1);
+  assert.equal(F.snapshot({ orders: [o] }).openValue, 0);
+});
