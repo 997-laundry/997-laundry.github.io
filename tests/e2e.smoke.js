@@ -175,6 +175,17 @@ function check(name, cond, detail) {
   check("pay later: collected and delivered at pickup", orders[0].status === "delivered" && orders[0].paymentConfirmed && orders[0].payment.paid === 0.4, JSON.stringify([orders[0].status, orders[0].payment.paid]));
   if (await page.isVisible("#closeOrderDialog2")) await page.click("#closeOrderDialog2");
 
+  // 6f) Customer file: all of Ali's orders with paid / remaining
+  // Ali: 0.800 (debt later settled) + 0.200 card + cancelled + 0.600 unpaid in progress + 0.400 paid at pickup
+  await page.click('.nav-item[data-page="customers"]');
+  await page.click('#customersBody [data-profile]');
+  const prof = (await page.textContent("#customerProfileContent")).replace(/\s+/g, " ");
+  const rowsCount = await page.$$eval("#customerProfileContent .cp-order", (r) => r.length);
+  check("customer file lists all 5 orders", rowsCount === 5, rowsCount);
+  check("customer file: purchases 1.400, paid 1.400, in progress 0.600, owes 0.000",
+    /إجمالي المشتريات ?1\.400/.test(prof) && /إجمالي المدفوع ?1\.400/.test(prof) && /قيد التنفيذ ?0\.600/.test(prof) && /المستحق عليه الآن ?0\.000/.test(prof), prof.slice(0, 300));
+  await page.click("#closeCustomerProfile");
+
   // 7) Language persists across reload
   await page.selectOption("#langSelectTop", "en");
   await page.reload();

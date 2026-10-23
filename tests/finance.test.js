@@ -143,3 +143,28 @@ test("pay later: ready-but-unpaid order is not a sale until paid at pickup", () 
   assert.equal(F.summarize({ orders: [o] }, D2, D2).expectedCash, 1);
   assert.equal(F.snapshot({ orders: [o] }).openValue, 0);
 });
+
+test("customer file: paid, remaining and total owed per customer", () => {
+  const cust = { id: "c1", balance: -0.3 };
+  const o1 = order({ id: "o1", total: 0.8, paid: 0.5, outstanding: 0.3, debt: true, paidAt: at(D1), status: "delivered" });
+  const o2 = order({ id: "o2", total: 1, method: "unpaid", paid: 0, status: "ready" }); o2.paymentConfirmed = false; o2.payLater = true;
+  const o3 = order({ id: "o3", total: 2, method: "unpaid", paid: 0, status: "received" }); o3.paymentConfirmed = false;
+  const o4 = order({ id: "o4", total: 0.4, paidAt: at(D1), status: "delivered" });
+  const o5 = order({ id: "o5", total: 9, status: "cancelled" });
+  const s = F.customerSummary(cust, [o1, o2, o3, o4, o5, order({ id: "x", customerId: "other", total: 5 })]);
+  const byId = Object.fromEntries(s.rows.map((r) => [r.order.id, r]));
+  assert.equal(s.rows.length, 5);
+  assert.deepEqual([byId.o1.paid, byId.o1.remaining, byId.o1.state], [0.5, 0.3, "debt"]);
+  assert.deepEqual([byId.o2.remaining, byId.o2.state], [1, "due_now"]);
+  assert.deepEqual([byId.o3.remaining, byId.o3.state], [2, "in_progress"]);
+  assert.deepEqual([byId.o4.paid, byId.o4.remaining], [0.4, 0]);
+  assert.equal(s.ordersCount, 4);
+  assert.equal(s.totalSpent, 1.2);
+  assert.equal(s.totalPaid, 0.9);
+  assert.equal(s.debt, 0.3);
+  assert.equal(s.dueNow, 1);
+  assert.equal(s.totalOwed, 1.3);
+  // after the customer settles the debt, the old order shows fully paid
+  const s2 = F.customerSummary({ id: "c1", balance: 0 }, [o1]);
+  assert.deepEqual([s2.rows[0].paid, s2.rows[0].remaining, s2.rows[0].state], [0.8, 0, "paid"]);
+});

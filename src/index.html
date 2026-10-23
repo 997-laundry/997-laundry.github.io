@@ -328,6 +328,7 @@
             <div><h3 data-i18n="nav_customers">العملاء</h3><p data-i18n="customers_sub">بيانات العملاء، الطلبات السابقة، والأرصدة</p></div>
             <button class="primary-btn" id="addCustomerBtn">＋ <span data-i18n="btn_add_customer">إضافة عميل</span></button>
           </div>
+          <input type="search" id="customerSearch" class="inv-search" placeholder="ابحث بالاسم أو رقم الجوال" />
           <div class="table-wrap">
             <table>
               <thead><tr>
@@ -507,6 +508,10 @@
       </div>
       <div class="modal-actions"><button class="ghost-btn" value="cancel" data-i18n="btn_cancel">إلغاء</button><button class="primary-btn" id="saveCustomerBtn" value="default" data-i18n="btn_save_customer">حفظ العميل</button></div>
     </form>
+  </dialog>
+
+  <dialog id="customerProfileDialog" class="modal wide-modal">
+    <div id="customerProfileContent"></div>
   </dialog>
 
   <dialog id="orderDialog" class="modal wide-modal">

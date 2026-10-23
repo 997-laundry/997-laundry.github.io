@@ -3505,7 +3505,7 @@
 
     document.getElementById("orderDialogContent").innerHTML = `
       <div class="modal-header">
-        <div><h3>${t("dlg_order_title", order.number)}</h3><p>${cust ? esc(cust.name) + " — " + esc(cust.phone) : ""}</p></div>
+        <div><h3>${t("dlg_order_title", order.number)}</h3><p>${cust ? `<button type="button" class="link-btn cust-open" id="orderDlgCustomer">📋 ${esc(cust.name)}</button> — <span dir="ltr">${esc(cust.phone)}</span>` : ""}</p></div>
         <button class="icon-btn" id="closeOrderDialog">✕</button>
       </div>
       ${flowStepsHtml(order)}
@@ -3559,6 +3559,7 @@
       toast(t("toast_status_updated"));
     });
     document.getElementById("editOrderBtn")?.addEventListener("click", () => openEditOrderForm(order));
+    document.getElementById("orderDlgCustomer")?.addEventListener("click", () => { orderDialog.close(); openCustomerProfile(cust.id); });
     document.getElementById("cancelOrderBtn")?.addEventListener("click", () => {
       requireOverride("cancel_order", `إلغاء الطلب #${order.number}`, (sup, overridden) => {
       const paidCash = order.payment.method !== "balance" && order.payment.method !== "unpaid" && order.payment.paid > 0;
@@ -3693,15 +3694,20 @@
       body.innerHTML = `<tr><td colspan="7" class="empty-state compact">${t("empty_customers")}</td></tr>`;
       return;
     }
-    body.innerHTML = customers.map((c) => {
+    const cq = (document.getElementById("customerSearch")?.value || "").trim();
+    const shown = customers.filter((c) => custMatchesQuery(c, cq));
+    if (shown.length === 0) { body.innerHTML = `<tr><td colspan="7" class="empty-state compact">${lang === "en" ? "No matching customers" : "لا يوجد عميل مطابق"}</td></tr>`; return; }
+    body.innerHTML = shown.map((c) => {
       const custOrders = orders.filter((o) => o.customerId === c.id);
+      const cs = FIN.customerSummary(c, orders);
       const last = custOrders[0];
       const activePkgs = activePackagesForCustomer(c.id);
       const pkgNote = activePkgs.length ? `<div class="pos-cart-row-sub">${activePkgs.map((p) => `${esc(p.name)}: ${p.remainingPieces}/${p.totalPieces}`).join(" · ")}</div>` : "";
       return `<tr>
-        <td><strong>${esc(c.name)}</strong>${pkgNote}</td><td>${esc(c.phone)}</td><td>${esc(c.area) || "—"}</td>
-        <td>${money(c.balance)}</td><td>${custOrders.length}</td><td>${last ? fmtDT(last.createdAt) : "—"}</td>
+        <td><button type="button" class="link-btn cust-open" data-profile="${c.id}"><strong>${esc(c.name)}</strong></button>${pkgNote}</td><td dir="ltr">${esc(c.phone)}</td><td>${esc(c.area) || "—"}</td>
+        <td>${cs.totalOwed > 0 ? `<span class="cust-chip debt">${lang === "en" ? "Owes" : "عليه"} ${money(cs.totalOwed)}</span>` : cs.prepaid > 0 ? `<span class="cust-chip credit">${lang === "en" ? "Credit" : "رصيد"} ${money(cs.prepaid)}</span>` : money(0)}</td><td>${custOrders.length}</td><td>${last ? fmtDT(last.createdAt) : "—"}</td>
         <td class="row-actions">
+          <button class="mini-btn" data-profile="${c.id}">📋 ${lang === "en" ? "File" : "ملف العميل"}</button>
           <button class="mini-btn" data-order-for="${c.id}">${t("nav_neworder")}</button>
           <button class="mini-btn" data-sell-package="${c.id}">＋ باقة</button>
           ${can("edit_customer") ? `<button class="mini-btn" data-edit-customer="${c.id}">${t("btn_edit")}</button>` : ""}
@@ -3718,6 +3724,9 @@
     body.querySelectorAll("[data-edit-customer]").forEach((btn) => {
       btn.addEventListener("click", () => openEditCustomerForm(btn.dataset.editCustomer));
     });
+    body.querySelectorAll("[data-profile]").forEach((btn) => {
+      btn.addEventListener("click", () => openCustomerProfile(btn.dataset.profile));
+    });
     body.querySelectorAll("[data-sell-package]").forEach((btn) => {
       btn.addEventListener("click", () => {
         // بيع الباقة تحصيل مالي — يتطلب صلاحية عمليات الأرصدة أو موافقة مشرف
@@ -3725,6 +3734,84 @@
       });
     });
   }
+
+  function custMatchesQuery(c, q) {
+    if (!q) return true;
+    const s = toLatinDigits(q).toLowerCase(), digits = s.replace(/\D/g, "").replace(/^973/, "");
+    return String(c.name || "").toLowerCase().includes(s) || (digits.length >= 2 && toLatinDigits(c.phone || "").replace(/\D/g, "").includes(digits));
+  }
+  document.getElementById("customerSearch")?.addEventListener("input", () => renderCustomersPage());
+
+  /* ============================= ملف العميل =============================
+     كل طلبات العميل مع المدفوع والمتبقي لكل طلب، وما عليه الآن (دين + طلبات جاهزة بانتظار الدفع) */
+  const customerProfileDialog = document.getElementById("customerProfileDialog");
+  let profileCustomerId = null;
+  function openCustomerProfile(customerId) {
+    profileCustomerId = customerId;
+    renderCustomerProfile();
+    if (!customerProfileDialog.open) customerProfileDialog.showModal();
+  }
+  function renderCustomerProfile() {
+    const c = customers.find((x) => x.id === profileCustomerId);
+    if (!c) { if (customerProfileDialog.open) customerProfileDialog.close(); return; }
+    const en = lang === "en";
+    const cs = FIN.customerSummary(c, orders);
+    const L = en
+      ? { orders: "Orders", spent: "Total purchases", paid: "Total paid", owed: "Owed now", debt: "Credit debt", due: "Pay on pickup", prog: "In progress", prepaid: "Prepaid",
+          th: ["Order", "Date", "Status", "Total", "Paid", "Remaining", ""], view: "View", settle: "💵 Collect payment", stmt: "Account statement", wa: "WhatsApp reminder", neworder: "+ New order",
+          st: { paid: "Paid ✓", debt: "Debt", due_now: "Due on pickup", in_progress: "In progress", cancelled: "Cancelled" }, none: "No orders yet", since: "Customer since" }
+      : { orders: "عدد الطلبات", spent: "إجمالي المشتريات", paid: "إجمالي المدفوع", owed: "المستحق عليه الآن", debt: "دين آجل", due: "يُدفع عند الاستلام", prog: "قيد التنفيذ", prepaid: "رصيد مقدّم",
+          th: ["الطلب", "التاريخ", "الحالة", "الإجمالي", "المدفوع", "المتبقي", ""], view: "عرض", settle: "💵 تحصيل دفعة", stmt: "كشف الحساب", wa: "تذكير واتساب", neworder: "+ طلب جديد",
+          st: { paid: "مدفوع ✓", debt: "دين", due_now: "يُدفع عند الاستلام", in_progress: "قيد التنفيذ", cancelled: "ملغي" }, none: "لا توجد طلبات بعد", since: "عميل منذ" };
+    const stColor = { paid: "var(--success)", debt: "var(--danger)", due_now: "var(--warning)", in_progress: "var(--muted)", cancelled: "var(--muted)" };
+    const card = (label, value, color) => `<div class="metric-card"><div class="metric-top"><span>${label}</span></div><div class="metric-value"${color ? ` style="color:${color}"` : ""}>${value}</div></div>`;
+    const rowsHtml = cs.rows.map((r) => `<div class="cp-order"${r.state === "cancelled" ? ' style="opacity:.55"' : ""}>
+        <div class="cp-order-top"><strong>#${r.order.number}</strong><span style="color:${stColor[r.state]}">${L.st[r.state]}</span><small class="inv-muted">${fmtDT(r.order.createdAt)}</small></div>
+        <div class="cp-order-nums">
+          <span>${L.th[3]}<b>${money(r.total)}</b></span>
+          <span>${L.th[4]}<b style="color:var(--success)">${r.state === "cancelled" ? "—" : money(r.paid)}</b></span>
+          <span>${L.th[5]}<b style="color:${r.remaining > 0 ? "var(--danger)" : "inherit"}">${r.state === "cancelled" ? "—" : money(r.remaining)}</b></span>
+          <button class="mini-btn" type="button" data-cp-view="${r.order.id}">${L.view}</button>
+        </div></div>`).join("");
+    document.getElementById("customerProfileContent").innerHTML = `
+      <div class="modal-header">
+        <div><h3>📋 ${esc(c.name)}</h3><p><span dir="ltr">${esc(c.phone || "")}</span>${c.area ? " · " + esc(c.area) : ""}${c.address ? " · " + esc(c.address) : ""}${c.createdAt ? ` · ${L.since} ${fmtDT(c.createdAt)}` : ""}</p>${c.notes ? `<p class="inv-muted">📝 ${esc(c.notes)}</p>` : ""}</div>
+        <button class="icon-btn" type="button" id="closeCustomerProfile">✕</button>
+      </div>
+      <div style="padding:0 20px 20px">
+        <div class="metrics-grid metrics-grid-compact cp-metrics">
+          ${card(L.owed, money(cs.totalOwed), cs.totalOwed > 0 ? "var(--danger)" : "var(--success)")}
+          ${card(L.debt, money(cs.debt), cs.debt > 0 ? "var(--danger)" : "")}
+          ${card(L.due, money(cs.dueNow), cs.dueNow > 0 ? "var(--warning)" : "")}
+          ${card(L.prog, money(cs.inProgress))}
+          ${card(L.orders, cs.ordersCount)}
+          ${card(L.spent, money(cs.totalSpent))}
+          ${card(L.paid, money(cs.totalPaid), "var(--success)")}
+          ${cs.prepaid > 0 ? card(L.prepaid, money(cs.prepaid), "var(--success)") : ""}
+        </div>
+        <div class="row-actions" style="margin:14px 0;flex-wrap:wrap">
+          <button class="primary-btn" type="button" id="cpNewOrder">${L.neworder}</button>
+          ${cs.debt > 0 && can("balance_tx") ? `<button class="secondary-btn" type="button" id="cpSettle">${L.settle}</button>` : ""}
+          ${cs.totalOwed > 0 ? `<button class="whatsapp-btn" type="button" id="cpRemind">${L.wa}</button>` : ""}
+          <button class="ghost-btn" type="button" id="cpStatement">${L.stmt}</button>
+        </div>
+        <div class="cp-orders">${rowsHtml || `<div class="empty-state compact">${L.none}</div>`}</div>
+      </div>`;
+    const q = (id) => document.getElementById(id);
+    q("closeCustomerProfile").onclick = () => customerProfileDialog.close();
+    q("cpNewOrder").onclick = () => { customerProfileDialog.close(); openPage("new-order"); selectCustomerForOrder(c, true); };
+    if (q("cpSettle")) q("cpSettle").onclick = () => balTxForm({ custId: c.id, type: "credit", amount: cs.debt, note: "" });
+    if (q("cpRemind")) q("cpRemind").onclick = () => {
+      const lines = cs.rows.filter((r) => r.remaining > 0 && r.state !== "in_progress").map((r) => `• #${r.order.number}: ${money(r.remaining)}`).join("\n");
+      openWhatsApp(c.phone, `${t("wa_greeting", c.name)}\n${en ? "Amount due at 997 Laundry" : "المبلغ المستحق لدى مغسلة 997"}: ${money(cs.totalOwed)}\n${lines}\n\n${en ? "Thank you" : "شكراً لكم"}`);
+      logActivity(`تذكير واتساب بالمستحق — ${c.name} — ${money(cs.totalOwed)}`);
+    };
+    q("cpStatement").onclick = () => { customerProfileDialog.close(); bv.stmt = c.id; openPage("balances"); };
+    document.querySelectorAll("#customerProfileContent [data-cp-view]").forEach((b) => b.addEventListener("click", () => openOrderDialog(b.dataset.cpView)));
+  }
+  // تحديث ملف العميل تلقائياً بعد أي دفع/تسليم/سداد يتم من فوقه
+  ["orderDialog", "quickFormDialog"].forEach((id) => document.getElementById(id).addEventListener("close", () => { if (customerProfileDialog.open) setTimeout(renderCustomerProfile, 150); }));
+  window.openCustomerProfile997 = openCustomerProfile;
 
   document.getElementById("addCustomerBtn").addEventListener("click", () => {
     pendingCustomerContext = "standalone";

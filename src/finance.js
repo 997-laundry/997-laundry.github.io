@@ -205,5 +205,40 @@
     return out;
   }
 
-  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts };
+  // ملف العميل: كل طلباته مع المدفوع والمتبقي لكل طلب، وملخص ما عليه الآن
+  function customerSummary(customer, orders) {
+    const mine = (orders || []).filter((o) => o.customerId === customer.id)
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    const owedNow = allocateDebts([customer], mine);
+    const rows = mine.map((o) => {
+      const total = r3(pay(o).total);
+      let paid = 0, remaining = 0, state = "paid";
+      if (o.status === "cancelled") state = "cancelled";
+      else if (o.paymentConfirmed === false || (o.status === "received" && !o.paymentConfirmed)) {
+        remaining = total;
+        state = o.status === "ready" ? "due_now" : "in_progress";
+      } else {
+        remaining = o.debtRecorded ? r3(owedNow[o.id] || 0) : 0;
+        paid = r3(total - remaining);
+        if (remaining > 0) state = "debt";
+      }
+      return { order: o, total, paid, remaining, state };
+    });
+    const sum = (f) => r3(rows.reduce((a, r) => a + f(r), 0));
+    const balance = r3(customer.balance);
+    const debt = r3(Math.max(0, -balance));
+    const dueNow = sum((r) => (r.state === "due_now" ? r.remaining : 0));
+    return {
+      rows,
+      ordersCount: rows.filter((r) => r.state !== "cancelled").length,
+      totalSpent: sum((r) => (r.state === "paid" || r.state === "debt" ? r.total : 0)),
+      totalPaid: sum((r) => r.paid),
+      debt, prepaid: r3(Math.max(0, balance)),
+      dueNow,
+      inProgress: sum((r) => (r.state === "in_progress" ? r.remaining : 0)),
+      totalOwed: r3(debt + dueNow),
+    };
+  }
+
+  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, customerSummary };
 });
