@@ -375,3 +375,13 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
 .cp-pkg summary{cursor:pointer;color:var(--primary-dark);font-weight:700}
 .cp-pkg-use{display:flex;gap:10px;align-items:center;padding:3px 0}
 .cp-pkg-use b{margin-inline-start:auto;color:var(--danger)}
+/* اختيار متعدد (أصناف الباقة) داخل النموذج السريع */
+.qf-checks{display:flex;flex-direction:column;gap:8px}
+.qf-checks-label{font-size:13px;font-weight:700;color:#56656e}
+.qf-checks-tools{display:flex;flex-wrap:wrap;gap:6px}
+.qf-checks-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;max-height:260px;overflow:auto;padding:8px;border:1px solid var(--border);border-radius:12px;background:var(--panel-soft)}
+.qf-check{display:flex;align-items:center;gap:6px;font-size:13px;padding:4px 6px;border-radius:8px;background:#fff;cursor:pointer}
+.qf-check input{width:16px;height:16px;flex:none}
+.cp-pkg-garments{font-size:12px;color:var(--muted);margin-top:4px}
+#quickFormFields .qf-check{flex-direction:row;align-items:center;justify-content:flex-start;gap:8px;margin:0}
+#quickFormFields .qf-check span{margin:0;font-weight:600;color:var(--text)}

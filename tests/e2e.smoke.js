@@ -215,6 +215,30 @@ function check(name, cond, detail) {
   check("customer file shows package used 2 / left 0", /المستهلك ?2/.test(pkText) && /المتبقي ?0/.test(pkText) && !/لا يطابق/.test(pkText), pkText.slice(0, 200));
   await page.click("#closeCustomerProfile");
 
+  // 6h) Package restricted to cotton thobes only: thobe from package, shirt charged normally
+  await page.click('.nav-item[data-page="settings"]');
+  await page.click('[data-settings-tab="packages"]');
+  await page.click("#addPackageDefBtn");
+  await page.fill("#qf_name", "Thobes 10");
+  await page.selectOption("#qf_serviceType", "washiron");
+  await page.fill("#qf_pieceCount", "10");
+  await page.fill("#qf_price", "2.5");
+  await page.click('#qf_garments [data-qf-group="__none"]');
+  await page.check('#qf_garments input[value="thob_cotton"]');
+  await quickSubmit();
+  await newOrder("Huda", "33778899", []);
+  await page.click("#posCancelBtn");
+  await page.click('.nav-item[data-page="customers"]');
+  await page.fill("#customerSearch", "Huda");
+  await page.click("#customersBody tr:first-child [data-sell-package]");
+  await page.selectOption("#qf_defId", await page.$eval("#qf_defId", (sel) => [...sel.options].find((o) => o.text.includes("Thobes 10")).value));
+  await quickSubmit();
+  await newOrder("Huda", "33778899", ["thob_cotton", "shirt"]);
+  const hz = await page.evaluate(() => ({ cps: JSON.parse(localStorage.getItem("l997_customer_packages")), o: JSON.parse(localStorage.getItem("l997_orders"))[0] }));
+  const thob = hz.o.items.find((i) => i.clothingId === "thob_cotton"), shirt = hz.o.items.find((i) => i.clothingId === "shirt");
+  const hPkg = hz.cps.find((c) => c.name === "Thobes 10");
+  check("thobe-only package: thobe from package, shirt charged 0.200", !!thob.fromPackageId && !shirt.fromPackageId && hz.o.payment.total === 0.2 && hPkg.remainingPieces === 9 && hPkg.garments.join() === "thob_cotton", JSON.stringify([thob.fromPackageId, shirt.fromPackageId, hz.o.payment.total, hPkg.remainingPieces, hPkg.garments]));
+
   // 7) Language persists across reload
   await page.selectOption("#langSelectTop", "en");
   await page.reload();

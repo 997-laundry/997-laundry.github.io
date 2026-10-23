@@ -2517,7 +2517,7 @@
   function updateQuickAddPackageNotice() {
     const notice = document.getElementById("quickAddPackageNotice");
     if (!draftCustomerId || !quickAddServiceId) { notice.innerHTML = ""; quickAddUsePackage = false; return; }
-    const match = activePackagesForCustomer(draftCustomerId).find((cp) => cp.serviceType === quickAddServiceId);
+    const match = activePackagesForCustomer(draftCustomerId).find((cp) => pkgCovers(cp, quickAddClothingId, quickAddServiceId) && pkgLeftInDraft(cp) > 0);
     if (!match) { notice.innerHTML = ""; quickAddUsePackage = false; return; }
     quickAddUsePackage = true;
     notice.innerHTML = `<label class="package-notice"><input type="checkbox" id="quickAddPackageCheckbox" checked />
@@ -2532,7 +2532,16 @@
   // باقة العميل المناسبة لهذا الصنف: خدمة الباقة متاحة له ولا تزال فيها قطع
   function packageForGarment(clothingId) {
     if (!draftCustomerId) return null;
-    return activePackagesForCustomer(draftCustomerId).find((cp) => priceFor(clothingId, cp.serviceType) > 0 && pkgLeftInDraft(cp) > 0) || null;
+    return activePackagesForCustomer(draftCustomerId).find((cp) => priceFor(clothingId, cp.serviceType) > 0 && pkgCovers(cp, clothingId, cp.serviceType) && pkgLeftInDraft(cp) > 0) || null;
+  }
+  // هل تغطي الباقة هذا الصنف وهذه الخدمة؟ (قائمة ملابس فارغة = كل الأصناف)
+  function pkgCovers(cp, clothingId, serviceId) {
+    return cp.serviceType === serviceId && (!Array.isArray(cp.garments) || cp.garments.length === 0 || cp.garments.includes(clothingId));
+  }
+  function garmentsLabel(list, max) {
+    if (!Array.isArray(list) || list.length === 0) return lang === "en" ? "All garments" : "كل الأصناف";
+    const names = list.map(clothingName);
+    return max && names.length > max ? names.slice(0, max).join("، ") + ` (+${names.length - max})` : names.join("، ");
   }
   function defaultServiceFor(clothingId) {
     if (priceFor(clothingId, "washiron") > 0) return "washiron";
@@ -2545,7 +2554,7 @@
     const svc = pkgFirst ? pkgFirst.serviceType : defaultServiceFor(clothingId);
     if (!svc) { toast("لا توجد خدمة متاحة لهذا الصنف"); return; }
     // تحقق أولاً من وجود باقة نشطة للعميل تغطي هذه الخدمة تحديداً — قبل تحصيل السعر الكامل
-    const activePkg = draftCustomerId ? activePackagesForCustomer(draftCustomerId).find((cp) => cp.serviceType === svc) : null;
+    const activePkg = draftCustomerId ? activePackagesForCustomer(draftCustomerId).find((cp) => pkgCovers(cp, clothingId, svc) && pkgLeftInDraft(cp) > 0) : null;
     if (activePkg && pkgLeftInDraft(activePkg) > 0) {
       const existingPkgItem = draftItems.find((it) => it.clothingId === clothingId && it.serviceId === svc && it.fromPackageId === activePkg.id);
       if (existingPkgItem) existingPkgItem.qty += 1;
@@ -2610,7 +2619,7 @@
     const note = document.getElementById("quickAddNote").value.trim();
     let usedPackage = null;
     if (quickAddUsePackage) {
-      usedPackage = activePackagesForCustomer(draftCustomerId).find((cp) => cp.serviceType === quickAddServiceId);
+      usedPackage = activePackagesForCustomer(draftCustomerId).find((cp) => pkgCovers(cp, quickAddClothingId, quickAddServiceId) && pkgLeftInDraft(cp) > 0);
     }
     const left = usedPackage ? Math.max(0, pkgLeftInDraft(usedPackage)) : 0;
     const fromPkg = Math.min(left, quickQty), paidQty = quickQty - fromPkg;
@@ -2867,6 +2876,8 @@
     // حماية الباقات: لا يُسمح باستهلاك أكثر من المتبقي، ولا باستخدام باقة عميل آخر (مثلاً طلب معلّق قديم)
     const pkgUse = {};
     draftItems.forEach((it) => { if (it.fromPackageId) pkgUse[it.fromPackageId] = (pkgUse[it.fromPackageId] || 0) + it.qty; });
+    const uncovered = draftItems.find((it) => { if (!it.fromPackageId) return false; const cp = customerPackages.find((p) => p.id === it.fromPackageId); return cp && !pkgCovers(cp, it.clothingId, it.serviceId); });
+    if (uncovered) { toast(`«${clothingName(uncovered.clothingId)}» غير مشمول بباقة «${uncovered.packageName || ""}» — احذفه من السلة وأضفه بالسعر العادي`); return null; }
     for (const [pid, qty] of Object.entries(pkgUse)) {
       const cp = customerPackages.find((p) => p.id === pid);
       if (!cp || cp.customerId !== draftCustomerId) { toast("قطع من باقة لا تخص هذا العميل — احذفها من السلة وأضفها من جديد"); return null; }
@@ -3130,11 +3141,23 @@
       if (f.type === "select") {
         return `<label><span>${esc(f.label)}</span><select id="${id}">${f.options.map((o) => `<option value="${esc(o.value)}" ${o.value === f.value ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select></label>`;
       }
+      if (f.type === "checks") {
+        const sel = new Set(f.value || []);
+        return `<div class="qf-checks" id="${id}"><span class="qf-checks-label">${esc(f.label)}</span>
+          ${f.groups ? `<div class="qf-checks-tools">${f.groups.map((g) => `<button type="button" class="mini-btn" data-qf-group="${esc(g.value)}">${esc(g.label)}</button>`).join("")}<button type="button" class="mini-btn" data-qf-group="__all">${lang === "en" ? "All" : "الكل"}</button><button type="button" class="mini-btn" data-qf-group="__none">${lang === "en" ? "None" : "إلغاء الكل"}</button></div>` : ""}
+          <div class="qf-checks-grid">${f.options.map((o) => `<label class="qf-check"><input type="checkbox" value="${esc(o.value)}" data-group="${esc(o.group || "")}" ${sel.has(o.value) ? "checked" : ""}><span>${esc(o.label)}</span></label>`).join("")}</div></div>`;
+      }
       if (f.type === "textarea") {
         return `<label><span>${esc(f.label)}</span><textarea id="${id}" rows="2" placeholder="${esc(f.placeholder)}">${esc(f.value)}</textarea></label>`;
       }
       return `<label><span>${esc(f.label)}</span><input id="${id}" type="${f.type === "number" ? "text" : (f.type || "text")}" ${f.type === "number" ? 'inputmode="decimal" autocomplete="off"' : ""} ${f.step ? `step="${esc(f.step)}"` : ""} ${f.min !== undefined ? `min="${esc(f.min)}"` : ""} value="${esc(f.value ?? "")}" placeholder="${esc(f.placeholder)}" /></label>`;
     }).join("");
+    wrap.querySelectorAll("[data-qf-group]").forEach((b) => b.addEventListener("click", () => {
+      const g = b.dataset.qfGroup, boxes = b.closest(".qf-checks").querySelectorAll("input[type=checkbox]");
+      if (g === "__none") boxes.forEach((x) => { x.checked = false; });
+      else if (g === "__all") boxes.forEach((x) => { x.checked = true; });
+      else { const grp = [...boxes].filter((x) => x.dataset.group === g); const allOn = grp.every((x) => x.checked); grp.forEach((x) => { x.checked = !allOn; }); }
+    }));
 
     const submitBtn = document.getElementById("quickFormSubmitBtn");
     const cancelBtn = document.getElementById("quickFormCancelBtn");
@@ -3144,7 +3167,8 @@
       const values = {};
       fields.forEach((f) => {
         const el = document.getElementById(`qf_${f.id}`);
-        values[f.id] = f.type === "number" ? (Number(normDigits(el.value)) || 0) : el.value.trim();
+        values[f.id] = f.type === "checks" ? [...el.querySelectorAll("input:checked")].map((x) => x.value)
+          : f.type === "number" ? (Number(normDigits(el.value)) || 0) : el.value.trim();
       });
       const result = onSubmit(values);
       if (result === false) return; // فشل التحقق من الصحة — تبقى النافذة مفتوحة ليصحّح المستخدم الإدخال
@@ -3805,6 +3829,7 @@
       const pct = u.total ? Math.round((u.used / u.total) * 100) : 0;
       return `<div class="cp-pkg${u.finished ? " done" : ""}">
         <div class="cp-pkg-top"><strong>${esc(u.pkg.name)}</strong><span>${serviceName(u.pkg.serviceType)}</span><small class="inv-muted">${en ? "Bought" : "شراء"} ${fmtDT(u.pkg.purchasedAt)} · ${money(u.pkg.price)}</small></div>
+        <div class="cp-pkg-garments">👕 ${esc(garmentsLabel(u.pkg.garments, 8))}</div>
         <div class="cp-pkg-bar"><div style="width:${pct}%"></div></div>
         <div class="cp-pkg-nums"><span>${en ? "Total" : "الإجمالي"} <b>${u.total}</b></span><span>${en ? "Used" : "المستهلك"} <b>${u.used}</b></span><span>${en ? "Left" : "المتبقي"} <b style="color:${u.finished ? "var(--muted)" : "var(--success)"}">${u.remaining}${u.finished ? (en ? " (finished)" : " (منتهية)") : ""}</b></span></div>
         ${u.consistent ? "" : `<div class="cp-pkg-warn">⚠ ${en ? `Stored balance (${u.stored}) differs from order history (${u.remaining})` : `الرصيد المحفوظ (${u.stored}) لا يطابق سجل الطلبات (${u.remaining})`}${can("admin_settings") ? ` <button class="mini-btn" type="button" data-pkg-fix="${u.pkg.id}">${en ? "Fix" : "تصحيح"}</button>` : ""}</div>`}
@@ -4409,42 +4434,68 @@
       return;
     }
     body.innerHTML = settings.packageDefs.map((p) => `<tr>
-      <td><strong>${esc(p.name)}</strong></td><td>${serviceName(p.serviceType)}</td><td>${p.pieceCount}</td>
+      <td><strong>${esc(p.name)}</strong><div class="pos-cart-row-sub">👕 ${esc(garmentsLabel(p.garments, 6))}</div></td><td>${serviceName(p.serviceType)}</td><td>${p.pieceCount}</td>
       <td>${money(p.price)}</td><td>${esc(p.bonus) || "—"}</td>
-      <td><button class="mini-btn danger-mini" data-del-package="${p.id}">حذف</button></td>
+      <td class="row-actions"><button class="mini-btn" data-edit-package="${p.id}">تعديل</button><button class="mini-btn danger-mini" data-del-package="${p.id}">حذف</button></td>
     </tr>`).join("");
     body.querySelectorAll("[data-del-package]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        settings.packageDefs = settings.packageDefs.filter((p) => p.id !== btn.dataset.delPackage);
-        persistAll();
-        renderPackageDefs();
-        toast("تم حذف الباقة");
+        const def = settings.packageDefs.find((p) => p.id === btn.dataset.delPackage);
+        confirmAction(`حذف تعريف الباقة «${def ? def.name : ""}»؟ الباقات المباعة للعملاء تبقى كما هي.`, () => {
+          settings.packageDefs = settings.packageDefs.filter((p) => p.id !== btn.dataset.delPackage);
+          logActivity(`حذف تعريف باقة: ${def ? def.name : ""}`);
+          persistAll();
+          renderPackageDefs();
+          toast("تم حذف الباقة");
+        });
       });
     });
+    body.querySelectorAll("[data-edit-package]").forEach((btn) => btn.addEventListener("click", () => openPackageDefForm(settings.packageDefs.find((p) => p.id === btn.dataset.editPackage))));
   }
 
-  document.getElementById("addPackageDefBtn").addEventListener("click", () => {
+  // نموذج تعريف/تعديل باقة — مع اختيار الملابس المشمولة
+  function openPackageDefForm(existing) {
+    const all = allGarments();
+    const selected = existing && Array.isArray(existing.garments) && existing.garments.length ? existing.garments : all.map((g) => g.id);
+    const soldActive = existing ? customerPackages.filter((cp) => cp.defId === existing.id && cp.remainingPieces > 0).length : 0;
+    const fields = [
+      { id: "name", label: "اسم الباقة", type: "text", value: existing ? existing.name : "", placeholder: "مثال: باقة كوي ثياب 30 قطعة" },
+      { id: "serviceType", label: "نوع الخدمة", type: "select", value: existing ? existing.serviceType : "washiron", options: SERVICES_DEFAULT.map((s2) => ({ value: s2.id, label: t(s2.key) })) },
+      { id: "pieceCount", label: "عدد القطع", type: "number", value: existing ? existing.pieceCount : 50, min: 1 },
+      { id: "price", label: "سعر الباقة الكامل (د.ب)", type: "number", step: "0.001", value: existing ? existing.price : 0, min: 0 },
+      { id: "bonus", label: "هدية مجانية (اختياري)", type: "text", value: existing ? existing.bonus || "" : "", placeholder: "مثال: عباءة مجانية" },
+      { id: "garments", label: "👕 الملابس المشمولة بالباقة — اختر الأصناف (أو اضغط فئة لتحديدها كلها)", type: "checks", value: selected,
+        options: all.map((g) => ({ value: g.id, label: clothingName(g.id), group: g.cat || "" })),
+        groups: [{ value: "men", label: "رجالي" }, { value: "women", label: "نسائي" }, { value: "home", label: "مفروشات" }] },
+    ];
+    if (soldActive) fields.push({ id: "apply", label: `تطبيق الملابس المختارة على ${soldActive} باقة مباعة نشطة؟`, type: "select", value: "no", options: [{ value: "no", label: "لا — للمبيعات الجديدة فقط" }, { value: "yes", label: "نعم — طبّقها على الباقات المباعة أيضاً" }] });
     openQuickForm({
-      title: "باقة جديدة", sub: "عرّف باقة مسبقة الدفع بعدد قطع وسعر ثابت",
-      fields: [
-        { id: "name", label: "اسم الباقة", type: "text", placeholder: "مثال: باقة كوي 50 قطعة" },
-        { id: "serviceType", label: "نوع الخدمة", type: "select", value: "washiron", options: SERVICES_DEFAULT.map((s) => ({ value: s.id, label: t(s.key) })) },
-        { id: "pieceCount", label: "عدد القطع", type: "number", value: 50, min: 1 },
-        { id: "price", label: "سعر الباقة الكامل (د.ب)", type: "number", step: "0.001", value: 0, min: 0 },
-        { id: "bonus", label: "هدية مجانية (اختياري)", type: "text", placeholder: "مثال: عباءة مجانية" },
-      ],
+      title: existing ? `تعديل باقة «${existing.name}»` : "باقة جديدة", sub: "باقة مسبقة الدفع: عدد قطع بسعر ثابت لخدمة محددة وأصناف ملابس محددة",
+      fields, submitLabel: "حفظ الباقة",
       onSubmit: (v) => {
         if (!v.name) { toast("أدخل اسم الباقة"); return false; }
-        if (!(v.pieceCount > 0)) { toast("أدخل عدد قطع صحيح"); return false; }
-        if (!(v.price > 0)) { toast(t("toast_valid_amount")); return; }
-        settings.packageDefs.push({ id: uid(), name: v.name, serviceType: v.serviceType, pieceCount: v.pieceCount, price: v.price, bonus: v.bonus });
+        if (!(v.pieceCount > 0) || !Number.isInteger(v.pieceCount)) { toast("أدخل عدد قطع صحيح"); return false; }
+        if (!(v.price > 0)) { toast(t("toast_valid_amount")); return false; }
+        if (!v.garments.length) { toast("اختر صنف ملابس واحد على الأقل"); return false; }
+        const covered = v.garments.filter((id) => priceFor(id, v.serviceType) > 0);
+        if (!covered.length) { toast("لا يوجد صنف مختار له سعر لهذه الخدمة — غيّر الخدمة أو الأصناف"); return false; }
+        const garments = v.garments.length === all.length ? [] : v.garments; // الكل = بدون تقييد
+        const data = { name: v.name, serviceType: v.serviceType, pieceCount: v.pieceCount, price: round3(v.price), bonus: v.bonus, garments };
+        if (existing) {
+          Object.assign(existing, data);
+          if (v.apply === "yes") customerPackages.filter((cp) => cp.defId === existing.id && cp.remainingPieces > 0).forEach((cp) => { cp.garments = [...garments]; });
+          logActivity(`تعديل باقة: ${v.name} — الأصناف: ${garmentsLabel(garments, 8)}${v.apply === "yes" ? " — طُبّق على الباقات المباعة" : ""}`);
+        } else {
+          settings.packageDefs.push({ id: uid(), ...data });
+          logActivity(`إضافة باقة جديدة: ${v.name} — الأصناف: ${garmentsLabel(garments, 8)}`);
+        }
         persistAll();
         renderPackageDefs();
-        logActivity(`إضافة باقة جديدة: ${v.name}`);
         toast("تم حفظ الباقة");
       },
     });
-  });
+  }
+  document.getElementById("addPackageDefBtn").addEventListener("click", () => openPackageDefForm(null));
 
   /* --------------------------- باقات العملاء (شراء واستخدام) --------------------------- */
   function activePackagesForCustomer(customerId) {
@@ -4458,7 +4509,7 @@
     openQuickForm({
       title: `بيع باقة لـ ${cust.name}`, sub: "اختر الباقة وطريقة التحصيل",
       fields: [
-        { id: "defId", label: "الباقة", type: "select", options: settings.packageDefs.map((p) => ({ value: p.id, label: `${p.name} — ${p.pieceCount} قطعة — ${money(p.price)}` })) },
+        { id: "defId", label: "الباقة", type: "select", options: settings.packageDefs.map((p) => ({ value: p.id, label: `${p.name} — ${p.pieceCount} قطعة — ${money(p.price)} — ${garmentsLabel(p.garments, 3)}` })) },
         { id: "method", label: "طريقة التحصيل", type: "select", value: "cash", options: [
           { value: "cash", label: "نقداً" }, { value: "card", label: "بطاقة" },
           { value: "benefitpay", label: "Benefit Pay" }, { value: "bank_transfer", label: "تحويل بنكي" },
@@ -4468,7 +4519,7 @@
         const def = settings.packageDefs.find((p) => p.id === v.defId);
         if (!def) return;
         const now = new Date().toISOString();
-        const cp = { id: uid(), customerId, defId: def.id, name: def.name, serviceType: def.serviceType, totalPieces: def.pieceCount, remainingPieces: def.pieceCount, price: def.price, purchasedAt: now };
+        const cp = { id: uid(), customerId, defId: def.id, name: def.name, serviceType: def.serviceType, garments: Array.isArray(def.garments) ? [...def.garments] : [], totalPieces: def.pieceCount, remainingPieces: def.pieceCount, price: def.price, purchasedAt: now };
         customerPackages.unshift(cp);
         ledger.unshift({ id: uid(), customerId, type: "package_purchase", amount: 0, price: round3(def.price), packageId: cp.id, balanceAfter: cust.balance, method: v.method, note: `شراء باقة: ${def.name} — ${money(def.price)}`, orderId: null, at: now });
         persistAll();
