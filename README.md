@@ -17,6 +17,10 @@ Data is saved inside that browser on that device — **export a backup weekly** 
 | `src/index.html`, `src/styles.css` | Page structure and design |
 | `src/finance.js` | **Single source of truth for all money figures** (sales, cash collected, debts, profit, cash drawer) |
 | `src/app.js` | Everything else: orders, customers, balances, inventory, staff, permissions, audit |
+| `src/cloud.js` | Optional cloud sync with Supabase (inactive until the owner links the system) |
+| `supabase/setup.sql` | Cloud database: tables, server-side role rules (RLS), change history. Run once in Supabase SQL Editor (safe to re-run) |
+| `supabase/reset_test_data.sql` | Wipes all cloud data + accounts (after testing only) |
+| `tests/supabase-standin.js` | Local stand-in for Supabase on a real PostgreSQL, used by `tests/e2e.cloud.js` |
 | `tools/build.js` | Merges `src/` into `laundry-997-full.html` |
 | `tests/finance.test.js` | Unit tests for every money rule |
 | `tests/e2e.smoke.js` | Drives the real app in a headless browser (order → payment → debt → refund → closure) |
@@ -31,6 +35,7 @@ npm test        # finance unit tests (Bahrain time zone)
 npm run lint    # catches undefined names / duplicate keys
 npm run e2e     # build + full browser test
 npm run check   # all of the above
+npm run check:cloud  # cloud: 59 database security checks + two-device sync test (needs local PostgreSQL)
 ```
 
 ## Financial definitions (used on every screen)

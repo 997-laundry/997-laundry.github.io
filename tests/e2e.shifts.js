@@ -55,7 +55,7 @@ function check(name, cond, detail) {
   // Cashier logs in → shift prompt → opening cash 10.000
   await closeDialogs(); await page.click("#logoutBtn");
   await loginForm("ali", tmp);
-  await page.waitForSelector("#au_pw"); await page.fill("#au_pw", W_PW); await page.fill("#au_pw2", W_PW); await page.click("#au_form button[type=submit]");
+  await page.waitForSelector("#au_pw2"); await page.waitForTimeout(150); await page.fill("#au_pw", W_PW); await page.fill("#au_pw2", W_PW); await page.click("#au_form button[type=submit]");
   await page.waitForSelector("body:not(.auth-locked)");
   await page.waitForSelector("#qf_opening");
   check("login asks the employee to start the shift (check-in)", /بدء الوردية/.test(await page.textContent("#quickFormTitle")));

@@ -430,3 +430,11 @@ body.auth-locked .top-logout{display:none!important}
 .pos-extra-toggle{background:var(--primary-soft, #e3f1f7);color:var(--text, inherit)}
 .pos-extra-toggle small{font-weight:500;opacity:.8}
 .auth-mem-warn{background:#c0392b;color:#fff;border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13px;line-height:1.7;text-align:start}
+/* لوحة السحابة */
+.cloud-list{margin:6px 0 10px;padding-inline-start:20px;line-height:1.9}
+.cloud-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:8px 0 12px}
+.cloud-stats>div{background:var(--primary-soft);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.cloud-stats span{font-size:12px;opacity:.75}
+.cloud-warn{background:var(--warning-soft);color:var(--text,inherit);border-radius:12px;padding:10px 12px;margin:8px 0;line-height:1.8}
+.cloud-warn summary{cursor:pointer;font-weight:700}
+.cloud-row{font-size:12px;opacity:.85;border-top:1px dashed rgba(0,0,0,.1);padding:4px 0}

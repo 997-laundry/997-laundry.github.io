@@ -95,10 +95,13 @@ function check(name, cond, detail) {
 
   // Accountant: cannot add employees or raise roles; can only edit salary/commission
   await login("sara", accTmp);
-  await page.waitForSelector("#au_pw");
+  await page.waitForSelector("#au_pw2"); await page.waitForTimeout(150); // let the change-password screen finish its auto-focus
   await page.fill("#au_pw", ACC_PW); await page.fill("#au_pw2", ACC_PW);
   await page.click("#au_form button[type=submit]");
-  await page.waitForSelector("body:not(.auth-locked)");
+  await page.waitForSelector("body:not(.auth-locked)", { timeout: 15000 }).catch(async (err) => {
+    console.log("DIAG login screen:", await page.evaluate(() => ({ error: document.getElementById("au_err")?.textContent, screen: document.getElementById("authCard")?.innerText.slice(0, 200), pw: document.getElementById("au_pw")?.value.length })));
+    throw err;
+  });
   // employees start their shift right after logging in (attendance + cash custody)
   await page.waitForSelector("#qf_opening"); await page.fill("#qf_opening", "0"); await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(300);
   await nav("employees");

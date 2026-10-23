@@ -111,6 +111,16 @@ function check(name, cond, detail) {
   const en = await page.evaluate(() => { const o2 = JSON.parse(localStorage.getItem("l997_orders"))[0]; return window.receiptText997(o2.id); });
   check("English receipt", /Receipt — Order/.test(en) && /Dry Clean/.test(en) && /Fully paid/.test(en), en.split("\n").slice(0, 3).join(" | "));
 
+  // Last-backup date is read correctly (it used to show "Invalid Date" and stop the 7-day backup reminder)
+  await page.selectOption("#langSelectTop", "ar").catch(() => {});
+  await page.waitForLoadState("load"); await page.waitForSelector("body:not(.auth-locked)");
+  await nav("profile");
+  await page.click("#exportBackupBtn").catch(() => {});
+  await page.waitForTimeout(300);
+  await nav("dashboard"); await nav("profile");
+  const note = await page.textContent("#lastBackupNote");
+  check("last backup date shown correctly after export", /آخر نسخة احتياطية/.test(note) && !/Invalid/.test(note), note);
+
   // Storage blocked (in-app browser / private mode): a clear warning instead of a silent "first-time setup"
   const ctx2 = await browser.newContext();
   const p2 = await ctx2.newPage();

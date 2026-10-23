@@ -2,6 +2,8 @@
 # Builds a throw-away local database, applies the cloud setup twice, runs the security test.
 # Needs a local PostgreSQL server (run as a user that can create databases, e.g. postgres).
 set -e
+# when started as root (e.g. via npm), re-run as the postgres user
+if [ "$(id -u)" = "0" ] && [ -z "$L997_AS_PG" ]; then exec su postgres -c "L997_AS_PG=1 sh '$0'"; fi
 DB=l997_cloud_test_$$
 DIR=$(cd "$(dirname "$0")" && pwd)
 createdb "$DB"

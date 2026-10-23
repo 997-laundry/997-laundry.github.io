@@ -880,8 +880,9 @@
   requestPersistentStorage();
   function checkBackupReminder() {
     try {
-      const lastAt = localStorage.getItem("l997_last_backup_at");
-      const lastCount = Number(localStorage.getItem("l997_last_backup_order_count")) || 0;
+      // التاريخ محفوظ كنص JSON (بين علامتي تنصيص) — قراءته بدون تحليل كانت تعطي «تاريخ غير صالح» فيتوقف تذكير الأيام السبعة
+      const lastAt = load("l997_last_backup_at", null);
+      const lastCount = Number(load("l997_last_backup_order_count", 0)) || 0;
       const daysSince = lastAt ? (Date.now() - new Date(lastAt).getTime()) / (1000 * 60 * 60 * 24) : Infinity;
       const ordersSince = orders.length - lastCount;
       const neverBackedUp = !lastAt;
@@ -1094,6 +1095,7 @@
   function saveBranches(b) { localStorage.setItem("l997_branches", JSON.stringify(b)); }
 
   function renderProfilePage() {
+    renderCloudPanel();
     const p = loadProfile();
     document.getElementById("profileNameEn").value = p.nameEn ?? "997 Laundry";
     document.getElementById("profileNameAr").value = p.nameAr ?? "مغسلة 997";
@@ -1108,7 +1110,7 @@
     document.getElementById("profileRetention").value = p.retention ?? "7 سنوات";
     const branches = loadBranches();
     document.getElementById("branchesBody").innerHTML = branches.map((b) => `<tr><td>${esc(b.name)}</td><td>${esc(b.status)}</td><td>${esc(b.hours)}</td></tr>`).join("");
-    const lastBackup = localStorage.getItem("l997_last_backup_at");
+    const lastBackup = load("l997_last_backup_at", null);
     document.getElementById("lastBackupNote").textContent = lastBackup
       ? `آخر نسخة احتياطية: ${fmtDT(lastBackup)}`
       : "⚠ لا توجد نسخة احتياطية مسجّلة بعد بهذا الجهاز — كل بياناتك محفوظة هنا فقط";
@@ -1147,6 +1149,7 @@
     const file = e.target.files[0];
     if (!file) return;
     if (!can("restore_backup")) { e.target.value = ""; denied(); return; }
+    if (cloudOn()) { e.target.value = ""; toast("لا يمكن استعادة نسخة احتياطية والجهاز مربوط بالسحابة — البيانات محفوظة في السحابة"); return; }
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -1307,6 +1310,7 @@
       if (turningOff && e.role === "owner" && activeOwners().length <= 1 && activeOwners().some((o) => o.id === e.id)) { toast("لا يمكن تعطيل آخر حساب مالك فعّال"); return; }
       e.active = !turningOff;
       persistEmps();
+      if (cloudOn() && e.cloudUserId) CLOUD.updateMember(e.cloudUserId, { active: e.active }).then((c) => { if (c.error) toast("تعذّر تحديث الحساب في السحابة: " + cloudErr(c.error)); });
       logActivity(`${e.active ? "تفعيل" : "تعطيل"} المستخدم: ${e.name} بواسطة ${me.name}`);
       renderAccessPage();
     }
@@ -1365,6 +1369,9 @@
           if (!hasLogin) delete rest.username;
           Object.assign(existing, rest);
           persistEmps();
+          if (cloudOn() && existing.cloudUserId && (oldRole !== v.role)) {
+            CLOUD.updateMember(existing.cloudUserId, { role: v.role, display_name: v.name }).then((c) => { if (c.error) toast("تعذّر تحديث الدور في السحابة: " + cloudErr(c.error)); });
+          }
           if (oldRole !== v.role) logActivity(`تغيير دور المستخدم ${v.name} من ${ACCESS_ROLE_AR[oldRole]} إلى ${ACCESS_ROLE_AR[v.role]} بواسطة ${me.name}`);
           logActivity(`تعديل بيانات المستخدم: ${v.name}`);
           toast("تم حفظ التعديلات");
@@ -1372,6 +1379,19 @@
         } else {
           if (wantsLogin) { const prob = pwProblem(v.password, { username: v.username }); if (prob) { toast(prob); return false; } }
           const { password, login: _l, ...rest } = v;
+          // مع السحابة: يُنشأ حساب الدخول في السحابة أولاً (يحتاج إنترنت)، ثم الموظف محلياً
+          if (wantsLogin && cloudOn()) {
+            return cloudStep(() => CLOUD.createStaff(v.username, password, v.role, v.name, null), (c) => {
+              const emp = window.L997Enterprise.addEmployee({ ...rest, cloudUserId: c.uid, employeeNumber: nextEmployeeNumber(), createdDate: todayStr() });
+              CLOUD.updateMember(c.uid, { employee_id: emp.id });
+              setPassword(emp, password, true);
+              logActivity(`إضافة مستخدم: ${v.name} (${emp.employeeNumber}) بدور ${ACCESS_ROLE_AR[v.role]} بواسطة ${me.name} — حساب سحابي`);
+              toast("تم إضافة الموظف مع حساب دخول (محلي + سحابي)");
+              showCredentials(emp, password, "تم إنشاء الحساب");
+              renderAccessPage();
+              if (typeof window.renderEmployees997 === "function") window.renderEmployees997();
+            });
+          }
           const emp = window.L997Enterprise.addEmployee({ ...rest, employeeNumber: nextEmployeeNumber(), createdDate: todayStr() });
           if (wantsLogin) {
             setPassword(emp, password, true);
@@ -1434,6 +1454,20 @@
         }
         const prob = pwProblem(v.password, { username: e.username || v.username });
         if (prob) { toast(prob); return false; }
+        // مع السحابة: كلمة المرور تُغيَّر في السحابة أولاً (وإن لم يكن له حساب سحابي بعد — يُنشأ الآن)
+        if (cloudOn()) {
+          const uname = e.username || v.username;
+          return cloudStep(() => (e.cloudUserId ? CLOUD.resetPassword(e.cloudUserId, v.password) : CLOUD.createStaff(uname, v.password, e.role, e.name, e.id)), (c) => {
+            if (c.uid) e.cloudUserId = c.uid;
+            if (!e.username) e.username = uname;
+            setPassword(e, v.password, true);
+            attClear("u:" + e.id);
+            logActivity(`إعادة تعيين كلمة مرور المستخدم: ${e.name} بواسطة ${me.name} (سحابي)`);
+            toast("تم تعيين كلمة المرور المؤقتة");
+            showCredentials(e, v.password);
+            renderAccessPage();
+          });
+        }
         if (!e.username) e.username = v.username;
         setPassword(e, v.password, true);
         attClear("u:" + e.id);
@@ -1843,7 +1877,8 @@
     if (changed) persistEmps();
     return changed;
   }
-  const needsSetup = () => !emps().some((e) => e.role === "owner" && e.passHash);
+  // جهاز مربوط بالسحابة لا يحتاج «إعداد أول» حتى لو لم يدخل المالك عليه (كلمات المرور لا تُنزَّل من السحابة)
+  const needsSetup = () => !cloudOn() && !emps().some((e) => e.role === "owner" && e.passHash);
 
   /* ---------- محاولات الدخول والقفل المؤقت ---------- */
   function attGet() { try { return JSON.parse(localStorage.getItem("l997_attempts") || "{}") || {}; } catch (e) { return {}; } }
@@ -1938,6 +1973,7 @@
     startIdle();
     currentPage = "dashboard";
     renderCurrentPage();
+    if (CLOUD) CLOUD.setUser(cloudOn() ? emp : null);
     document.getElementById("sidebar")?.classList.remove("open");
     // المالك الذي لا يملك رمز استرداد (نظام مُرحَّل من نسخة قديمة) يُطلب منه إنشاؤه فوراً
     if (role === "owner" && !sec.recoveryHash) setTimeout(() => issueRecovery("rec_title", () => hideAuth()), 400);
@@ -1950,6 +1986,7 @@
       logActivity(reason === "idle" ? `خروج تلقائي لعدم النشاط — ${nm}` : reason === "revoked" ? `إنهاء جلسة (تغيّر الحساب أو عُطّل) — ${nm}` : `تسجيل خروج — ${nm}`);
     }
     stopIdle();
+    if (CLOUD) CLOUD.setUser(null);
     document.querySelectorAll("dialog[open]").forEach((d) => { try { d.close(); } catch (e) { /* تجاهل */ } });
     sessClear();
     me = null; pendingUser = null; role = "worker";
@@ -2077,7 +2114,13 @@
         ${pwField("au_pw", AX("f_newpass"), "new-password")}${pwField("au_pw2", AX("f_newpass2"), "new-password")}
         <div class="auth-hint" style="margin:-6px 0 8px">${esc(AX("pw_rules", sec.minLen))}</div>
         <div class="auth-err" id="au_err" role="alert"></div><button type="submit" class="primary-btn full">${esc(AX("btn_setup"))}</button></form>
-        <div class="auth-links"><button type="button" class="link-btn" id="au_restore">${esc(AX("restore_link"))}</button><input type="file" id="au_restore_file" accept=".json" style="display:none"></div>`;
+        <div class="auth-links"><button type="button" class="link-btn" id="au_restore">${esc(AX("restore_link"))}</button><input type="file" id="au_restore_file" accept=".json" style="display:none"></div>
+        ${CLOUD ? `<div class="auth-links"><button type="button" class="link-btn" id="au_cloud_join">☁ ${lang === "en" ? "I have an account in the cloud — download the shop's data to this device" : "لدي حساب في السحابة — تنزيل بيانات المحل لهذا الجهاز"}</button></div>` : ""}`;
+    } else if (authView === "cloudJoin") {
+      html += `<h2>☁ ${lang === "en" ? "Sign in from the cloud" : "الدخول من السحابة"}</h2><p class="auth-sub">${lang === "en" ? "Your shop's data will be downloaded to this device. Use the username and password you use in the system." : "ستُنزَّل بيانات المحل كاملة لهذا الجهاز. استخدم اسم الدخول وكلمة المرور التي تستخدمها في النظام."}</p>
+        <form id="au_form" novalidate>${txtField("au_user", AX("f_user"), "username")}${pwField("au_pass", AX("f_pass"), "current-password")}
+        <div class="auth-err" id="au_err" role="alert"></div><button type="submit" class="primary-btn full">☁ ${lang === "en" ? "Sign in and download" : "دخول وتنزيل البيانات"}</button></form>
+        <div class="auth-links"><button type="button" class="link-btn" id="au_back">${esc(AX("back_login"))}</button></div>`;
     } else if (authView === "forgot") {
       html += `<h2>${esc(AX("forgot_title"))}</h2><p class="auth-sub">${esc(AX("forgot_sub"))}</p>
         <form id="au_form" novalidate>${txtField("au_user", AX("f_user"), "username")}${txtField("au_code", AX("f_code"), "off", 'style="text-transform:uppercase;letter-spacing:1px"')}
@@ -2122,8 +2165,10 @@
     if (authView === "setup") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitSetup(); });
     if (authView === "forgot") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitForgot(); });
     if (authView === "mustChange") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitMustChange(); });
+    if (authView === "cloudJoin") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitCloudJoin(); });
+    $a("au_cloud_join")?.addEventListener("click", () => showAuth("cloudJoin"));
     if (authView === "setup") {
-      $a("au_restore").addEventListener("click", () => $a("au_restore_file").click());
+      $a("au_restore").addEventListener("click", () => { if (cloudOn()) { setErr("الجهاز مربوط بالسحابة — استخدم «الدخول من السحابة»"); return; } $a("au_restore_file").click(); });
       $a("au_restore_file").addEventListener("change", (ev) => { const f = ev.target.files[0]; if (f) restoreBackupFile(f); });
     }
     if (authView === "recovery") {
@@ -2142,6 +2187,45 @@
     }
   }
   function selectCode() { try { const r = document.createRange(); r.selectNodeContents($a("au_code_box")); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); } catch (e) { /* تجاهل */ } }
+
+  /* ---------- السحابة (Supabase) — تعمل فقط بعد أن يربط المالك النظام بالسحابة ---------- */
+  const CLOUD = window.L997Cloud || null;
+  const cloudOn = () => !!(CLOUD && CLOUD.isLinked());
+  const CLOUD_ERR = {
+    offline: "لا يوجد اتصال بالإنترنت — هذه العملية تحتاج إنترنت",
+    "bad-credentials": "اسم الدخول أو كلمة المرور غير صحيحة",
+    "username-taken": "اسم الدخول مستخدم مسبقاً في السحابة — اختر اسماً آخر",
+    "not-member": "هذا الحساب غير مضاف للمحل في السحابة أو معطّل — راجع المالك",
+    "cloud-has-data": "السحابة فيها بيانات مسبقاً — لا يمكن رفع بيانات هذا الجهاز فوقها",
+    "shop-exists": "السحابة مرتبطة بمحل/مالك آخر",
+    "exists-other-password": "اسم الدخول موجود في السحابة بكلمة مرور مختلفة",
+    "not-owner": "هذا الحساب ليس مالك المحل في السحابة",
+  };
+  const cloudErr = (code) => CLOUD_ERR[code] || "تعذّر الاتصال بالسحابة: " + code;
+  // يحدّث نسخة كلمة المرور المحفوظة على هذا الجهاز (للدخول بدون إنترنت لاحقاً) بدون تغيير بيانات الحساب
+  function cacheLocalPassword(e, pw) {
+    if (verifyPw(e, pw)) return;
+    e.salt = randHex(16); e.passHash = hashPw(pw, e.salt); delete e.password; persistEmps();
+  }
+  // تشغيل خطوة سحابية من داخل نموذج مفتوح: يبقى مفتوحاً حتى تنجح، ثم يُغلق ويكمل
+  function cloudStep(run, onOk) {
+    const btn = document.getElementById("quickFormSubmitBtn"), label = btn.textContent;
+    btn.disabled = true; btn.textContent = "☁ جاري الاتصال بالسحابة…";
+    Promise.resolve().then(run).then((r) => {
+      btn.disabled = false; btn.textContent = label;
+      if (r && r.error) { toast(cloudErr(r.error)); return; }
+      quickFormDialog.close();
+      onOk(r || {});
+    }, (err) => { btn.disabled = false; btn.textContent = label; toast(cloudErr(String(err && err.message || err))); });
+    return false;
+  }
+  window.L997CloudHost = {
+    // الجهاز «مشغول» = نافذة مفتوحة، شاشة دخول، سلة فيها قطع، أو كتابة في حقل — لا تُطبَّق تحديثات الأجهزة الأخرى الآن
+    busy: () => !!document.querySelector("dialog[open]") || !$a("authScreen").hidden || draftItems.length > 0
+      || !!(document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && document.activeElement.id !== "globalSearch"),
+    page: () => currentPage,
+    openCloudPanel: () => { if (role === "owner") { openPage("profile"); setTimeout(() => document.getElementById("cloudPanel")?.scrollIntoView({ block: "start" }), 50); } },
+  };
 
   /* ---------- تسجيل الدخول ---------- */
   function attemptLogin(ident, pw) {
@@ -2174,11 +2258,36 @@
     beginSession(emp);
   }
   function submitLogin() {
+    if (cloudOn()) { submitLoginCloud(); return; }
     const r = attemptLogin($a("au_user").value, $a("au_pass").value);
     if (r.err) { setErr(r.err); $a("au_pass").value = ""; $a("au_pass").focus(); return; }
     if (r.emp.mustChange) { pendingUser = r.emp; showAuth("mustChange"); return; }
     finishLogin(r.emp);
   }
+  // مع السحابة: كلمة المرور في السحابة هي المرجع (قد تكون تغيّرت من جهاز آخر). بدون إنترنت → الدخول المحلي كما هو
+  async function submitLoginCloud() {
+    const ident = $a("au_user").value, pw = $a("au_pass").value;
+    const emp = findAccount(ident);
+    if (emp && emp.username && pw && emp.active !== false && lockLeftMs("u:" + emp.id) <= 0) {
+      const btn = $a("au_form").querySelector("button[type=submit]");
+      btn.disabled = true; setErr("☁ …");
+      const c = await CLOUD.signIn(emp.username, pw);
+      btn.disabled = false; setErr("");
+      if (!c.error) {
+        if (!emp.cloudUserId) { emp.cloudUserId = c.uid; persistEmps(); }
+        cacheLocalPassword(emp, pw);
+      } else if (c.error === "bad-credentials") {
+        const r0 = attemptLogin(ident, "\u0000" + pw); // تُحسب محاولة فاشلة (والقفل بعد 5)
+        setErr(r0.err || AX("e_bad")); $a("au_pass").value = ""; $a("au_pass").focus();
+        return;
+      }
+    }
+    const r = attemptLogin(ident, pw);
+    if (r.err) { setErr(r.err); $a("au_pass").value = ""; $a("au_pass").focus(); return; }
+    if (r.emp.mustChange) { pendingUser = r.emp; showAuth("mustChange"); return; }
+    finishLogin(r.emp);
+  }
+  let cloudPwChangedFor = null;
   function submitMustChange() {
     const e = pendingUser; if (!e) { showAuth("login"); return; }
     const p1 = $a("au_pw").value, p2 = $a("au_pw2").value;
@@ -2186,6 +2295,15 @@
     if (prob) return setErr(prob);
     if (p1 !== p2) return setErr(AX("e_pw_match"));
     if (verifyPw(e, p1)) return setErr(AX("e_same_pw"));
+    if (cloudOn() && e.cloudUserId && cloudPwChangedFor !== e.id) {
+      const btn = $a("au_form").querySelector("button[type=submit]"); btn.disabled = true; setErr("☁ …");
+      CLOUD.changeOwnPassword(p1, e.cloudUserId).then((c) => {
+        btn.disabled = false;
+        if (c.error) { setErr(cloudErr(c.error)); return; }
+        cloudPwChangedFor = e.id; submitMustChange(); cloudPwChangedFor = null;
+      });
+      return;
+    }
     setPassword(e, p1, false);
     save("l997_user", e.name);
     logActivity(`تغيير كلمة المرور (إلزامي بعد كلمة مؤقتة) — ${e.name}`);
@@ -2249,6 +2367,95 @@
   }
 
   /* ---------- استعادة نسخة احتياطية من شاشة الإعداد الأول ---------- */
+  // جهاز جديد: تنزيل بيانات المحل من السحابة ثم إعادة فتح النظام على شاشة الدخول
+  async function submitCloudJoin() {
+    const ident = $a("au_user").value.trim(), pw = $a("au_pass").value;
+    if (!ident || !pw) return setErr(AX("e_empty"));
+    const btn = $a("au_form").querySelector("button[type=submit]");
+    btn.disabled = true; setErr(lang === "en" ? "☁ Downloading the shop's data…" : "☁ جاري تنزيل بيانات المحل…");
+    const r = await CLOUD.joinDevice(ident, pw);
+    btn.disabled = false;
+    if (r.error) return setErr(cloudErr(r.error));
+    const list = JSON.parse(localStorage.getItem("l997_employees") || "[]");
+    const emp = list.find((x) => x.cloudUserId === r.uid) || list.find((x) => String(x.username || "").toLowerCase() === ident.toLowerCase());
+    if (emp) { emp.cloudUserId = r.uid; emp.salt = randHex(16); emp.passHash = hashPw(pw, emp.salt); localStorage.setItem("l997_employees", JSON.stringify(list)); }
+    try { localStorage.setItem("l997_cloud_joined_notice", "1"); } catch (e) { /* تجاهل */ }
+    window.location.reload();
+  }
+
+  /* ---------- لوحة السحابة (ملف المنشأة — للمالك) ---------- */
+  function renderCloudPanel() {
+    const el = document.getElementById("cloudPanel");
+    if (!el) return;
+    if (!CLOUD || role !== "owner") { el.style.display = "none"; return; }
+    el.style.display = "";
+    const s = CLOUD.status();
+    const when = (iso) => (iso ? fmtDT(iso) : "—");
+    if (!s.linked) {
+      el.innerHTML = `<div class="panel-header"><div><h3>☁ المزامنة السحابية</h3><p>بيانات موحّدة على كل الأجهزة + نسخة محفوظة في السحابة</p></div></div>
+        <ul class="cloud-list">
+          <li>تُرفع كل بيانات هذا الجهاز للسحابة، وبعدها كل تغيير يُرفع خلال ثوانٍ.</li>
+          <li>الأجهزة الأخرى تدخل من شاشة الإعداد ← «لدي حساب في السحابة».</li>
+          <li>يستمر العمل بدون إنترنت، ويُرفع كل شيء عند عودة الاتصال.</li>
+          <li>كلمات المرور لا تُرفع — كل موظف له حساب دخول خاص في السحابة.</li>
+        </ul>
+        <p class="section-note">قبل الربط يُنزَّل تلقائياً ملف نسخة احتياطية من بيانات هذا الجهاز.</p>
+        <button class="primary-btn" id="cloudLinkBtn" type="button">☁ ربط النظام بالسحابة ورفع بيانات هذا الجهاز</button>`;
+      document.getElementById("cloudLinkBtn").addEventListener("click", openCloudLinkForm);
+      return;
+    }
+    const noCloud = emps().filter((e) => e.active !== false && e.passHash && e.username && !e.cloudUserId);
+    el.innerHTML = `<div class="panel-header"><div><h3>☁ المزامنة السحابية — مفعّلة</h3><p>مربوط منذ ${when(s.linkedAt)}</p></div><button class="secondary-btn" id="cloudSyncNowBtn" type="button">🔄 مزامنة الآن</button></div>
+      <div class="cloud-stats">
+        <div><span>آخر مزامنة</span><strong>${when(s.lastSyncAt)}</strong></div>
+        <div><span>الاتصال</span><strong>${s.needLogin ? "يحتاج تسجيل دخول" : s.online ? "متصل ✓" : "بدون إنترنت"}</strong></div>
+        <div><span>بانتظار الرفع</span><strong>${s.pending}</strong></div>
+        <div><span>تحديثات واردة</span><strong>${s.incoming}</strong></div>
+      </div>
+      ${noCloud.length ? `<div class="cloud-warn">⚠ موظفون لهم دخول على هذا الجهاز وليس لهم حساب سحابي بعد: <b>${noCloud.map((e) => esc(e.name)).join("، ")}</b>.<br>من «المستخدمون والصلاحيات» اضغط «كلمة المرور» لكل واحد — يُنشأ حسابه السحابي بكلمة مؤقتة جديدة.</div>` : ""}
+      ${s.conflicts ? `<details class="cloud-warn"><summary>⚠ ${s.conflicts} تعديل تعارض مع جهاز آخر (اعتُمدت نسخة السحابة) — اضغط للتفاصيل</summary>${s.conflictList.map((c) => `<div class="cloud-row">${fmtDT(c.at)} · ${esc(c.collection)} · ${esc(c.id)}</div>`).join("")}</details>` : ""}
+      ${s.rejected ? `<details class="cloud-warn"><summary>⚠ ${s.rejected} تعديل رفضته السحابة (صلاحيات) — اضغط للتفاصيل</summary>${s.rejectedList.map((c) => `<div class="cloud-row">${fmtDT(c.at)} · ${esc(c.collection)} · ${esc(c.why)}</div>`).join("")}</details>` : ""}
+      <p class="section-note">لإضافة جهاز: افتح الرابط على الجهاز الجديد ← «لدي حساب في السحابة».</p>
+      <button class="ghost-btn" id="cloudUnlinkBtn" type="button">فك ربط هذا الجهاز فقط</button>`;
+    document.getElementById("cloudSyncNowBtn").addEventListener("click", () => { CLOUD.syncNow().then(() => { renderCloudPanel(); toast("تمت المزامنة"); }); });
+    document.getElementById("cloudUnlinkBtn").addEventListener("click", () => {
+      openQuickForm({
+        title: "فك ربط هذا الجهاز", sub: "يتوقف هذا الجهاز عن المزامنة. البيانات تبقى عليه وفي السحابة. اكتب «فك» للتأكيد.",
+        fields: [{ id: "c", label: "اكتب: فك", type: "text" }], submitLabel: "فك الربط",
+        onSubmit: (v) => { if (v.c !== "فك") { toast("اكتب «فك» للتأكيد"); return false; } CLOUD.unlink(); logActivity("فك ربط الجهاز بالسحابة بواسطة " + me.name); renderCloudPanel(); },
+      });
+    });
+  }
+  function openCloudLinkForm() {
+    if (role !== "owner" || !me) { denied(); return; }
+    if (!me.username) { toast("حساب المالك يحتاج اسم دخول (username) أولاً"); return; }
+    openQuickForm({
+      title: "☁ ربط النظام بالسحابة",
+      sub: `سيُنشأ حساب المالك في السحابة باسم الدخول «${me.username}» وكلمة مرورك الحالية، ثم تُرفع كل بيانات هذا الجهاز. يُنزَّل ملف نسخة احتياطية قبل البدء. اكتب «رفع» للتأكيد.`,
+      fields: [
+        { id: "pw", label: "كلمة مرورك الحالية", type: "password" },
+        { id: "c", label: "اكتب: رفع", type: "text" },
+      ],
+      submitLabel: "☁ ربط ورفع البيانات",
+      onSubmit: (v) => {
+        if (!verifyPw(me, v.pw)) { toast(AX("e_cur")); return false; }
+        if (v.c !== "رفع") { toast("اكتب «رفع» للتأكيد"); return false; }
+        document.getElementById("exportBackupBtn")?.click(); // نسخة احتياطية قبل أي شيء
+        return cloudStep(async () => {
+          const l = await CLOUD.linkOwner(me.username, v.pw, loadProfile().nameEn || "997 Laundry", me.name);
+          if (l.error) return l;
+          me.cloudUserId = l.uid; persistEmps();
+          return CLOUD.uploadAll(me.id);
+        }, (u) => {
+          logActivity(`ربط النظام بالسحابة ورفع البيانات بواسطة ${me.name}`);
+          CLOUD.setUser(me);
+          renderCloudPanel();
+          toast(u.rejected ? `تم الربط — ${u.rejected} سجل لم يُقبل (راجع اللوحة)` : "☁ تم الربط ورفع كل البيانات بنجاح");
+        });
+      },
+    });
+  }
+
   function restoreBackupFile(file) {
     const reader = new FileReader();
     reader.onload = () => {
@@ -2285,9 +2492,9 @@
         if (prob) { toast(prob); return false; }
         if (v.p1 !== v.p2) { toast(AX("e_pw_match")); return false; }
         if (v.p1 === v.cur) { toast(AX("e_same_pw")); return false; }
-        setPassword(me, v.p1, false);
-        logActivity(`تغيير كلمة المرور — ${me.name}`);
-        toast(AX("ok_changed"));
+        const done = () => { setPassword(me, v.p1, false); logActivity(`تغيير كلمة المرور — ${me.name}`); toast(AX("ok_changed")); };
+        if (cloudOn() && me.cloudUserId) return cloudStep(() => CLOUD.changeOwnPassword(v.p1, me.cloudUserId), done);
+        done();
       },
     });
   }
@@ -2308,7 +2515,10 @@
         me = e; role = validRole(e.role);
         lastAct = s.last || Date.now(); lastPersist = Date.now();
         save("l997_user", e.name);
-        hideAuth(); applyRole(); startIdle(); openPage("dashboard");
+        // بعد تحديث تلقائي من السحابة نعود لنفس الصفحة
+        let back = ""; try { back = sessionStorage.getItem("l997_cloud_page") || ""; sessionStorage.removeItem("l997_cloud_page"); } catch (err) { back = ""; }
+        hideAuth(); applyRole(); startIdle(); openPage(back && document.getElementById("page-" + back) ? back : "dashboard");
+        if (CLOUD) CLOUD.setUser(cloudOn() ? e : null);
         return;
       }
       sessClear();
@@ -2318,6 +2528,8 @@
     applyRole();
     if (needsSetup()) showAuth("setup");
     else showAuth("login", notice);
+    let joined = false; try { joined = !!localStorage.getItem("l997_cloud_joined_notice"); localStorage.removeItem("l997_cloud_joined_notice"); } catch (e) { joined = false; }
+    if (joined) setErr(lang === "en" ? "☁ The shop's data is on this device now — sign in." : "☁ تم تنزيل بيانات المحل على هذا الجهاز — سجّل الدخول الآن.");
   }
 
   /* ------------------------------ البحث العام ------------------------------ */
@@ -3033,7 +3245,9 @@
     // في حال وجود تبويب أو جهاز آخر أنشأ طلباً بنفس اللحظة تقريباً
     const storedOrders = load(KEYS.orders, []);
     const maxExistingNum = storedOrders.reduce((m, o) => Math.max(m, Number(o.number) || 0), 0);
-    const nextSeq = Math.max(settings.orderSeq, maxExistingNum + 1);
+    // مع السحابة: رقم محجوز من الخادم لا يتكرر بين الأجهزة؛ بدونه (لا إنترنت) الترقيم المحلي كما كان
+    const cloudNum = cloudOn() ? CLOUD.takeOrderNumber(maxExistingNum + 1) : null;
+    const nextSeq = cloudNum || Math.max(Number(settings.orderSeq) || 1, maxExistingNum + 1);
     const number = String(nextSeq).padStart(5, "0");
     settings.orderSeq = nextSeq;
     const empSelVal = document.getElementById("orderEmployeeSelect")?.value || null;

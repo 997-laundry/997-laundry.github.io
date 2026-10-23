@@ -14,6 +14,8 @@
 --     every insert/update is copied to `record_history` (tamper-evident trail).
 --   * `version` increases on every update so two devices cannot silently overwrite
 --     each other (the app updates "where version = what I last saw").
+--   * Order numbers are handed out by the server in blocks, so two devices never
+--     print the same order number. Password hashes never leave the device.
 -- =============================================================================
 
 -- ---------- tables ----------
@@ -34,6 +36,12 @@ create table if not exists public.shop_members (
   primary key (shop_id, user_id)
 );
 create unique index if not exists shop_members_one_shop_per_user on public.shop_members (user_id);
+alter table public.shop_members add column if not exists employee_id text;
+
+create table if not exists public.shop_counters (
+  shop_id uuid primary key references public.shops(id) on delete cascade,
+  next_order bigint not null default 1
+);
 
 create table if not exists public.collection_rules (
   collection text primary key,
@@ -53,6 +61,10 @@ create table if not exists public.records (
   primary key (shop_id, collection, record_id)
 );
 create index if not exists records_changes on public.records (shop_id, updated_at);
+-- change counter: devices pull "everything after change N" (no clock or tie problems)
+create sequence if not exists public.records_seq;
+alter table public.records add column if not exists seq bigint;
+create index if not exists records_seq_idx on public.records (shop_id, seq);
 
 create table if not exists public.record_history (
   id bigint generated always as identity primary key,
@@ -85,7 +97,7 @@ insert into public.collection_rules (collection, read_roles, write_roles) values
   ('branches',           '{owner,manager,accountant,worker}', '{owner,manager}'),
   ('perm_matrix',        '{owner,manager,accountant,worker}', '{owner,manager}'),
   ('security',           '{owner,manager,accountant,worker}', '{owner}'),
-  ('employees',          '{owner,manager,accountant}',        '{owner,manager,accountant}'),
+  ('employees',          '{owner,manager,accountant,worker}', '{owner,manager,accountant}'),
   ('payroll',            '{owner,manager,accountant}',        '{owner,manager,accountant}'),
   ('expenses',           '{owner,manager,accountant}',        '{owner,manager,accountant}'),
   ('recurring_expenses', '{owner,manager,accountant}',        '{owner,manager,accountant}'),
@@ -124,12 +136,44 @@ begin
   return v_id;
 end $$;
 
+-- hands out a block of order numbers that no other device will use (never below p_min)
+create or replace function public.reserve_order_numbers(p_count int, p_min bigint default 1) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare v_shop uuid; v_first bigint;
+begin
+  select shop_id into v_shop from public.shop_members where user_id = auth.uid() and active;
+  if v_shop is null then raise exception 'not a member of the shop'; end if;
+  if p_count < 1 or p_count > 200 then raise exception 'count must be between 1 and 200'; end if;
+  insert into public.shop_counters (shop_id, next_order) values (v_shop, greatest(coalesce(p_min, 1), 1))
+    on conflict (shop_id) do nothing;
+  update public.shop_counters set next_order = greatest(next_order, coalesce(p_min, 1)) + p_count
+    where shop_id = v_shop returning next_order - p_count into v_first;
+  return v_first;
+end $$;
+
+-- owner (anyone) / manager (accountants and workers only) sets a temporary password for a staff account
+create or replace function public.set_member_password(p_user uuid, p_password text) returns void
+language plpgsql security definer set search_path = public, extensions as $$
+declare v_shop uuid; v_caller text; v_target text;
+begin
+  select shop_id, role into v_shop, v_caller from public.shop_members where user_id = auth.uid() and active;
+  select role into v_target from public.shop_members where user_id = p_user and shop_id = v_shop;
+  if v_shop is null or v_target is null then raise exception 'not allowed'; end if;
+  if not (v_caller = 'owner' or (v_caller = 'manager' and v_target in ('accountant', 'worker'))) then
+    raise exception 'not allowed';
+  end if;
+  if length(coalesce(p_password, '')) < 8 then raise exception 'password too short'; end if;
+  update auth.users set encrypted_password = extensions.crypt(p_password, extensions.gen_salt('bf')), updated_at = now()
+    where id = p_user;
+end $$;
+
 -- ---------- record rules enforced on the server ----------
 create or replace function public.records_guard() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   new.updated_at := now();
   new.updated_by := auth.uid();
+  new.seq := nextval('public.records_seq');
   if tg_op = 'INSERT' then
     new.version := 1;
     new.deleted := false;
@@ -139,7 +183,10 @@ begin
     raise exception 'records cannot be moved';
   end if;
   if old.collection = 'audit' then raise exception 'audit entries cannot be changed'; end if;
-  if new.deleted and not old.deleted and public.member_role(old.shop_id) not in ('owner', 'manager') then
+  -- core business records can only be removed by the owner or a manager (others: anyone who may write them)
+  if new.deleted and not old.deleted
+     and old.collection in ('orders', 'customers', 'ledger', 'customer_packages', 'closures', 'payroll')
+     and public.member_role(old.shop_id) not in ('owner', 'manager') then
     raise exception 'only the owner or a manager can remove records';
   end if;
   new.version := old.version + 1;
@@ -181,6 +228,7 @@ alter table public.shop_members enable row level security;
 alter table public.collection_rules enable row level security;
 alter table public.records enable row level security;
 alter table public.record_history enable row level security;
+alter table public.shop_counters enable row level security; -- no policies: only reserve_order_numbers() touches it
 
 drop policy if exists shops_read on public.shops;
 create policy shops_read on public.shops for select to authenticated using (public.member_role(id) is not null);
@@ -215,7 +263,7 @@ create policy history_read on public.record_history for select to authenticated
   using (public.member_role(shop_id) in ('owner', 'manager', 'accountant'));
 
 -- ---------- privileges (TRUNCATE/DELETE bypass or skip RLS checks, so they are removed) ----------
-revoke all on public.shops, public.shop_members, public.collection_rules, public.records, public.record_history from anon, authenticated;
+revoke all on public.shops, public.shop_members, public.collection_rules, public.records, public.record_history, public.shop_counters from anon, authenticated;
 grant select, update on public.shops to authenticated;
 grant select, insert, update on public.shop_members to authenticated;
 grant select on public.collection_rules to authenticated;
@@ -223,6 +271,8 @@ grant select, insert, update on public.records to authenticated;
 grant select on public.record_history to authenticated;
 revoke all on function public.create_shop(text, text) from public, anon;
 grant execute on function public.create_shop(text, text) to authenticated;
+revoke all on function public.reserve_order_numbers(int, bigint), public.set_member_password(uuid, text) from public, anon;
+grant execute on function public.reserve_order_numbers(int, bigint), public.set_member_password(uuid, text) to authenticated;
 revoke all on function public.member_role(uuid), public.can_access(uuid, text, boolean) from public, anon;
 grant execute on function public.member_role(uuid), public.can_access(uuid, text, boolean) to authenticated;
 revoke all on function public.records_guard(), public.records_history(), public.members_guard() from public, anon, authenticated;

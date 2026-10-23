@@ -70,3 +70,41 @@ browser's localStorage. No backend, no Supabase, no hosting, no external service
 2. Receipt as an image/PDF attachment (WhatsApp links can only carry text).
 3. WhatsApp Business API (paid per message) — only after 1 is stable.
 4. AI helpers (daily summary, debt follow-ups) — only after data is reliable and shared.
+
+## Session 3 (2026-10-24) — Cloud database (Supabase)
+
+### Decisions
+- **Keep the offline app; add sync beside it.** Every device keeps working from its own storage (works without internet);
+  `src/cloud.js` uploads each change and pulls other devices' changes. Nothing changes until the owner presses
+  «ربط النظام بالسحابة» in ملف المنشأة.
+- **One table for all records** (`records`: collection + id + JSON + version). Fits the existing data model without
+  rewriting 5,700 lines; server rules are per collection and per role.
+- **Server-side security (RLS)** mirrors the app's role defaults: workers cannot read expenses/payroll/purchases/closures,
+  cannot change prices, cannot delete; nobody can delete through the API; audit entries cannot be edited; every
+  change is copied to `record_history`; outsiders and anonymous visitors see nothing.
+- **Conflicts:** an edit is accepted only if nobody changed that record first (version check). Otherwise the cloud copy
+  wins and the device's copy is kept in the conflict log shown to the owner.
+- **Order numbers** come from the server in blocks of 30 per device → no duplicate numbers between devices.
+- **Passwords:** each staff member has a Supabase account (`username@997laundry.app`, no email is ever sent).
+  Password hashes and the recovery code never leave the device.
+- Incoming changes are applied only when the device is idle (no open window, empty cart) to avoid stale screens
+  writing over new data; otherwise a "🔄 updates from another device" button appears.
+
+### Tests (all run here)
+- `supabase/test/security_test.sql`: 59 attack/permission checks per role on a real PostgreSQL 16 — all pass.
+- `tests/e2e.cloud.js`: 29 checks, two browsers against a local Supabase stand-in (real PostgreSQL + the real rules):
+  link & upload, worker account, new device joins, forced password change in the cloud, unique order numbers,
+  idle auto-refresh, offline then upload, conflict logging, worker cannot push expenses — all pass (3 runs).
+- Full existing suite still green.
+- **Not yet verified against the real Supabase project** — this environment cannot reach supabase.co. The owner tests
+  from the phone (steps in the chat), then `supabase/reset_test_data.sql` wipes the test data before the real upload.
+
+### Also fixed
+- Last-backup date was read without JSON parsing → showed "Invalid Date" and the 7-day backup reminder never fired after
+  the first backup.
+
+### Known limits (phase 1)
+- Server rules follow roles; per-employee permission overrides and supervisor approvals are enforced in the app only.
+- If two devices edit the same customer balance offline, the cloud copy wins (logged as a conflict) — the statement check
+  will show the mismatch. Use one main counter device while offline.
+- If a device is offline and has used all 30 reserved order numbers, it falls back to local numbering.
