@@ -258,3 +258,19 @@ test("shift summary: only this employee's money inside the shift window", () => 
   assert.equal(s.expectedCash, 26.5);
   assert.equal(s.hours, 8);
 });
+
+test("auto-translation: phrases translated, unknown sentences never half-translated", () => {
+  const T = require("../src/translate.js");
+  T._force(true);
+  assert.equal(T.tr("📦 تسليم الطلب #00005"), "📦 Deliver order #00005");
+  assert.equal(T.tr("آجل (دين على العميل)"), "Credit (customer debt)");
+  assert.equal(T.tr("لاحقاً"), "Later");
+  // a sentence not in the dictionary stays fully Arabic (no mixed words)
+  assert.equal(T.tr("جملة غير معروفة فيها العميل"), "جملة غير معروفة فيها العميل");
+  // a customer name is not translated
+  assert.equal(T.tr("مالك أحمد"), "مالك أحمد");
+  // Urdu UI text is never touched
+  assert.equal(T.tr("کسٹمر"), "کسٹمر");
+  T._force(false);
+  assert.equal(T.tr("لاحقاً"), "لاحقاً");
+});

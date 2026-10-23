@@ -976,9 +976,13 @@
     });
     document.getElementById("langSelect").value = lang;
     document.getElementById("langSelectTop").value = lang;
+    // ترجمة تلقائية لكل نص عربي مكتوب مباشرة في الواجهة (النوافذ والرسائل) عند اختيار الإنجليزية/الأردو
+    if (window.L997Translate) window.L997Translate.setLang(lang);
   }
 
   function setLanguage(newLang) {
+    // الرجوع للعربية بعد الترجمة التلقائية: إعادة تحميل لاستعادة النصوص الأصلية (الجلسة تبقى)
+    if (newLang === "ar" && lang !== "ar") { save(KEYS.lang, newLang); window.location.reload(); return; }
     lang = newLang;
     save(KEYS.lang, lang);
     applyStaticI18n();
@@ -3629,7 +3633,8 @@
   function flowStepsHtml(order) {
     if (order.status === "cancelled") return `<div class="flow-cancelled">✕ ملغي${order.cancelReason ? " — " + esc(order.cancelReason) : ""}</div>`;
     const idx = FLOW.indexOf(order.status);
-    const steps = [["١", "استلام الطلب"], ["٢", "دفع وجاهزية"], ["٣", "تسليم للعميل"]];
+    const n = lang === "ar" ? ["١", "٢", "٣"] : ["1", "2", "3"];
+    const steps = [[n[0], "استلام الطلب"], [n[1], "دفع وجاهزية"], [n[2], "تسليم للعميل"]];
     return `<div class="flow-steps">${steps.map((st, i) => `<div class="fs ${i < idx || (i === idx && order.status === "delivered") ? "done" : i === idx ? "active" : ""}"><b>${i < idx || order.status === "delivered" ? "✓" : st[0]}</b><span>${st[1]}</span></div>`).join("")}</div>`;
   }
   function staffInfoHtml(order) {
