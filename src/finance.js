@@ -144,7 +144,7 @@
     });
 
     expenses.forEach((e) => {
-      if (!inRange(e.date, from, to)) return;
+      if (e.voided || !inRange(e.date, from, to)) return; // المصروف الملغي لا يدخل الحسابات
       const a = r3(e.amount);
       s.expenses = r3(s.expenses + a);
       addTo(s.expensesBy, e.method || "cash", a);

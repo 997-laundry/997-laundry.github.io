@@ -1054,7 +1054,7 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
     });
 
     expenses.forEach((e) => {
-      if (!inRange(e.date, from, to)) return;
+      if (e.voided || !inRange(e.date, from, to)) return; // المصروف الملغي لا يدخل الحسابات
       const a = r3(e.amount);
       s.expenses = r3(s.expenses + a);
       addTo(s.expensesBy, e.method || "cash", a);
@@ -1217,6 +1217,8 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
   data:{get expenses(){return expenses},get inventory(){return inventory},get purchases(){return purchases},get suppliers(){return suppliers},get employees(){return employees},get attendance(){return attendance},get payroll(){return payroll},get closures(){return closures},get audit(){return audit},get recurringExpenses(){return recurringExpenses},get stockMoves(){return stockMoves}},
   addExpense(x){x={id:uid(),date:new Date().toISOString(),...x};expenses.unshift(x);save(EXT_KEYS.expenses,expenses);log('إضافة مصروف',x.amount,x);return x},
   deleteExpense(id){expenses=expenses.filter(x=>x.id!==id);save(EXT_KEYS.expenses,expenses)},
+  // إلغاء مصروف خاطئ: يبقى ظاهراً (مشطوباً) للتدقيق ويُستبعد من كل الحسابات
+  voidExpense(id,reason,by){const x=expenses.find(e=>e.id===id);if(!x||x.voided||x.purchaseId)return false;x.voided=true;x.voidedAt=new Date().toISOString();x.voidReason=reason;x.voidedBy=by||'';save(EXT_KEYS.expenses,expenses);log('إلغاء مصروف: '+(x.category||'')+' — السبب: '+reason,x.amount,{id,category:x.category});return true},
   addPurchase(x){
     const item=inventory.find(i=>i.id===x.inventoryId);if(!item)return null;
     const qty=r3(x.qty),unit=r3(x.unitCost);if(!(qty>0)||!(unit>=0))return null;
@@ -2289,7 +2291,13 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
           submitLabel: "استعادة الآن",
           onSubmit: (v) => {
             if (v.confirm !== "تأكيد") { toast('يجب كتابة كلمة "تأكيد" بالضبط للمتابعة'); return false; }
-            Object.entries(parsed.data).forEach(([k, v2]) => { if (BACKUP_KEYS.includes(k)) save(k, JSON.parse(v2)); });
+            // نتحقق من كل الملف أولاً، ثم نكتب — حتى لا تُستبدل بعض البيانات ويفشل الباقي (بيانات مختلطة)
+            let entries;
+            try {
+              entries = Object.entries(parsed.data).filter(([k, v2]) => BACKUP_KEYS.includes(k) && typeof v2 === "string").map(([k, v2]) => [k, JSON.parse(v2)]);
+              if (!entries.length) throw new Error("empty");
+            } catch (err2) { toast("ملف النسخة الاحتياطية تالف أو غير مكتمل — لم يتم تغيير أي بيانات"); return false; }
+            entries.forEach(([k, val]) => save(k, val));
             try { const au = JSON.parse(localStorage.getItem("l997_audit") || "[]"); au.unshift({ id: uid(), action: `استعادة نسخة احتياطية بواسطة ${roleLabel()}`, value: 0, meta: {}, at: new Date().toISOString(), user: roleLabel(), who: (() => { try { return JSON.parse(localStorage.getItem("l997_user") || "\"\""); } catch (e) { return ""; } })(), cat: "system", sens: 1 }); localStorage.setItem("l997_audit", JSON.stringify(au.slice(0, 4000))); localStorage.removeItem("l997_audit_scrubbed"); } catch (err) { /* غير حرج */ }
             toast("تم استعادة النسخة الاحتياطية — يُعاد تحميل النظام الآن");
             setTimeout(() => window.location.reload(), 1200);
@@ -4446,7 +4454,7 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
     populateFilterOptions();
     const statusFilter = document.getElementById("orderStatusFilter").value;
     const priorityFilter = document.getElementById("orderPriorityFilter").value;
-    const q = (searchOverride ?? document.getElementById("globalSearch").value ?? "").trim().toLowerCase();
+    const q = toLatinDigits(searchOverride ?? document.getElementById("globalSearch").value ?? "").trim().toLowerCase();
     const qPhoneDigits = q.replace(/[^0-9]/g, "").replace(/^0+/, "");
 
     let list = orders.slice();
@@ -4725,11 +4733,11 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
   }
   function staffInfoHtml(order) {
     const rows = [];
-    if (order.createdBy) rows.push(["أنشأ الطلب", order.createdBy]);
+    if (order.createdBy) rows.push(["أنشأ الطلب", esc(order.createdBy)]);
     if (order.discountReason || order.discountApprovedBy) rows.push(["خصم", `${money(order.payment.discount || 0)} — ${esc(order.discountReason || "")}${order.discountApprovedBy ? " (اعتمده " + esc(order.discountApprovedBy) + ")" : ""}`]);
-    if (order.paymentBy) rows.push(["أكّد الدفع", order.paymentBy + (order.creditApprovedBy ? " — دين اعتمده " + order.creditApprovedBy : "")]);
-    if (order.deliveredBy) rows.push(["سلّم الطلب", order.deliveredBy + (order.receiver ? " — المستلم: " + esc(order.receiver) : "")]);
-    if (order.cancelledBy) rows.push(["ألغى الطلب", order.cancelledBy + (order.cancelApprovedBy ? " — اعتمده " + order.cancelApprovedBy : "")]);
+    if (order.paymentBy) rows.push(["أكّد الدفع", esc(order.paymentBy) + (order.creditApprovedBy ? " — دين اعتمده " + esc(order.creditApprovedBy) : "")]);
+    if (order.deliveredBy) rows.push(["سلّم الطلب", esc(order.deliveredBy) + (order.receiver ? " — المستلم: " + esc(order.receiver) : "")]);
+    if (order.cancelledBy) rows.push(["ألغى الطلب", esc(order.cancelledBy) + (order.cancelApprovedBy ? " — اعتمده " + esc(order.cancelApprovedBy) : "")]);
     (order.editHistory || []).forEach((h) => rows.push([`عدّل الطلب (${fmtDT(h.at)})`, `${esc(h.by)} — ${h.before.pieces}→${h.after.pieces} قطعة، ${money(h.before.total)}→${money(h.after.total)} — ${esc(h.reason)}${h.approvedBy ? " (اعتمده " + esc(h.approvedBy) + ")" : ""}`]));
     if (!rows.length) return "";
     return `<div class="details-box full-span" style="grid-column:1/-1"><h4>سجل المسؤولية</h4>${rows.map((r) => `<div class="details-line"><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join("")}</div>`;
@@ -5582,24 +5590,34 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
   function savePrices() {
     if (!can("edit_pricing")) { denied(); return; }
     let changedCount = 0;
+    let bad = 0;
     document.querySelectorAll("[data-price]").forEach((input) => {
-      const newVal = round3(Number(input.value) || 0);
+      const raw = Number(normDigits(input.value)) || 0;
+      if (raw < 0) bad++;
+      const newVal = round3(Math.max(0, raw)); // لا أسعار سالبة
       if (settings.prices[input.dataset.price] !== newVal) changedCount++;
       settings.prices[input.dataset.price] = newVal;
     });
+    if (bad) toast(`تم تصحيح ${bad} سعر سالب إلى صفر`);
     persistAll();
     if (changedCount > 0) logActivity(`تعديل أسعار ${changedCount} صنف/خدمة بواسطة ${roleLabel()}`);
     toast(t("toast_settings_saved"));
   }
   document.getElementById("savePricesBtn").addEventListener("click", savePrices);
+  // إعدادات التشغيل فقط (نسبة المستعجل والساعات) — الأسعار تُحفظ من زرها الخاص بصلاحية edit_pricing
   document.getElementById("saveSettingsBtn").addEventListener("click", () => {
-    settings.urgentPercent = Number(document.getElementById("urgentPercentageSetting").value) || 0;
-    settings.normalHours = Number(document.getElementById("normalHoursSetting").value) || 24;
-    settings.urgentHours = Number(document.getElementById("urgentHoursSetting").value) || 6;
-    document.querySelectorAll("[data-price]").forEach((input) => {
-      settings.prices[input.dataset.price] = round3(Number(input.value) || 0);
-    });
+    if (!can("admin_settings")) { denied(); return; }
+    const urgent = Number(normDigits(document.getElementById("urgentPercentageSetting").value));
+    const normalH = Number(normDigits(document.getElementById("normalHoursSetting").value));
+    const urgentH = Number(normDigits(document.getElementById("urgentHoursSetting").value));
+    if (!(urgent >= 0 && urgent <= 500)) { toast("نسبة رسوم المستعجل يجب أن تكون بين 0 و 500%"); return; }
+    if (!(normalH > 0) || !(urgentH > 0)) { toast("أدخل عدد ساعات صحيح أكبر من صفر"); return; }
+    const before = `${settings.urgentPercent}% / ${settings.normalHours}س / ${settings.urgentHours}س`;
+    settings.urgentPercent = urgent;
+    settings.normalHours = normalH;
+    settings.urgentHours = urgentH;
     persistAll();
+    logActivity(`تعديل إعدادات التشغيل: ${before} → ${urgent}% / ${normalH}س / ${urgentH}س`);
     toast(t("toast_settings_saved"));
   });
 
@@ -5752,7 +5770,16 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
     body.innerHTML=`<div class="panel"><h3 style="margin:0 0 10px">${t('fin_expenses_by_type')} (${filteredExp.length})</h3>${Object.entries(byCat).length?Object.entries(byCat).map(([k,v])=>`<div class="mini-stat"><span>${esc(k)}</span><b class="kpi-negative">${money(v)}</b></div>`).join(''):`<div class="empty-state compact">${t('no_expenses')}</div>`}</div>`;
   }
 
-  q('expenseList').innerHTML=L997Enterprise.data.expenses.slice(0,30).map(e=>`<div class="ledger-item"><div><strong>${esc(e.category||'—')}</strong><small>${new Date(e.date).toLocaleString(window.getLang997?window.getLang997():'ar')} ${esc(e.note||'')}</small></div><b class="kpi-negative">${money(e.amount)}</b></div>`).join('')||`<div class="empty-state compact">${t('no_expenses')}</div>`;
+  q('expenseList').innerHTML=L997Enterprise.data.expenses.slice(0,30).map(e=>`<div class="ledger-item"${e.voided?' style="opacity:.55"':''}><div><strong${e.voided?' style="text-decoration:line-through"':''}>${esc(e.category||'—')}</strong><small>${new Date(e.date).toLocaleString(window.getLang997?window.getLang997():'ar')} ${esc(e.note||'')}${e.voided?` — ❌ ملغي: ${esc(e.voidReason||'')}${e.voidedBy?' ('+esc(e.voidedBy)+')':''}`:''}</small></div><div class="row-actions"><b class="kpi-negative"${e.voided?' style="text-decoration:line-through"':''}>${money(e.amount)}</b>${!e.voided&&!e.purchaseId&&CAN('delete_records')?`<button class="mini-btn danger-mini" type="button" data-void-exp="${e.id}">إلغاء</button>`:''}</div></div>`).join('')||`<div class="empty-state compact">${t('no_expenses')}</div>`;
+  q('expenseList').querySelectorAll('[data-void-exp]').forEach(btn=>btn.addEventListener('click',()=>{
+    const ex=L997Enterprise.data.expenses.find(x=>x.id===btn.dataset.voidExp);if(!ex)return;
+    const day=FIN.localDay(ex.date),closed=L997Enterprise.data.closures.some(c=>c.type==='daily'&&c.forDate===day);
+    window.openQuickForm({title:'إلغاء مصروف',sub:`${ex.category||''} — ${money(ex.amount)}${closed?` ⚠ يوم ${day} مُغلق مسبقاً — سيختلف عن الإغلاق المعتمد`:''}`,fields:[{id:'reason',label:'سبب الإلغاء (إلزامي)',type:'text'}],submitLabel:'تأكيد الإلغاء',onSubmit:v=>{
+      if(!v.reason){window.toast('سبب الإلغاء إلزامي');return false}
+      const me=window.L997Auth?window.L997Auth.user():null;
+      L997Enterprise.voidExpense(ex.id,v.reason,me?me.name:'');renderFinance();typeof renderClosures==='function'&&renderClosures();window.toast('تم إلغاء المصروف');
+    }});
+  }));
 
   const rx=L997Enterprise.data.recurringExpenses;
   q('recurringExpensesBody').innerHTML=rx.length?rx.map(r=>`<tr><td>${esc(r.name)}</td><td>${money(r.amount)}</td><td>${r.frequency==='monthly'?t('freq_monthly'):t('freq_daily')}</td><td>${r.lastAppliedPeriod||'—'}</td><td><button class="mini-btn" data-edit-recurring="${r.id}">${t('btn_edit')}</button> <button class="mini-btn danger-mini" data-del-recurring="${r.id}">${t('btn_delete')}</button></td></tr>`).join(''):`<tr><td colspan="5" class="empty-state compact">${t('no_recurring')}</td></tr>`;
@@ -5802,6 +5829,7 @@ html[dir="ltr"] .toast[popover]{left:auto;right:24px}
    });
  });
  q('applyRecurringExpensesBtn')?.addEventListener('click',()=>{
+   if(!CAN('add_expense')){window.toast('ليست لديك صلاحية لهذا الإجراء');return}
    const n=L997Enterprise.applyRecurringExpenses();
    renderFinance();
    window.toast&&window.toast(n>0?`تم تطبيق ${n} مصروف متكرر`:'لا يوجد مصروف مستحق حالياً');

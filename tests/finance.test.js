@@ -186,3 +186,12 @@ test("package usage: used pieces come from real orders; cancelled orders give pi
   assert.equal(F.packageUsage([{ ...cp, remainingPieces: 40 }], orders, "c1")[0].consistent, false);
   assert.equal(F.packageUsage([cp], orders, "other").length, 0);
 });
+
+test("voided expenses are excluded from expenses, profit and drawer", () => {
+  const s = F.summarize({ expenses: [
+    { amount: 5, method: "cash", category: "x", date: at(D1) },
+    { amount: 50, method: "cash", category: "typo", date: at(D1), voided: true },
+  ] }, D1, D1);
+  assert.equal(s.expenses, 5);
+  assert.equal(s.expectedCash, -5);
+});
