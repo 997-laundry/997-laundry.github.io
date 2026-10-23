@@ -14,7 +14,7 @@
  const EXT_KEYS={expenses:'l997_expenses',inventory:'l997_inventory',purchases:'l997_purchases',suppliers:'l997_suppliers',employees:'l997_employees',attendance:'l997_attendance',payroll:'l997_payroll',closures:'l997_closures',audit:'l997_audit',recurringExpenses:'l997_recurring_expenses',stockMoves:'l997_stock_moves'};
  const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k)||'null')??d}catch{return d}}; const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){if(window.__l997StorageFail)window.__l997StorageFail(e);return false}}; const uid=()=>crypto.randomUUID?crypto.randomUUID():'id-'+Date.now()+'-'+Math.random();
  let expenses=load(EXT_KEYS.expenses,[]),inventory=load(EXT_KEYS.inventory,[{id:uid(),name:'مسحوق غسيل',unit:'كجم',category:'detergent',qty:12,minQty:5,targetQty:30,avgCost:1.8},{id:uid(),name:'أكياس تغليف',unit:'حبة',category:'packaging',qty:180,minQty:50,targetQty:500,avgCost:.03},{id:uid(),name:'معطر',unit:'لتر',category:'detergent',qty:8,minQty:3,targetQty:15,avgCost:2.4}]);
- let purchases=load(EXT_KEYS.purchases,[]),suppliers=load(EXT_KEYS.suppliers,[{id:uid(),name:'مورد مواد تنظيف',phone:''}]),employees=load(EXT_KEYS.employees,[{id:uid(),name:'مدير المغسلة',role:'manager',salary:350,commission:0},{id:uid(),name:'عامل 1',role:'worker',salary:180,commission:0}]);
+ let purchases=load(EXT_KEYS.purchases,[]),suppliers=load(EXT_KEYS.suppliers,[{id:uid(),name:'مورد مواد تنظيف',phone:''}]),employees=load(EXT_KEYS.employees,[]);
  let stockMoves=load(EXT_KEYS.stockMoves,[]);
  let attendance=load(EXT_KEYS.attendance,[]),payroll=load(EXT_KEYS.payroll,[]),closures=load(EXT_KEYS.closures,[]),audit=load(EXT_KEYS.audit,[]),recurringExpenses=load(EXT_KEYS.recurringExpenses,[]);
  const lsStr=(k,d='')=>{try{const v=localStorage.getItem(k);if(v===null)return d;try{const p=JSON.parse(v);return typeof p==='string'?p:String(p)}catch(e){return v}}catch(e){return d}};
@@ -260,7 +260,7 @@
       emp_title: "الموظفون", emp_sub: "الرواتب والحضور والإنتاجية", emp_add: "+ موظف",
       th_employee: "الموظف", th_role: "الدور", th_salary: "الراتب", th_commission: "العمولة", th_completed_orders: "طلبات منجزة", th_linked_sales: "مبيعات مرتبطة",
       no_employees: "لا يوجد موظفون بعد", emp_payroll_title: "الرواتب والحضور والاستحقاقات", emp_payroll_sub: "خصومات، سلف، مكافآت وعمولات",
-      emp_add_attendance: "تسجيل حضور", emp_add_payroll_tx: "+ حركة راتب", no_payroll_data: "لا توجد بيانات رواتب بعد", attendance_days_30: "حضور {0} يوم آخر 30 يوم",
+      emp_add_attendance: "تسجيل حضور", emp_add_payroll_tx: "+ حركة راتب", no_payroll_data: "لا توجد بيانات رواتب بعد", attendance_days_30: "حضور {0} يوم هذا الشهر",
       cls_daily_title: "الإغلاق اليومي", cls_daily_sub: "مطابقة المبيعات والصندوق والمصروفات والفروقات", cls_approve_day: "اعتماد إغلاق اليوم",
       cls_date_label: "التاريخ", cls_open_orders: "طلبات مفتوحة", cls_remaining_cash: "الصندوق المتبقي المتوقع",
       cls_monthly_title: "الإغلاق الشهري", cls_monthly_sub: "تجميع المبيعات والمصروفات والرواتب والجرد والربحية", cls_approve_month: "اعتماد إغلاق الشهر",
@@ -432,7 +432,7 @@
       emp_title: "Employees", emp_sub: "Salaries, attendance, and productivity", emp_add: "+ Employee",
       th_employee: "Employee", th_role: "Role", th_salary: "Salary", th_commission: "Commission", th_completed_orders: "Completed orders", th_linked_sales: "Linked sales",
       no_employees: "No employees yet", emp_payroll_title: "Payroll, Attendance & Dues", emp_payroll_sub: "Deductions, advances, bonuses, and commissions",
-      emp_add_attendance: "Log attendance", emp_add_payroll_tx: "+ Payroll transaction", no_payroll_data: "No payroll data yet", attendance_days_30: "{0} days present in last 30 days",
+      emp_add_attendance: "Log attendance", emp_add_payroll_tx: "+ Payroll transaction", no_payroll_data: "No payroll data yet", attendance_days_30: "{0} days present this month",
       cls_daily_title: "Daily Closing", cls_daily_sub: "Reconcile sales, register, expenses, and variance", cls_approve_day: "Approve today's closing",
       cls_date_label: "Date", cls_open_orders: "Open orders", cls_remaining_cash: "Expected remaining cash",
       cls_monthly_title: "Monthly Closing", cls_monthly_sub: "Aggregate sales, expenses, payroll, stock, and profitability", cls_approve_month: "Approve month closing",
@@ -604,7 +604,7 @@
       emp_title: "ملازمین", emp_sub: "تنخواہیں، حاضری، اور پیداواریت", emp_add: "+ ملازم",
       th_employee: "ملازم", th_role: "کردار", th_salary: "تنخواہ", th_commission: "کمیشن", th_completed_orders: "مکمل آرڈرز", th_linked_sales: "منسلک فروخت",
       no_employees: "ابھی تک کوئی ملازم نہیں", emp_payroll_title: "تنخواہیں، حاضری اور واجبات", emp_payroll_sub: "کٹوتیاں، پیشگی، بونس، اور کمیشن",
-      emp_add_attendance: "حاضری درج کریں", emp_add_payroll_tx: "+ تنخواہ لین دین", no_payroll_data: "ابھی تک تنخواہ کا ڈیٹا نہیں", attendance_days_30: "پچھلے 30 دنوں میں {0} دن حاضر",
+      emp_add_attendance: "حاضری درج کریں", emp_add_payroll_tx: "+ تنخواہ لین دین", no_payroll_data: "ابھی تک تنخواہ کا ڈیٹا نہیں", attendance_days_30: "اس مہینے {0} دن حاضر",
       cls_daily_title: "روزانہ اختتام", cls_daily_sub: "فروخت، رجسٹر، اخراجات، اور فرق کی تصدیق", cls_approve_day: "آج کا اختتام منظور کریں",
       cls_date_label: "تاریخ", cls_open_orders: "کھلے آرڈرز", cls_remaining_cash: "متوقع باقی نقدی",
       cls_monthly_title: "ماہانہ اختتام", cls_monthly_sub: "فروخت، اخراجات، تنخواہیں، اسٹاک، اور منافع کا مجموعہ", cls_approve_month: "ماہانہ اختتام منظور کریں",
@@ -1222,7 +1222,7 @@
         const ovCount = e.permOverrides ? Object.keys(e.permOverrides).length : 0;
         return `<tr>
           <td>${esc(e.employeeNumber) || "—"}</td>
-          <td>${esc(e.name)}${self ? ' <span class="status-badge status-ready">أنت</span>' : ""}${e.passHash ? "" : ' <span class="nopw-tag">بدون كلمة مرور</span>'}${e.mustChange ? ' <span class="nopw-tag">كلمة مؤقتة</span>' : ""}</td>
+          <td>${esc(e.name)}${self ? ' <span class="status-badge status-ready">أنت</span>' : ""}${e.passHash ? "" : ' <span class="nopw-tag">بدون حساب دخول</span>'}${e.mustChange ? ' <span class="nopw-tag">كلمة مؤقتة</span>' : ""}</td>
           <td dir="ltr" style="text-align:start">${esc(e.username) || "—"}</td>
           <td>${ACCESS_ROLE_AR[e.role] || esc(e.role)}${ovCount ? ` <span class="inv-muted" title="صلاحيات خاصة">✱${ovCount}</span>` : ""}</td>
           <td>${e.lastLogin ? fmtDT(e.lastLogin) : "—"}</td>
@@ -1230,8 +1230,8 @@
           <td><span class="status-badge ${e.active === false ? "status-cancelled" : "status-ready"}">${e.active === false ? "معطّل" : "نشط"}</span>${locked ? ' <span class="lock-tag">مقفل</span>' : ""}</td>
           <td class="row-actions">${manage ? `
             <button class="mini-btn" data-uact="edit" data-id="${e.id}">تعديل</button>
-            ${!self && e.role !== "owner" ? `<button class="mini-btn" data-uact="perms" data-id="${e.id}">صلاحيات</button>` : ""}
-            ${!self ? `<button class="mini-btn" data-uact="reset" data-id="${e.id}">${e.passHash ? "إعادة تعيين كلمة المرور" : "تعيين كلمة مرور"}</button>` : ""}
+            ${!self && e.role !== "owner" && e.passHash ? `<button class="mini-btn" data-uact="perms" data-id="${e.id}">صلاحيات</button>` : ""}
+            ${!self ? `<button class="mini-btn" data-uact="reset" data-id="${e.id}">${e.passHash ? "إعادة تعيين كلمة المرور" : "🔑 إنشاء حساب دخول"}</button>` : ""}
             ${locked ? `<button class="mini-btn" data-uact="unlock" data-id="${e.id}">فك القفل</button>` : ""}
             ${!self ? `<button class="mini-btn" data-uact="toggle" data-id="${e.id}">${e.active === false ? "تفعيل" : "تعطيل"}</button>` : ""}` : ""}
           </td>
@@ -1268,17 +1268,25 @@
     }
   }
 
-  function openUserForm(existing) {
+  // نموذج واحد للموظف/المستخدم — تستخدمه صفحة «الموظفون» وصفحة «المستخدمون والصلاحيات» معاً
+  // الموظف إما «له حساب دخول للنظام» أو «بدون دخول» (للرواتب والحضور فقط)، وفي الحالتين لا يُمنح دور أعلى من دور المُنشئ
+  function openUserForm(existing, opts) {
+    opts = opts || {};
     if (!can("manage_users")) { denied(); return; }
     const isEdit = !!existing;
     const roles = assignableRoles(existing);
     if (!roles.length) { denied(); return; }
     const tempPw = genTempPassword();
+    const hasLogin = isEdit && !!(existing.passHash || existing.username);
     const fields = [
       { id: "name", label: "الاسم الكامل", type: "text", value: existing?.name || "" },
-      { id: "role", label: "الدور", type: "select", value: existing?.role || roles[0], options: roles.map((r) => ({ value: r, label: ACCESS_ROLE_AR[r] })) },
-      { id: "username", label: "اسم الدخول (username) — إنجليزي", type: "text", value: existing?.username || "" },
+      { id: "role", label: "الدور (يحدد صلاحياته إن كان له حساب دخول)", type: "select", value: existing?.role || (roles.includes("worker") ? "worker" : roles[0]), options: roles.map((r) => ({ value: r, label: ACCESS_ROLE_AR[r] })) },
     ];
+    if (!isEdit) fields.push({ id: "login", label: "هل يستخدم النظام؟", type: "select", value: opts.noLogin ? "no" : "yes", options: [
+      { value: "yes", label: "نعم — أنشئ له حساب دخول (اسم دخول + كلمة مرور)" },
+      { value: "no", label: "لا — موظف للرواتب والحضور فقط (يمكن إنشاء حساب له لاحقاً)" },
+    ] });
+    if (!isEdit || hasLogin) fields.push({ id: "username", label: `اسم الدخول (username) — إنجليزي${isEdit ? "" : " — مطلوب فقط إن كان يستخدم النظام"}`, type: "text", value: existing?.username || "" });
     if (!isEdit) fields.push({ id: "password", label: "كلمة مرور مؤقتة (يغيّرها المستخدم عند أول دخول)", type: "text", value: tempPw });
     fields.push(
       { id: "email", label: "البريد الإلكتروني (اختياري)", type: "text", value: existing?.email || "" },
@@ -1287,10 +1295,11 @@
       { id: "personalId", label: "الرقم الشخصي", type: "text", value: existing?.personalId || "" },
       { id: "birthDate", label: "تاريخ الميلاد", type: "date", value: existing?.birthDate || "" },
       { id: "expiryDate", label: "تاريخ انتهاء الحساب (اختياري)", type: "date", value: existing?.expiryDate || "" },
-      { id: "salary", label: "الراتب الأساسي (د.ب)", type: "number", step: "0.001", value: existing?.salary || 0, min: 0 },
+      { id: "salary", label: "الراتب الأساسي الشهري (د.ب)", type: "number", step: "0.001", value: existing?.salary || 0, min: 0 },
+      { id: "commission", label: "العمولة الشهرية الثابتة (د.ب)", type: "number", step: "0.001", value: existing?.commission || 0, min: 0 },
     );
     openQuickForm({
-      title: isEdit ? `تعديل مستخدم — ${existing.name}` : "إضافة مستخدم جديد",
+      title: isEdit ? `تعديل موظف — ${existing.name}` : "إضافة موظف جديد",
       sub: isEdit ? `الرقم الوظيفي: ${existing.employeeNumber || "—"}` : "سيُنشأ رقم وظيفي تلقائياً",
       fields,
       submitLabel: isEdit ? "حفظ التعديلات" : "إضافة المستخدم",
@@ -1298,14 +1307,18 @@
         if (!v.name) { toast("أدخل الاسم"); return false; }
         if (!roles.includes(v.role)) { denied(); return false; }
         if (v.username && !USERNAME_RE.test(v.username)) { toast(AX("e_user_fmt")); return false; }
-        if (!isEdit && !v.username) { toast("أدخل اسم الدخول"); return false; }
+        const wantsLogin = !isEdit && v.login !== "no";
+        if (!isEdit && !wantsLogin) { v.username = ""; v.password = ""; }
+        if (wantsLogin && !v.username) { toast("أدخل اسم الدخول، أو اختر «موظف بدون دخول»"); return false; }
+        if (v.salary < 0 || v.commission < 0) { toast("الراتب والعمولة لا يمكن أن يكونا سالبين"); return false; }
         if (v.email && !EMAIL_RE.test(v.email)) { toast(AX("e_email_fmt")); return false; }
         const selfId = existing && existing.id;
         if ((v.username && identTaken(v.username, selfId)) || (v.email && identTaken(v.email, selfId))) { toast(AX("e_user_taken")); return false; }
         if (isEdit) {
           if (existing.role === "owner" && v.role !== "owner" && activeOwners().length <= 1) { toast("لا يمكن تغيير دور آخر مالك فعّال"); return false; }
           const oldRole = existing.role;
-          const { password: _ignore, ...rest } = v;
+          const { password: _ignore, login: _l, ...rest } = v;
+          if (!hasLogin) delete rest.username;
           Object.assign(existing, rest);
           persistEmps();
           if (oldRole !== v.role) logActivity(`تغيير دور المستخدم ${v.name} من ${ACCESS_ROLE_AR[oldRole]} إلى ${ACCESS_ROLE_AR[v.role]} بواسطة ${me.name}`);
@@ -1313,20 +1326,52 @@
           toast("تم حفظ التعديلات");
           if (me && existing.id === me.id) { me = existing; applyRole(); }
         } else {
-          const prob = pwProblem(v.password, { username: v.username });
-          if (prob) { toast(prob); return false; }
-          const { password, ...rest } = v;
-          const emp = window.L997Enterprise.addEmployee({ ...rest, commission: 0, employeeNumber: nextEmployeeNumber(), createdDate: todayStr() });
-          setPassword(emp, password, true);
-          logActivity(`إضافة مستخدم: ${v.name} (${emp.employeeNumber}) بدور ${ACCESS_ROLE_AR[v.role]} بواسطة ${me.name}`);
-          toast("تم إضافة المستخدم");
-          showCredentials(emp, password, "تم إنشاء الحساب");
+          if (wantsLogin) { const prob = pwProblem(v.password, { username: v.username }); if (prob) { toast(prob); return false; } }
+          const { password, login: _l, ...rest } = v;
+          const emp = window.L997Enterprise.addEmployee({ ...rest, employeeNumber: nextEmployeeNumber(), createdDate: todayStr() });
+          if (wantsLogin) {
+            setPassword(emp, password, true);
+            logActivity(`إضافة مستخدم: ${v.name} (${emp.employeeNumber}) بدور ${ACCESS_ROLE_AR[v.role]} بواسطة ${me.name}`);
+            toast("تم إضافة الموظف مع حساب دخول");
+            showCredentials(emp, password, "تم إنشاء الحساب");
+          } else {
+            persistEmps();
+            logActivity(`إضافة موظف بدون حساب دخول: ${v.name} (${emp.employeeNumber}) بواسطة ${me.name}`);
+            toast("تم إضافة الموظف (بدون حساب دخول)");
+          }
         }
         renderAccessPage();
+        if (typeof window.renderEmployees997 === "function") window.renderEmployees997();
       },
     });
   }
   document.getElementById("accessAddUserBtn").addEventListener("click", () => openUserForm(null));
+  // صفحة الموظفين تستخدم نفس النموذج ونفس قواعد الرتب
+  window.L997People = {
+    canManageUsers: () => can("manage_users"),
+    add: () => openUserForm(null, { noLogin: true }),
+    edit: (id) => {
+      const e = emps().find((x) => x.id === id); if (!e) return;
+      if (canManage(e)) { openUserForm(e); return; }
+      if (!can("payroll")) { denied(); return; }
+      // صلاحية الرواتب فقط: تعديل الراتب والعمولة بدون تغيير الدور أو الدخول
+      openQuickForm({
+        title: `الراتب والعمولة — ${e.name}`, sub: "تعديل الدور والدخول من صفحة المستخدمين والصلاحيات (للمخوّلين فقط)",
+        fields: [
+          { id: "salary", label: "الراتب الأساسي الشهري (د.ب)", type: "number", step: "0.001", value: e.salary || 0, min: 0 },
+          { id: "commission", label: "العمولة الشهرية الثابتة (د.ب)", type: "number", step: "0.001", value: e.commission || 0, min: 0 },
+        ],
+        onSubmit: (v) => {
+          if (v.salary < 0 || v.commission < 0) { toast("القيم لا يمكن أن تكون سالبة"); return false; }
+          logActivity(`تعديل راتب ${e.name}: ${money(e.salary || 0)} → ${money(v.salary)}، العمولة ${money(e.commission || 0)} → ${money(v.commission)} بواسطة ${me ? me.name : ""}`);
+          e.salary = round3(v.salary); e.commission = round3(v.commission);
+          persistEmps();
+          if (typeof window.renderEmployees997 === "function") window.renderEmployees997();
+        },
+      });
+    },
+    canEdit: (id) => { const e = emps().find((x) => x.id === id); return !!e && (canManage(e) || can("payroll")); },
+  };
 
   function openPwReset(e) {
     const tempPw = genTempPassword();
@@ -1334,7 +1379,7 @@
     if (!e.username) fields.push({ id: "username", label: "اسم الدخول (username) — إنجليزي", type: "text", value: "" });
     fields.push({ id: "password", label: "كلمة مرور مؤقتة جديدة", type: "text", value: tempPw });
     openQuickForm({
-      title: `${e.passHash ? "إعادة تعيين كلمة المرور" : "تعيين كلمة مرور"} — ${e.name}`,
+      title: `${e.passHash ? "إعادة تعيين كلمة المرور" : "إنشاء حساب دخول"} — ${e.name}`,
       sub: "ستُطلب من المستخدم تغييرها عند أول دخول، ويُفكّ قفل حسابه إن كان مقفلاً",
       fields, submitLabel: "تعيين",
       onSubmit: (v) => {
@@ -1725,6 +1770,20 @@
   // ترحيل الحسابات القديمة: تحويل كلمات المرور المخزّنة نصاً صريحاً إلى تجزئة مملّحة
   function migrateAccounts() {
     let changed = false;
+    // حذف الموظفَين التجريبيَّين اللذين كانت النسخ السابقة تضيفهما تلقائياً — فقط إن لم يُستخدما أبداً
+    const list = emps();
+    const DEMO = [["مدير المغسلة", "manager", 350], ["عامل 1", "worker", 180]];
+    const E0 = window.L997Enterprise ? window.L997Enterprise.data : {};
+    for (let i = list.length - 1; i >= 0; i--) {
+      const e = list[i];
+      const demo = DEMO.some(([n, r, sal]) => e.name === n && e.role === r && Number(e.salary) === sal);
+      const used = e.passHash || e.username || e.email || e.permOverrides
+        || orders.some((o) => o.employeeId === e.id)
+        || (E0.attendance || []).some((a) => a.employeeId === e.id)
+        || (E0.payroll || []).some((p) => p.employeeId === e.id);
+      if (demo && !used) { list.splice(i, 1); changed = true; }
+    }
+    list.forEach((e) => { if (!e.employeeNumber) { e.employeeNumber = nextEmployeeNumber(); changed = true; } });
     emps().forEach((e) => {
       if (typeof e.password === "string") {
         if (e.password.trim()) {
@@ -2505,7 +2564,7 @@
 
     const empSel = document.getElementById("orderEmployeeSelect");
     if (empSel && window.L997Enterprise) {
-      const emps = window.L997Enterprise.data.employees;
+      const emps = window.L997Enterprise.data.employees.filter((e) => e.active !== false);
       empSel.innerHTML = `<option value="">— بدون تحديد —</option>` + emps.map((e) => `<option value="${e.id}">${esc(e.name)}</option>`).join("");
     }
 
@@ -4967,10 +5026,17 @@
  })();
  const ROLE_AR={owner:'مالك',manager:'مدير',accountant:'محاسب',worker:'عامل'};
  function roleLabel997(r){return t('role_'+r+'_ar')}
- function renderEmployees(){let es=L997Enterprise.data.employees,os=orders(),att=L997Enterprise.data.attendance,pr=L997Enterprise.data.payroll;
-  q('employeeMetrics').innerHTML=[[t('emp_count'),es.length],[t('emp_base_salaries'),money(es.reduce((s,e)=>s+Number(e.salary||0),0))],[t('emp_today_attendance'),att.filter(a=>within(a.date,1)).length],[t('emp_commissions'),money(es.reduce((s,e)=>s+Number(e.commission||0),0))]].map(a=>`<div class="metric-card"><div class="metric-top">${a[0]}</div><div class="metric-value">${a[1]}</div></div>`).join('');
-  q('employeesBody').innerHTML=es.length?es.map(e=>{let mine=os.filter(o=>o.employeeId===e.id&&o.status!=='cancelled'),sales=mine.reduce((s,o)=>s+Number(pay(o).total||0),0);return `<tr><td>${esc(e.name)}</td><td>${roleLabel997(e.role)||esc(e.role)}</td><td>${money(e.salary)}</td><td>${money(e.commission)}</td><td>${mine.length}</td><td>${money(sales)}</td></tr>`}).join(''):`<tr><td colspan="6" class="empty-state compact">${t('no_employees')}</td></tr>`;
-  q('payrollSummary').innerHTML=es.length?es.map(e=>{const empPr=pr.filter(p=>p.employeeId===e.id),net=empPr.reduce((s,p)=>s+Number(p.net||0),0),attCount=att.filter(a=>a.employeeId===e.id&&within(a.date,30)).length;return `<div class="mini-stat"><span>${esc(e.name)} <small class="subtle">(${t('attendance_days_30').replace('{0}',attCount)})</small></span><b>${money(Number(e.salary||0)+Number(e.commission||0)+net)}</b></div>`}).join(''):`<div class="empty-state compact">${t('no_payroll_data')}</div>`;
+ function renderEmployees(){
+  const all=L997Enterprise.data.employees,es=all.filter(e=>e.active!==false),os=orders(),att=L997Enterprise.data.attendance,pr=L997Enterprise.data.payroll;
+  const P=window.L997People||{};const mb=FIN.monthBounds(FIN.todayStr());
+  const inMonth=d=>FIN.inRange(d,mb.from,mb.to);
+  q('employeeMetrics').innerHTML=[[t('emp_count'),es.length],[t('emp_base_salaries'),money(es.reduce((s,e)=>s+Number(e.salary||0),0))],[t('emp_today_attendance'),att.filter(a=>FIN.localDay(a.date)===FIN.todayStr()).length],[t('emp_commissions'),money(es.reduce((s,e)=>s+Number(e.commission||0),0))]].map(a=>`<div class="metric-card"><div class="metric-top">${a[0]}</div><div class="metric-value">${a[1]}</div></div>`).join('');
+  const acct=e=>e.active===false?'<span class="status-badge status-cancelled">معطّل</span>':e.passHash?'<span class="status-badge status-ready">🔑 له حساب دخول</span>':'<span class="nopw-tag">بدون دخول</span>';
+  const rows=[...es,...all.filter(e=>e.active===false)];
+  q('employeesBody').innerHTML=rows.length?rows.map(e=>{let mine=os.filter(o=>o.employeeId===e.id&&o.status!=='cancelled'),sales=mine.reduce((s,o)=>s+Number(pay(o).total||0),0);return `<tr${e.active===false?' style="opacity:.55"':''}><td><b>${esc(e.name)}</b><br><small class="inv-muted">#${esc(e.employeeNumber||'—')}</small> ${acct(e)}</td><td>${roleLabel997(e.role)||esc(e.role)}</td><td>${money(e.salary)}</td><td>${money(e.commission)}</td><td>${mine.length}</td><td>${money(sales)}</td><td>${P.canEdit&&P.canEdit(e.id)?`<button class="mini-btn" type="button" data-emp-edit="${e.id}">تعديل</button>`:''}</td></tr>`}).join(''):`<tr><td colspan="7" class="empty-state compact">${t('no_employees')}</td></tr>`;
+  q('employeesBody').querySelectorAll('[data-emp-edit]').forEach(b=>b.addEventListener('click',()=>P.edit(b.dataset.empEdit)));
+  // صافي مستحق هذا الشهر: الراتب + العمولة الثابتة + المكافآت والعمولات − الخصومات − السلف
+  q('payrollSummary').innerHTML=es.length?`<div class="inv-muted" style="margin-bottom:6px">صافي المستحق لشهر ${mb.key}</div>`+es.map(e=>{const m=pr.filter(p=>p.employeeId===e.id&&inMonth(p.date));const sum=ty=>m.filter(p=>p.type===ty).reduce((s,p)=>s+Math.abs(Number(p.amount??p.net)||0),0);const extra=sum('bonus')+sum('commission'),ded=sum('deduction'),adv=sum('advance');const net=Number(e.salary||0)+Number(e.commission||0)+extra-ded-adv;const attCount=att.filter(a=>a.employeeId===e.id&&inMonth(a.date)&&a.status!=='absent').length;return `<div class="mini-stat"><span>${esc(e.name)} <small class="subtle">(${t('attendance_days_30').replace('{0}',attCount)}${extra?` · +${money(extra)}`:''}${ded?` · خصم ${money(ded)}`:''}${adv?` · سلف ${money(adv)}`:''})</small></span><b>${money(net)}</b></div>`}).join(''):`<div class="empty-state compact">${t('no_payroll_data')}</div>`;
  }
  function closureFor(type,key){return L997Enterprise.data.closures.find(c=>c.type===type&&(type==='daily'?c.forDate===key:c.forMonth===key))}
  function renderClosures(){
@@ -5184,24 +5250,12 @@
    });
  });
  q('addEmployeeBtn')?.addEventListener('click',()=>{
-   window.openQuickForm({
-     title:'إضافة موظف', sub:'الاسم والدور والراتب',
-     fields:[
-       { id:'name', label:'اسم الموظف', type:'text' },
-       { id:'role', label:'الدور', type:'select', value:'worker', options:[{value:'owner',label:'مالك'},{value:'manager',label:'مدير'},{value:'accountant',label:'محاسب'},{value:'worker',label:'عامل'}] },
-       { id:'salary', label:'الراتب الأساسي (د.ب)', type:'number', step:'0.001', value:0, min:0 },
-       { id:'commission', label:'نسبة/قيمة العمولة (د.ب)', type:'number', step:'0.001', value:0, min:0 },
-     ],
-     onSubmit:(v)=>{
-       if(!v.name){window.toast('أدخل اسم الموظف');return false}
-       L997Enterprise.addEmployee({name:v.name,role:v.role,salary:v.salary,commission:v.commission});
-       renderEmployees(); typeof window.populateEmployeeSelect==='function'&&window.populateEmployeeSelect();
-       window.toast('تم إضافة الموظف');
-     }
-   });
+   const P=window.L997People;
+   if(P&&P.canManageUsers()){P.add();return}
+   window.toast('إضافة الموظفين تتطلب صلاحية «المستخدمون وكلمات المرور» — اطلبها من المدير');
  });
  q('addAttendanceBtn')?.addEventListener('click',()=>{
-   let es=L997Enterprise.data.employees;
+   let es=L997Enterprise.data.employees.filter(e=>e.active!==false);
    if(!es.length){window.toast('أضف موظفاً أولاً');return}
    window.openQuickForm({
      title:'تسجيل حضور', sub:'اختر الموظف والحالة',
@@ -5218,7 +5272,7 @@
    });
  });
  q('addPayrollTxBtn')?.addEventListener('click',()=>{
-   let es=L997Enterprise.data.employees;
+   let es=L997Enterprise.data.employees.filter(e=>e.active!==false);
    if(!es.length){window.toast('أضف موظفاً أولاً');return}
    window.openQuickForm({
      title:'حركة راتب', sub:'سلفة، خصم، مكافأة، أو عمولة',
