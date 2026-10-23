@@ -13,8 +13,8 @@
 (function(){
  const EXT_KEYS={expenses:'l997_expenses',inventory:'l997_inventory',purchases:'l997_purchases',suppliers:'l997_suppliers',employees:'l997_employees',attendance:'l997_attendance',payroll:'l997_payroll',closures:'l997_closures',audit:'l997_audit',recurringExpenses:'l997_recurring_expenses',stockMoves:'l997_stock_moves'};
  const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k)||'null')??d}catch{return d}}; const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){if(window.__l997StorageFail)window.__l997StorageFail(e);return false}}; const uid=()=>crypto.randomUUID?crypto.randomUUID():'id-'+Date.now()+'-'+Math.random();
- let expenses=load(EXT_KEYS.expenses,[]),inventory=load(EXT_KEYS.inventory,[{id:uid(),name:'مسحوق غسيل',unit:'كجم',category:'detergent',qty:12,minQty:5,targetQty:30,avgCost:1.8},{id:uid(),name:'أكياس تغليف',unit:'حبة',category:'packaging',qty:180,minQty:50,targetQty:500,avgCost:.03},{id:uid(),name:'معطر',unit:'لتر',category:'detergent',qty:8,minQty:3,targetQty:15,avgCost:2.4}]);
- let purchases=load(EXT_KEYS.purchases,[]),suppliers=load(EXT_KEYS.suppliers,[{id:uid(),name:'مورد مواد تنظيف',phone:''}]),employees=load(EXT_KEYS.employees,[]);
+ let expenses=load(EXT_KEYS.expenses,[]),inventory=load(EXT_KEYS.inventory,[]); // تبدأ فارغة: لا كميات أو تكاليف مخترعة — المالك يضيف مواده الحقيقية
+ let purchases=load(EXT_KEYS.purchases,[]),suppliers=load(EXT_KEYS.suppliers,[]),employees=load(EXT_KEYS.employees,[]);
  let stockMoves=load(EXT_KEYS.stockMoves,[]);
  let attendance=load(EXT_KEYS.attendance,[]),payroll=load(EXT_KEYS.payroll,[]),closures=load(EXT_KEYS.closures,[]),audit=load(EXT_KEYS.audit,[]),recurringExpenses=load(EXT_KEYS.recurringExpenses,[]);
  const lsStr=(k,d='')=>{try{const v=localStorage.getItem(k);if(v===null)return d;try{const p=JSON.parse(v);return typeof p==='string'?p:String(p)}catch(e){return v}}catch(e){return d}};
@@ -675,6 +675,8 @@
 
   const SERVICES_DEFAULT = [
     { id: "iron", key: "service_iron" }, { id: "wash", key: "service_wash" }, { id: "washiron", key: "service_washiron" },
+    // الغسيل الجاف: يظهر للصنف فقط بعد إدخال سعره في الإعدادات (لا أسعار افتراضية مخترعة)
+    { id: "dryclean", key: "service_drycleaning" },
   ];
   function allGarments() { return CLOTHING_DEFAULT.concat(customGarments); }
   function activeGarments() { return allGarments().filter((g) => settings.garmentActive[g.id] !== false); }
@@ -769,9 +771,29 @@
   }
   if (!settings.packageDefs) { settings.packageDefs = []; save(KEYS.settings, settings); }
   if (!settings.garmentActive) { settings.garmentActive = {}; save(KEYS.settings, settings); }
+  // خدمات إضافية على مستوى الطلب (تعطير، تغليف): السعر صفر = غير مفعّلة ولا تظهر في شاشة الطلب
+  const EXTRAS_DEFAULT = [{ id: "perfume", key: "service_perfume", icon: "🌸" }, { id: "wrap", key: "service_wrap", icon: "🎁" }];
+  if (!settings.extras) { settings.extras = { perfume: { price: 0, per: "order" }, wrap: { price: 0, per: "order" } }; save(KEYS.settings, settings); }
+  function extraCfg(id) { const c = settings.extras && settings.extras[id]; return { price: Number(c && c.price) || 0, per: c && c.per === "piece" ? "piece" : "order" }; }
+  function activeExtras() { return EXTRAS_DEFAULT.filter((x) => extraCfg(x.id).price > 0); }
+  function extraName(id) { const x = EXTRAS_DEFAULT.find((e) => e.id === id); return x ? t(x.key) : id; }
+  // سطور الإضافات بالسعر الحالي: «لكل قطعة» = الكمية بعدد قطع الطلب، وإلا مرة واحدة للطلب
+  function extrasLines(ids, pieces) {
+    return ids.map((id) => {
+      const c = extraCfg(id), qty = c.per === "piece" ? pieces : 1;
+      return { id, per: c.per, qty, unit: round3(c.price), total: round3(c.price * qty) };
+    }).filter((l) => l.unit > 0 && l.qty > 0);
+  }
+  // بعد تعديل كميات الطلب: الإضافة «لكل قطعة» تتبع عدد القطع الجديد (بسعرها المسجّل وقت الطلب)
+  function refreshOrderExtras(order) {
+    const pcs = order.items.reduce((n, it) => n + it.qty, 0);
+    (order.extras || []).forEach((l) => { if (l.per === "piece") { l.qty = pcs; l.total = round3(l.unit * pcs); } });
+  }
+  const extrasTotalOf = (list) => round3((list || []).reduce((a, l) => a + (Number(l.total) || 0), 0));
 
   let role = "worker"; // owner | manager | accountant | worker — البدء بأقل صلاحية دائماً؛ الترقية لمالك/مدير تتطلب كلمة المرور
   let draftItems = [];
+  let draftExtras = new Set();
   let draftCustomerId = null;
   let currentQty = 1;
   let activeClothingId = CLOTHING_DEFAULT[0].id;
@@ -818,6 +840,16 @@
     });
   }
   window.__l997StorageFail = showStorageFailureBanner;
+  // التخزين محجوب (متصفح داخل تطبيق، وضع خصوصية...): النظام يعمل مؤقتاً بالذاكرة ولن يحفظ شيئاً —
+  // تحذير ثابت وواضح بدل شاشة «إعداد أول» توحي بأن البيانات اختفت
+  const MEM_STORAGE_WARN = `⚠ <b>الحفظ غير متاح في هذا المتصفح</b> — أي بيانات تُدخلها الآن ستضيع عند إغلاق الصفحة، وبياناتك السابقة لا تظهر هنا. افتح الرابط مباشرة في Safari أو Chrome (ليس من داخل واتساب أو انستغرام) وبدون وضع التصفح الخاص.<br><span dir="ltr">Storage is blocked in this browser — nothing will be saved and earlier data is not shown. Open the link directly in Safari or Chrome (not inside WhatsApp/Instagram), not in private mode.</span>`;
+  if (window.__l997MemStorage) {
+    const memBanner = document.createElement("div");
+    memBanner.id = "memStorageBanner";
+    memBanner.style.cssText = "background:#c0392b;color:#fff;padding:14px 18px;text-align:center;font-weight:700;line-height:1.7";
+    memBanner.innerHTML = MEM_STORAGE_WARN;
+    getBannerStack().appendChild(memBanner);
+  }
   // فحص استباقي لمساحة التخزين عند فتح النظام — تنبيه مبكر قبل الوصول لحد الامتلاء الفعلي
   function checkStorageUsage() {
     try {
@@ -838,6 +870,14 @@
     } catch (e) { /* تجاهل — هذا فحص وقائي غير حرج */ }
   }
   // تذكير النسخ الاحتياطي — يعمل على جدول زمني وعدد طلبات ثابتين، بغض النظر عن حجم التخزين
+  // يطلب من المتصفح عدم حذف بيانات النظام تلقائياً (عند امتلاء الجهاز أو طول عدم الاستخدام — مهم على iPhone)
+  function requestPersistentStorage() {
+    try {
+      if (!navigator.storage || !navigator.storage.persist) return;
+      navigator.storage.persisted().then((ok) => ok || navigator.storage.persist()).catch(() => {});
+    } catch (e) { /* متصفح قديم — لا شيء */ }
+  }
+  requestPersistentStorage();
   function checkBackupReminder() {
     try {
       const lastAt = localStorage.getItem("l997_last_backup_at");
@@ -2060,6 +2100,7 @@
         <button type="button" class="primary-btn full" id="au_next" disabled>${esc(AX("btn_continue"))}</button>`;
     }
     card.innerHTML = html;
+    if (window.__l997MemStorage) card.insertAdjacentHTML("afterbegin", `<div class="auth-mem-warn" id="authMemWarn">${MEM_STORAGE_WARN}</div>`);
     const sel = $a("au_lang"); if (sel) sel.value = lang;
     wireAuth();
     const first = card.querySelector("input[type=text], input[type=password]");
@@ -2497,7 +2538,7 @@
   let suspendedOrders = load("l997_suspended_orders", []);
 
   function resetDraft() {
-    draftItems = []; draftCustomerId = null; currentQty = 1;
+    draftItems = []; draftExtras = new Set(); draftCustomerId = null; currentQty = 1;
     document.getElementById("orderCustomerPhone").value = "";
     const card = document.getElementById("selectedCustomerCard");
     card.textContent = t("no_customer_selected");
@@ -2517,8 +2558,25 @@
     barText.innerHTML = "اختر عميلاً للبدء بالطلب<small>اضغط هنا للبحث أو إضافة عميل جديد</small>";
     document.getElementById("posCustomerBarBtn").classList.remove("has-customer");
     renderOrderItemsTable();
+    renderPosExtras();
     updateSummary();
     if (document.getElementById("posProductGrid")) renderProductGrid();
+  }
+  // أزرار الإضافات في السلة — تظهر فقط للإضافات التي لها سعر في الإعدادات
+  function renderPosExtras() {
+    const box = document.getElementById("posExtras");
+    if (!box) return;
+    const list = activeExtras();
+    [...draftExtras].forEach((id) => { if (!list.some((x) => x.id === id)) draftExtras.delete(id); });
+    box.style.display = list.length ? "" : "none";
+    box.innerHTML = list.map((x) => {
+      const c = extraCfg(x.id);
+      return `<label class="pos-urgent-toggle pos-extra-toggle"><input type="checkbox" data-extra="${x.id}" ${draftExtras.has(x.id) ? "checked" : ""} /> ${x.icon} ${esc(t(x.key))} <small>(${money(c.price)} ${c.per === "piece" ? "لكل قطعة" : "للطلب"})</small></label>`;
+    }).join("");
+    box.querySelectorAll("[data-extra]").forEach((cb) => cb.addEventListener("change", () => {
+      if (cb.checked) draftExtras.add(cb.dataset.extra); else draftExtras.delete(cb.dataset.extra);
+      updateSummary();
+    }));
   }
 
   let activeCatFilter = "all";
@@ -2797,10 +2855,17 @@
 
   // سقف الخصم: المالك بلا سقف، وغيره بنسبة محددة من سياسات الأمان
   function discountCapAmount(base) { return role === "owner" ? base : round3((base * sec.maxDiscountPct) / 100); }
-  function currentTotals() {
-    const subtotal = round3(draftItems.reduce((s, it) => s + it.total, 0));
+  // المجموع الأساسي = القطع + الإضافات؛ رسوم الاستعجال تُحسب على القطع فقط
+  function draftBase() {
+    const itemsTotal = round3(draftItems.reduce((s, it) => s + it.total, 0));
+    const extras = extrasLines([...draftExtras], draftItems.reduce((n, it) => n + it.qty, 0));
+    const extrasTotal = extrasTotalOf(extras);
     const priority = document.getElementById("orderPriority").value;
-    const urgentFee = priority === "urgent" ? round3((subtotal * settings.urgentPercent) / 100) : 0;
+    const urgentFee = priority === "urgent" ? round3((itemsTotal * settings.urgentPercent) / 100) : 0;
+    return { itemsTotal, extras, extrasTotal, subtotal: round3(itemsTotal + extrasTotal), urgentFee };
+  }
+  function currentTotals() {
+    const { subtotal, urgentFee, extrasTotal } = draftBase();
     const rawDiscount = Number(document.getElementById("discountAmount").value) || 0;
     const discountCap = discountCapAmount(round3(subtotal + urgentFee));
     // الخصم لا يمكن أن يكون سالباً (يتحول لزيادة سعر مخفية) ولا يتجاوز قيمة الطلب
@@ -2814,7 +2879,7 @@
     const outstanding = round3(Math.max(0, total - paid - balanceUse));
     const discountField = document.getElementById("discountAmount");
     if (discountField) discountField.classList.toggle("input-clamped", rawDiscount !== discount);
-    return { subtotal, urgentFee, discount, vatPercent, vat, total, paid, balanceUse, outstanding };
+    return { subtotal, extrasTotal, urgentFee, discount, vatPercent, vat, total, paid, balanceUse, outstanding };
   }
 
   function updateSummary() {
@@ -2852,9 +2917,7 @@
   });
   document.getElementById("discountAmount").addEventListener("change", (e) => {
     const raw = Number(e.target.value) || 0;
-    const subtotal = round3(draftItems.reduce((s, it) => s + it.total, 0));
-    const priority = document.getElementById("orderPriority").value;
-    const urgentFee = priority === "urgent" ? round3((subtotal * settings.urgentPercent) / 100) : 0;
+    const { subtotal, urgentFee } = draftBase();
     const cap = discountCapAmount(round3(subtotal + urgentFee));
     if (raw < 0) toast("لا يمكن أن يكون الخصم رقماً سالباً — تم تصحيحه إلى صفر");
     else if (raw > cap) toast(`الخصم أكبر من الحد المسموح (${role === "owner" ? "قيمة الطلب" : sec.maxDiscountPct + "% من قيمة الطلب"}) — تم تقييده عند ${money(cap)}`);
@@ -2978,6 +3041,7 @@
     const order = {
       id: uid(), number, customerId: draftCustomerId,
       items: draftItems.map((it) => ({ ...it })),
+      extras: draftBase().extras,
       priority: document.getElementById("orderPriority").value,
       expectedDelivery: document.getElementById("expectedDelivery").value || null,
       employeeId: empSelVal || null,
@@ -3127,6 +3191,7 @@
       customerId: draftCustomerId,
       customerName: cust ? cust.name : "بدون عميل",
       items: draftItems.map((it) => ({ ...it })),
+      extras: [...draftExtras],
       priority: document.getElementById("orderPriority").value,
       discount: document.getElementById("discountAmount").value || "0",
       discountReason: (document.getElementById("discountReason") || {}).value || "",
@@ -3145,6 +3210,8 @@
     if (!s) return;
     resetDraft();
     draftItems = s.items.map((it) => ({ ...it }));
+    draftExtras = new Set(s.extras || []);
+    renderPosExtras();
     if (s.customerId) {
       const cust = customers.find((c) => c.id === s.customerId);
       if (cust) selectCustomerForOrder(cust, true);
@@ -3307,6 +3374,37 @@
   window.toast = toast;
   window.confirmAction = confirmAction;
 
+  // إيصال نصي مفصّل يُرسل عبر واتساب (القطع، الكميات، الأسعار، الإجمالي، الدفع) — بنفس أرقام الإيصال المطبوع
+  function receiptText(order, cust) {
+    const en = lang === "en" || lang === "ur";
+    const p = order.payment, profile = loadProfile();
+    const shop = (en ? profile.nameEn : profile.nameAr) || "997 Laundry";
+    const L = (ar, eng) => (en ? eng : ar);
+    const lines = [`🧾 ${shop} — ${L("إيصال الطلب", "Receipt — Order")} #${order.number}`, `📅 ${fmtDT(order.createdAt)}`];
+    if (cust) lines.push(`👤 ${cust.name}`);
+    lines.push("");
+    order.items.forEach((it) => lines.push(`• ${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty} = ${it.fromPackageId ? L("من الباقة", "from package") : money(it.total)}`));
+    (order.extras || []).forEach((l) => lines.push(`➕ ${extraName(l.id)}${l.per === "piece" ? ` × ${l.qty}` : ""} = ${money(l.total)}`));
+    lines.push(`👕 ${L("عدد القطع", "Pieces")}: ${piecesOf(order)}`, "──────────");
+    lines.push(`${L("المجموع الأساسي", "Subtotal")}: ${money(p.subtotal)}`);
+    if (p.urgentFee > 0) lines.push(`⚡ ${L("رسوم الاستعجال", "Urgent fee")}: ${money(p.urgentFee)}`);
+    if (p.discount > 0) lines.push(`${L("الخصم", "Discount")}: -${money(p.discount)}`);
+    if (p.vat > 0) lines.push(`${L("ضريبة القيمة المضافة", "VAT")} (${p.vatPercent}%): ${money(p.vat)}`);
+    lines.push(`💰 ${L("الإجمالي", "Total")}: ${money(p.total)}`);
+    if (order.status === "cancelled") lines.push(`✕ ${L("الطلب ملغي", "Order cancelled")}`);
+    else if (!order.paymentConfirmed) lines.push(`⏳ ${L("المستحق عند الاستلام", "Due on pickup")}: ${money(p.total)}`);
+    else {
+      lines.push(`💳 ${L("طريقة الدفع", "Payment")}: ${orderPayLabel(order)}`, `✅ ${L("المدفوع", "Paid")}: ${money(p.method === "balance" ? p.total : p.paid)}`);
+      const owed = order.debtRecorded && cust ? FIN.allocateDebts([cust], orders)[order.id] || 0 : 0;
+      lines.push(owed > 0 ? `📌 ${L("المتبقي عليكم", "Balance due")}: ${money(owed)}` : `✔ ${L("مدفوع بالكامل", "Fully paid")}`);
+    }
+    orderPackageLines(order).forEach((l) => lines.push(`🎟 ${l}`));
+    lines.push("", L("شكراً لتعاملكم مع 997 Laundry 💙", "Thank you for choosing 997 Laundry 💙"));
+    if (profile.phone) lines.push(`📞 ${profile.phone}`);
+    return lines.join("\n");
+  }
+  window.receiptText997 = (id) => { const o = orders.find((x) => x.id === id); return o ? receiptText(o, customers.find((c) => c.id === o.customerId)) : ""; };
+
   function ensurePrintContainer() {
     let el = document.getElementById("printReceipt");
     if (!el) { el = document.createElement("div"); el.id = "printReceipt"; el.style.display = "none"; document.body.appendChild(el); }
@@ -3341,7 +3439,7 @@
 
         <table>
           <thead><tr><th>${t("th_cloth")}</th><th>${t("th_service")}</th><th>${t("th_qty")}</th><th>${t("th_total")}</th></tr></thead>
-          <tbody>${order.items.map((it) => `<tr><td>${clothingName(it.clothingId)}</td><td>${serviceName(it.serviceId)}</td><td>${it.qty}</td><td>${money(it.total)}</td></tr>`).join("")}</tbody>
+          <tbody>${order.items.map((it) => `<tr><td>${clothingName(it.clothingId)}</td><td>${serviceName(it.serviceId)}</td><td>${it.qty}</td><td>${money(it.total)}</td></tr>`).join("")}${(order.extras || []).map((l) => `<tr><td>${esc(extraName(l.id))}</td><td>—</td><td>${l.qty}</td><td>${money(l.total)}</td></tr>`).join("")}</tbody>
         </table>
         ${order.notes ? `<div class="receipt-notes"><strong>⚠ ${t("dlg_notes")}:</strong> ${esc(order.notes)}</div>` : ""}
         ${orderPackageLines(order).map((l) => `<div class="receipt-notes">🎟 ${esc(l)}</div>`).join("")}
@@ -3597,14 +3695,17 @@
   /* ---- تعديل طلب قبل الدفع: الكميات، الأولوية، الملاحظات، الموعد — مع إعادة حساب الإجمالي وسجل التعديل ---- */
   function recomputeOrderTotals(order) {
     const p = order.payment;
-    const subtotal = round3(order.items.reduce((a, it) => a + it.total, 0));
-    const urgentFee = order.priority === "urgent" ? round3((subtotal * settings.urgentPercent) / 100) : 0;
+    refreshOrderExtras(order);
+    const itemsTotal = round3(order.items.reduce((a, it) => a + it.total, 0));
+    const extrasTotal = extrasTotalOf(order.extras);
+    const subtotal = round3(itemsTotal + extrasTotal);
+    const urgentFee = order.priority === "urgent" ? round3((itemsTotal * settings.urgentPercent) / 100) : 0;
     const discount = round3(Math.min(Number(p.discount) || 0, subtotal + urgentFee));
     const preVat = Math.max(0, round3(subtotal + urgentFee - discount));
     const vatPercent = p.vatPercent !== undefined ? Number(p.vatPercent) || 0 : Number(loadProfile().vatPercent) || 0;
     const vat = vatPercent > 0 ? round3((preVat * vatPercent) / 100) : 0;
     const total = round3(preVat + vat);
-    order.payment = { ...p, subtotal, urgentFee, discount, vatPercent, vat, total, paid: 0, balanceUse: 0, outstanding: total };
+    order.payment = { ...p, subtotal, extrasTotal, urgentFee, discount, vatPercent, vat, total, paid: 0, balanceUse: 0, outstanding: total };
   }
   function openEditOrderForm(order) {
     if (order.status !== "received" || order.paymentConfirmed) { toast(lang === "en" ? "Only unpaid received orders can be edited" : "يمكن تعديل الطلب فقط قبل تأكيد الدفع"); return; }
@@ -3704,6 +3805,7 @@
         <div class="details-box">
           <h4>${t("dlg_items")}</h4>
           ${order.items.map((it) => `<div class="details-line"><span>${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty}</span><strong>${money(it.total)}</strong></div>`).join("")}
+          ${(order.extras || []).map((l) => `<div class="details-line"><span>➕ ${esc(extraName(l.id))}${l.per === "piece" ? ` × ${l.qty}` : ""}</span><strong>${money(l.total)}</strong></div>`).join("")}
         </div>
         <div class="details-box">
           <h4>${t("dlg_payment")}</h4>
@@ -3730,6 +3832,7 @@
         ${order.status !== "cancelled" && order.status !== "delivered" ? `<button class="secondary-btn" id="cancelOrderBtn">${t("dlg_cancel_order")}</button>` : ""}
         ${can("cancel_order") && order.status === "delivered" && order.deliveredAt && (Date.now() - new Date(order.deliveredAt).getTime() <= 24 * 3600 * 1000) ? `<button class="secondary-btn" id="revertDeliveryBtn">↩ إرجاع من التسليم (خلال 24 ساعة)</button>` : ""}
         <button class="whatsapp-btn" id="dialogWhatsappBtn">${t("dlg_send_whatsapp")}</button>
+        ${cust ? `<button class="whatsapp-btn" id="dialogReceiptWaBtn">🧾 ${lang === "en" ? "Receipt on WhatsApp" : "الإيصال على واتساب"}</button>` : ""}
         <button class="ghost-btn" id="dialogPrintBtn">${t("dlg_print")}</button>
       </div>
       <div class="modal-actions"><button class="ghost-btn" id="closeOrderDialog2">${t("dlg_close")}</button></div>
@@ -3841,6 +3944,11 @@
     document.getElementById("dialogWhatsappBtn")?.addEventListener("click", () => {
       if (order.status === "ready" || order.status === "delivered") sendPaymentConfirmationMessage(order, cust);
       else sendOrderConfirmation(order, cust);
+      toast("تم فتح واتساب — اضغط إرسال داخل واتساب لإكمال الإرسال");
+    });
+    document.getElementById("dialogReceiptWaBtn")?.addEventListener("click", () => {
+      logActivity(`إرسال إيصال الطلب #${order.number} على واتساب بواسطة ${me ? me.name : ""}`);
+      openWhatsApp(cust.phone, receiptText(order, cust));
       toast("تم فتح واتساب — اضغط إرسال داخل واتساب لإكمال الإرسال");
     });
     document.getElementById("dialogPrintBtn")?.addEventListener("click", () => { logActivity(`إعادة طباعة إيصال الطلب #${order.number} بواسطة ${me ? me.name : ""}`); printOrder(order.id); });
@@ -4580,9 +4688,7 @@
       const isCustom = !g.key;
       return `<tr style="${isActive ? "" : "opacity:.45"}">
         <td><strong>${name}</strong></td>
-        <td><input type="number" step="0.001" min="0" value="${settings.prices[`${g.id}_iron`] ?? 0}" data-price="${g.id}_iron" style="width:80px" /></td>
-        <td><input type="number" step="0.001" min="0" value="${settings.prices[`${g.id}_wash`] ?? 0}" data-price="${g.id}_wash" style="width:80px" /></td>
-        <td><input type="number" step="0.001" min="0" value="${settings.prices[`${g.id}_washiron`] ?? 0}" data-price="${g.id}_washiron" style="width:80px" /></td>
+        ${SERVICES_DEFAULT.map((s2) => `<td><input type="number" step="0.001" min="0" value="${settings.prices[`${g.id}_${s2.id}`] ?? 0}" data-price="${g.id}_${s2.id}" style="width:80px" /></td>`).join("")}
         <td style="text-align:center"><input type="checkbox" data-garment-active="${g.id}" ${isActive ? "checked" : ""} /></td>
         <td>${isCustom ? `<button class="mini-btn danger-mini" data-del-garment="${g.id}">حذف</button>` : ""}</td>
       </tr>`;
@@ -4602,6 +4708,13 @@
         toast("تم حذف المنتج");
       });
     });
+    document.getElementById("extrasPricesBody").innerHTML = EXTRAS_DEFAULT.map((x) => {
+      const c = extraCfg(x.id);
+      return `<tr><td><strong>${x.icon} ${esc(t(x.key))}</strong></td>
+        <td><input type="number" step="0.001" min="0" value="${c.price}" data-extra-price="${x.id}" style="width:90px" /></td>
+        <td><select data-extra-per="${x.id}"><option value="order" ${c.per === "order" ? "selected" : ""}>لكل طلب</option><option value="piece" ${c.per === "piece" ? "selected" : ""}>لكل قطعة</option></select></td></tr>`;
+    }).join("");
+    if (!can("edit_pricing")) document.querySelectorAll("#extrasPricesBody input, #extrasPricesBody select").forEach((el) => (el.disabled = true));
     renderPackageDefs();
   }
 
@@ -4616,6 +4729,7 @@
         { id: "iron", label: "سعر الكي (د.ب)", type: "number", step: "0.001", value: 0, min: 0 },
         { id: "wash", label: "سعر الغسيل (د.ب)", type: "number", step: "0.001", value: 0, min: 0 },
         { id: "washiron", label: "سعر الغسيل والكي (د.ب)", type: "number", step: "0.001", value: 0, min: 0 },
+        { id: "dryclean", label: "سعر الغسيل الجاف (د.ب)", type: "number", step: "0.001", value: 0, min: 0 },
       ],
       onSubmit: (v) => {
         if (!v.name) { toast("أدخل اسم الصنف"); return false; }
@@ -4625,6 +4739,7 @@
         if (v.iron > 0) settings.prices[`${id}_iron`] = round3(v.iron);
         if (v.wash > 0) settings.prices[`${id}_wash`] = round3(v.wash);
         if (v.washiron > 0) settings.prices[`${id}_washiron`] = round3(v.washiron);
+        if (v.dryclean > 0) settings.prices[`${id}_dryclean`] = round3(v.dryclean);
         persistAll();
         renderSettingsPage();
         toast("تم إضافة المنتج");
@@ -4643,8 +4758,19 @@
       if (settings.prices[input.dataset.price] !== newVal) changedCount++;
       settings.prices[input.dataset.price] = newVal;
     });
+    document.querySelectorAll("[data-extra-price]").forEach((input) => {
+      const id = input.dataset.extraPrice;
+      const raw = Number(normDigits(input.value)) || 0;
+      if (raw < 0) bad++;
+      const price = round3(Math.max(0, raw));
+      const per = document.querySelector(`[data-extra-per="${id}"]`)?.value === "piece" ? "piece" : "order";
+      const old = extraCfg(id);
+      if (old.price !== price || old.per !== per) changedCount++;
+      settings.extras[id] = { price, per };
+    });
     if (bad) toast(`تم تصحيح ${bad} سعر سالب إلى صفر`);
     persistAll();
+    renderPosExtras();
     if (changedCount > 0) logActivity(`تعديل أسعار ${changedCount} صنف/خدمة بواسطة ${roleLabel()}`);
     toast(t("toast_settings_saved"));
   }

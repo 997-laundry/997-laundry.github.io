@@ -220,6 +220,7 @@
             <div class="summary-row total"><span>الإجمالي</span><strong id="summaryTotal">0.000 د.ب</strong></div>
             <div class="summary-row"><span>المتبقي / غير مسدد</span><strong id="summaryOutstanding">0.000 د.ب</strong></div>
 
+            <div id="posExtras" class="pos-extras" style="display:none"></div>
             <label class="pos-urgent-toggle">
               <input type="checkbox" id="orderPriorityToggle" />
               ⚡ طلب مستعجل (رسوم إضافية تلقائية)
@@ -479,8 +480,11 @@
 
         <div id="settingsTabContent">
           <div class="panel" data-settings-panel="pricing">
-            <div class="panel-header"><div><h3 data-i18n="prices_title">قائمة الأسعار والمنتجات</h3><p>سعر الكي، الغسيل، والغسيل والكي معاً لكل صنف — عطّل أو أضف أصنافاً خاصة بك</p></div><button class="primary-btn" id="addCustomGarmentBtn">＋ إضافة منتج</button></div>
-            <div class="table-wrap"><table><thead><tr><th data-i18n="th_cloth">الصنف</th><th>كي</th><th>غسيل</th><th>غسيل وكي</th><th>نشط</th><th></th></tr></thead><tbody id="pricesBody"></tbody></table></div>
+            <div class="panel-header"><div><h3 data-i18n="prices_title">قائمة الأسعار والمنتجات</h3><p>سعر الكي، الغسيل، الغسيل والكي، والغسيل الجاف لكل صنف — اترك السعر صفراً لإخفاء الخدمة عن الصنف</p></div><button class="primary-btn" id="addCustomGarmentBtn">＋ إضافة منتج</button></div>
+            <div class="table-wrap"><table><thead><tr><th data-i18n="th_cloth">الصنف</th><th>كي</th><th>غسيل</th><th>غسيل وكي</th><th>غسيل جاف</th><th>نشط</th><th></th></tr></thead><tbody id="pricesBody"></tbody></table></div>
+            <h4 style="margin:18px 0 6px">➕ خدمات إضافية على الطلب</h4>
+            <p class="muted" style="margin:0 0 8px">تعطير وتغليف — تظهر في شاشة الطلب كخيار فقط إذا كان سعرها أكبر من صفر.</p>
+            <div class="table-wrap"><table><thead><tr><th>الخدمة</th><th>السعر (د.ب)</th><th>طريقة الاحتساب</th></tr></thead><tbody id="extrasPricesBody"></tbody></table></div>
             <button class="primary-btn full" id="savePricesBtn" style="margin-top:14px">💾 حفظ الأسعار</button>
           </div>
 

@@ -20,6 +20,7 @@ Data is saved inside that browser on that device — **export a backup weekly** 
 | `tools/build.js` | Merges `src/` into `laundry-997-full.html` |
 | `tests/finance.test.js` | Unit tests for every money rule |
 | `tests/e2e.smoke.js` | Drives the real app in a headless browser (order → payment → debt → refund → closure) |
+| `tests/e2e.*.js` | Further browser suites: roles, operations, people, month-end, shifts, English, sweep, offline, services (dry clean, add-ons, WhatsApp receipt) |
 | `docs/AUDIT.md` | Audit report, decisions, and roadmap |
 
 ## Developer commands

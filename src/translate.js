@@ -7,6 +7,16 @@
 (function (root) {
   "use strict";
   const DICT = {
+"لكل قطعة": "per piece",
+"للطلب": "per order",
+"لكل طلب": "Per order",
+"خدمات إضافية على الطلب": "Order add-ons",
+"تعطير وتغليف — تظهر في شاشة الطلب كخيار فقط إذا كان سعرها أكبر من صفر.": "Perfume and wrapping — shown on the order screen only when their price is above zero.",
+"السعر (د.ب": "Price (BHD",
+"طريقة الاحتساب": "Charged",
+"غسيل جاف": "Dry clean",
+"سعر الغسيل الجاف (د.ب": "Dry-clean price (BHD",
+"سعر الكي، الغسيل، الغسيل والكي، والغسيل الجاف لكل صنف — اترك السعر صفراً لإخفاء الخدمة عن الصنف": "Iron, wash, wash & iron and dry-clean price per item — leave a price at zero to hide that service for the item",
 "؟ الباقات المباعة للعملاء تبقى كما هي": "? Packages already sold to customers stay as they are",
 "؟ تبقى مشترياته السابقة في السجل": "? Its past purchases stay in the records",
 "آجل": "Credit",

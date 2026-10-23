@@ -4,6 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+const serve = require("./serve");
 
 const file = path.resolve(process.argv[2] || path.join(__dirname, "..", "laundry-997-full.html"));
 let failures = 0;
@@ -20,7 +21,7 @@ function check(name, cond, detail) {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
   await page.addInitScript(() => { window.open = () => ({ closed: false }); window.print = () => {}; });
-  await page.goto("file://" + file);
+  await page.goto(await serve(file));
   const OWNER_PW = "Owner#2026pass", WORKER_PW = "Worker#2026pass";
   const submit = async () => { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(250); };
   const later = async () => { await page.waitForTimeout(250); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } else if (await page.isVisible("#quickFormSubmitBtn") && /واتساب|WhatsApp/.test(await page.textContent("#quickFormSubmitBtn"))) { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(200); } };
@@ -66,10 +67,14 @@ function check(name, cond, detail) {
   await page.waitForSelector("#au_user"); await page.waitForTimeout(150); // let the login screen finish its auto-focus
   await page.fill("#au_user", "worker1"); await page.fill("#au_pass", tempPw);
   await page.click("#au_form button[type=submit]");
-  await page.waitForSelector("#au_pw");
+  await page.waitForSelector("#au_pw2"); await page.waitForTimeout(150); // let the change-password screen finish its auto-focus
   await page.fill("#au_pw", WORKER_PW); await page.fill("#au_pw2", WORKER_PW);
   await page.click("#au_form button[type=submit]");
-  await page.waitForSelector("body:not(.auth-locked)");
+  await page.waitForSelector("body:not(.auth-locked)", { timeout: 15000 }).catch(async (err) => {
+    // show what the login screen says instead of a bare timeout
+    console.log("DIAG login screen:", await page.evaluate(() => ({ error: document.getElementById("au_err")?.textContent, screen: document.getElementById("authCard")?.innerText.slice(0, 200) })), "page errors:", errors);
+    throw err;
+  });
   // employees start their shift right after logging in (attendance + cash custody)
   await page.waitForSelector("#qf_opening"); await page.fill("#qf_opening", "0"); await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(300);
   check("worker logs in with forced password change", true);

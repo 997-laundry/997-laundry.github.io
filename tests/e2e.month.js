@@ -3,6 +3,7 @@
 // Usage: node tests/e2e.month.js [path-to-html]
 const path = require("path");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+const serve = require("./serve");
 
 const file = path.resolve(process.argv[2] || path.join(__dirname, "..", "laundry-997-full.html"));
 let failures = 0;
@@ -19,7 +20,7 @@ function check(name, cond, detail) {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
   await page.addInitScript(() => { window.open = () => ({ closed: false }); window.print = () => {}; });
-  await page.goto("file://" + file);
+  await page.goto(await serve(file));
   await page.fill("#au_name", "Owner"); await page.fill("#au_user", "owner"); await page.fill("#au_pw", "Owner#2026pass"); await page.fill("#au_pw2", "Owner#2026pass");
   await page.click("#au_form button[type=submit]"); await page.check("#au_saved"); await page.click("#au_next");
   await page.waitForSelector("body:not(.auth-locked)");

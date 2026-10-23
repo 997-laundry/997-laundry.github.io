@@ -3,6 +3,7 @@
 // Usage: node tests/e2e.ops.js [path-to-html]
 const path = require("path");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+const serve = require("./serve");
 
 const file = path.resolve(process.argv[2] || path.join(__dirname, "..", "laundry-997-full.html"));
 let failures = 0;
@@ -19,7 +20,9 @@ function check(name, cond, detail) {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
   await page.addInitScript(() => { window.open = () => ({ closed: false }); window.print = () => {}; });
-  await page.goto("file://" + file);
+  // known starting stock for the cost/alert math below (the app itself starts every material at zero)
+  await page.addInitScript(() => { if (!localStorage.getItem("l997_inventory")) localStorage.setItem("l997_inventory", JSON.stringify([{ id: "det-fixture", name: "مسحوق غسيل", unit: "كجم", category: "detergent", qty: 12, minQty: 5, targetQty: 30, avgCost: 1.8 }])); });
+  await page.goto(await serve(file));
   await page.fill("#au_name", "Owner"); await page.fill("#au_user", "owner"); await page.fill("#au_pw", "Owner#2026pass"); await page.fill("#au_pw2", "Owner#2026pass");
   await page.click("#au_form button[type=submit]"); await page.check("#au_saved"); await page.click("#au_next");
   await page.waitForSelector("body:not(.auth-locked)");
@@ -28,10 +31,10 @@ function check(name, cond, detail) {
   const inv = () => page.evaluate(() => JSON.parse(JSON.stringify(window.L997Enterprise.data.inventory)));
   const exps = () => page.evaluate(() => JSON.parse(JSON.stringify(window.L997Enterprise.data.expenses)));
 
-  // Starting stock: first default material = detergent 12 kg @ 1.800, minimum 5
+  // Starting stock (test fixture): detergent 12 kg @ 1.800, minimum 5
   let items = await inv();
   const det = items.find((i) => i.name === "مسحوق غسيل");
-  check("default inventory present", det && det.qty === 12 && det.minQty === 5);
+  check("starting inventory present", det && det.qty === 12 && det.minQty === 5);
 
   // 1) Paid purchase: 10 kg @ 2.000 cash → stock 22, average cost (12×1.8 + 20) / 22 = 1.8909, expense 20.000
   await nav("inventory");

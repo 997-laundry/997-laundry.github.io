@@ -3,6 +3,7 @@
 // Usage: node tests/e2e.sweep.js [path-to-html]
 const path = require("path");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+const serve = require("./serve");
 
 const file = path.resolve(process.argv[2] || path.join(__dirname, "..", "laundry-997-full.html"));
 const PAGES = ["dashboard", "new-order", "orders", "customers", "balances", "reports", "finance", "inventory", "employees", "closures", "audit", "profile", "access", "settings"];
@@ -20,7 +21,7 @@ const SKIP = /logout|خروج|حذف|delete|del-|void|reset|restore|استعاد
     page.on("console", (m) => { if (m.type() === "error" && !/fonts\.|ERR_FAILED/.test(m.text())) errors.push(`[${tag}] console: ${m.text()}`); });
     await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
     await page.addInitScript(() => { window.open = () => ({ closed: false }); window.print = () => {}; HTMLAnchorElement.prototype.click = function () {}; });
-    await page.goto("file://" + file);
+    await page.goto(await serve(file));
     await page.fill("#au_name", "Owner"); await page.fill("#au_user", "owner");
     await page.fill("#au_pw", "Owner#2026pass"); await page.fill("#au_pw2", "Owner#2026pass");
     await page.click("#au_form button[type=submit]"); await page.check("#au_saved"); await page.click("#au_next");

@@ -425,3 +425,8 @@ body.auth-locked .top-logout{display:none!important}
 .top-logout{font-size:13px;color:var(--danger)}
 @media (max-width:520px){#langSelectTop{max-width:96px;padding-inline:8px}}
 .order-search{border:1px solid var(--border);border-radius:12px;padding:10px 12px;min-width:220px;flex:1 1 220px;font:inherit}
+/* خدمات إضافية على الطلب (تعطير/تغليف) */
+.pos-extras{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.pos-extra-toggle{background:var(--primary-soft, #e3f1f7);color:var(--text, inherit)}
+.pos-extra-toggle small{font-weight:500;opacity:.8}
+.auth-mem-warn{background:#c0392b;color:#fff;border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13px;line-height:1.7;text-align:start}

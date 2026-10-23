@@ -3,6 +3,7 @@
 // Usage: node tests/e2e.people.js [path-to-html]
 const path = require("path");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+const serve = require("./serve");
 
 const file = path.resolve(process.argv[2] || path.join(__dirname, "..", "laundry-997-full.html"));
 let failures = 0;
@@ -18,7 +19,7 @@ function check(name, cond, detail) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
-  await page.goto("file://" + file);
+  await page.goto(await serve(file));
   const OWNER_PW = "Owner#2026pass", ACC_PW = "Accnt#2026pass";
   const submit = async () => { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(250); };
   const later = async () => { await page.waitForTimeout(250); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } else if (await page.isVisible("#quickFormSubmitBtn") && /واتساب|WhatsApp/.test(await page.textContent("#quickFormSubmitBtn"))) { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(200); } };

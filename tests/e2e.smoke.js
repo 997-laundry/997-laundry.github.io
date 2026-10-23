@@ -2,6 +2,7 @@
 // Usage: node tests/e2e.smoke.js [path-to-html]   (default: laundry-997-full.html)
 const path = require("path");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+const serve = require("./serve");
 
 const file = path.resolve(process.argv[2] || path.join(__dirname, "..", "laundry-997-full.html"));
 const PW = "Owner#2026pass";
@@ -21,7 +22,7 @@ function check(name, cond, detail) {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
   page.on("popup", (p) => p.close().catch(() => {}));
   await page.addInitScript(() => { window.open = () => ({ closed: false }); window.print = () => {}; });
-  await page.goto("file://" + file);
+  await page.goto(await serve(file));
 
   // 1) First-time owner setup
   await page.fill("#au_name", "Owner Test");
