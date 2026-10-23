@@ -1942,6 +1942,7 @@
     $a("roleChip").textContent = me ? roleLabel() : "—";
     $a("changePwBtn").textContent = AX("btn_changepw");
     $a("logoutBtn").textContent = AX("btn_logout");
+    const tl = document.getElementById("topLogoutBtn"); if (tl) tl.textContent = lang === "en" ? "Logout" : lang === "ur" ? "لاگ آؤٹ" : "خروج";
     try { refreshShiftUi(); } catch (e) { /* قبل تهيئة الورديات */ }
   }
   function applyRole() {
@@ -2248,6 +2249,8 @@
   }
   $a("changePwBtn").addEventListener("click", openChangePw);
   $a("logoutBtn").addEventListener("click", () => logoutClicked());
+  // زر خروج إضافي في الشريط العلوي (للجوال) — يبقى ظاهراً دائماً حتى لو غطّى شريط المتصفح أسفل القائمة
+  document.getElementById("topLogoutBtn")?.addEventListener("click", () => logoutClicked());
 
   function initAuth() {
     migrateAccounts();
@@ -4815,7 +4818,7 @@
       chip.title = label;
       chip.classList.toggle("on", !!sh);
     }
-    if (box) box.innerHTML = `<button type="button" class="${sh ? "secondary-btn" : "primary-btn"} full" id="shiftBoxBtn">${sh ? (lang === "en" ? "⏹ Close my shift" : "⏹ إغلاق ورديتي") : (lang === "en" ? "▶ Start my shift" : "▶ بدء ورديتي")}</button>${sh ? `<small class="inv-muted">${label}</small>` : ""}`;
+    if (box) box.innerHTML = `<button type="button" class="${sh || !shiftNeeded() ? "secondary-btn" : "primary-btn"} full" id="shiftBoxBtn">${sh ? (lang === "en" ? "⏹ Close my shift" : "⏹ إغلاق ورديتي") : (lang === "en" ? "▶ Start my shift" : "▶ بدء ورديتي")}</button>${sh ? `<small class="inv-muted">${label}</small>` : ""}`;
     document.getElementById("shiftBoxBtn")?.addEventListener("click", shiftButton);
   }
   function shiftButton() { const sh = myShift(); if (sh) openCloseShift(sh); else openStartShift(); }
