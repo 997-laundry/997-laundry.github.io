@@ -107,7 +107,10 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   await B.waitForSelector("#au_cloud_join");
   await B.click("#au_cloud_join");
   await B.fill("#au_user", "worker1"); await B.fill("#au_pass", tempPw);
-  await Promise.all([B.waitForEvent("load"), B.click("#au_form button[type=submit]")]);
+  await Promise.all([B.waitForEvent("load", { timeout: 40000 }), B.click("#au_form button[type=submit]")]).catch(async (e) => {
+    console.log("DIAG join screen:", await B.evaluate(() => document.getElementById("au_err")?.textContent).catch(() => "?"), "| tempPw:", tempPw);
+    throw e;
+  });
   await B.waitForSelector("#au_user");
   check("after joining: login screen (not first-time setup) with a notice", (await B.isVisible("#au_pass")) && /تنزيل بيانات المحل/.test(await B.textContent("#au_err")), await B.textContent("#au_err"));
   check("joined device received orders and customers", (await b.ls("l997_orders")).length === 1 && (await b.ls("l997_customers")).length === 1);
@@ -204,6 +207,33 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   await C.waitForSelector("body:not(.auth-locked)");
   const cOrders = await helpers(C).ls("l997_orders");
   check("raul's device now has the shop's orders (old local data replaced)", cOrders.length >= 2 && !(await helpers(C).ls("l997_employees")).some((e) => e.username === "olddevice"), cOrders.length);
+
+  // the reported case: two devices create an order right after signing in → numbers never collide
+  await C.waitForSelector("#qf_opening", { timeout: 5000 }).then(async () => { await C.fill("#qf_opening", "0"); await C.click("#quickFormSubmitBtn"); await C.waitForTimeout(300); }).catch(() => {});
+  const quickOrder = async (P) => {
+    const h = helpers(P);
+    await h.nav("new-order");
+    await P.click("#posCustomerBarBtn"); await P.fill("#orderCustomerPhone", "33001122"); await P.waitForTimeout(200);
+    await P.click("#customerResults [data-pick]");
+    await P.click('#posProductGrid [data-cloth="shirt"]');
+    await P.click("#posSaveOrderMainBtn"); await h.later(); await h.closeDialogs();
+  };
+  await Promise.all([quickOrder(A), quickOrder(C)]);
+  check("orders saved at the same moment on two devices get different numbers", await until(async () => { const n = (await rows("orders")).map((r) => r.data.number); return n.length >= 4 && new Set(n).size === n.length; }, 20000), (await rows("orders")).map((r) => r.data.number).sort().join(","));
+  const allNums = (await rows("orders")).map((r) => Number(r.data.number));
+  check("numbering stays compact (no big jumps from page refreshes)", Math.max(...allNums) <= 30, allNums.sort((x, y) => x - y).join(","));
+
+  // an existing duplicate (e.g. made offline) is flagged and can get a new unique number
+  await until(async () => (await a.ls("l997_orders")).length >= 4, 20000); // A has received C's order (and refreshed)
+  await A.waitForTimeout(1500); await A.waitForSelector("body:not(.auth-locked)");
+  await until(async () => { await A.evaluate(() => { const l = JSON.parse(localStorage.getItem("l997_orders")); l[0].number = l[1].number; localStorage.setItem("l997_orders", JSON.stringify(l)); }); return true; });
+  await A.reload(); await A.waitForSelector("body:not(.auth-locked)");
+  await a.nav("orders");
+  check("duplicate number is flagged in the orders list", /رقم مكرر/.test(await A.textContent("#ordersBody")));
+  await A.click("#ordersBody tr:nth-child(1) [data-view]");
+  await A.click("#renumberOrderBtn"); await A.waitForTimeout(1500);
+  const numsAfter = (await a.ls("l997_orders")).map((o) => o.number);
+  check("'new number' button removes the duplicate", new Set(numsAfter).size === numsAfter.length, numsAfter.join(","));
 
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();

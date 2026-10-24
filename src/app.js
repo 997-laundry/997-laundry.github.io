@@ -2160,7 +2160,8 @@
     const sel = $a("au_lang"); if (sel) sel.value = lang;
     wireAuth();
     const first = card.querySelector("input[type=text], input[type=password]");
-    if (first && authView !== "recovery") setTimeout(() => { try { first.focus(); } catch (e) { /* تجاهل */ } }, 30);
+    // التركيز على أول حقل — إلا إذا بدأ المستخدم الكتابة في حقل آخر (لا نسحب المؤشر منه)
+    if (first && authView !== "recovery") setTimeout(() => { try { if (!card.contains(document.activeElement) || document.activeElement === card) first.focus(); } catch (e) { /* تجاهل */ } }, 30);
   }
   const setErr = (msg) => { const el = $a("au_err"); if (el) el.textContent = msg || ""; };
 
@@ -3368,12 +3369,22 @@
     return order;
   }
 
+  let savingOrder = false;
   function saveCurrentOrder(andPrint) {
     if (!draftCustomerId) { toast(t("toast_pick_customer")); openPosCustomerPicker(); return; }
     if (draftItems.length === 0) { toast(t("toast_add_one_item")); return; }
     const tt = currentTotals();
     const reason = document.getElementById("discountReason").value.trim();
-    const proceed = (approver, overridden) => {
+    const proceed = async (approver, overridden) => {
+      if (savingOrder) return;
+      savingOrder = true;
+      try {
+        // مع السحابة: رقم الطلب يأتي من الخادم — ننتظره لحظات بدل الترقيم المحلي الذي قد يتكرر بين الأجهزة
+        if (cloudOn()) {
+          const ok = await CLOUD.ensureNumbers(orders.reduce((m, o) => Math.max(m, Number(o.number) || 0), 0) + 1);
+          if (!ok) toast(lang === "en" ? "No internet: local order number used — check for duplicates later" : "بدون إنترنت: رقم الطلب محلي — قد يتكرر مع جهاز آخر، راجعه لاحقاً");
+        }
+      } finally { savingOrder = false; }
       const order = buildOrder({ discountReason: reason, approver: overridden ? approver : null });
       if (!order) return;
       const cust = customers.find((c) => c.id === order.customerId);
@@ -3914,6 +3925,21 @@
   });
   document.getElementById("orderPriorityFilter").addEventListener("change", () => renderOrdersPage());
 
+  const dupNumber = (o) => orders.some((x) => x.id !== o.id && x.number === o.number);
+  // طلب برقم مكرر (مثلاً أُنشئ بدون إنترنت على جهازين): رقم جديد لا يتكرر — يُسجَّل التغيير في سجل الطلب
+  async function renumberOrder(order) {
+    if (!can("create_order")) { denied(); return; }
+    const maxNum = orders.reduce((m, o) => Math.max(m, Number(o.number) || 0), 0);
+    let n = null;
+    if (cloudOn() && (await CLOUD.ensureNumbers(maxNum + 1))) n = CLOUD.takeOrderNumber(maxNum + 1);
+    if (!n) n = maxNum + 1;
+    const old = order.number, number = String(n).padStart(5, "0");
+    order.number = number;
+    (order.editHistory = order.editHistory || []).push({ at: new Date().toISOString(), by: me ? me.name : "", reason: `رقم مكرر #${old} → #${number}`, before: { pieces: piecesOf(order), total: order.payment.total }, after: { pieces: piecesOf(order), total: order.payment.total } });
+    logActivity(`تغيير رقم الطلب المكرر #${old} إلى #${number} بواسطة ${me ? me.name : ""}`);
+    persistAll(); renderOrderDialog(); renderOrdersPage();
+    toast(lang === "en" ? `New number #${number} — tell the customer` : `الرقم الجديد #${number} — أبلغ العميل`);
+  }
   function renderOrdersPage(searchOverride) {
     populateFilterOptions();
     const statusFilter = document.getElementById("orderStatusFilter").value;
@@ -3947,7 +3973,7 @@
       const cust = customers.find((c) => c.id === o.customerId);
       const pieces = o.items.reduce((s, it) => s + it.qty, 0);
       return `<tr>
-        <td><strong>#${o.number}</strong></td><td>${cust ? esc(cust.name) : "—"}</td><td>${pieces}</td><td>${money(o.payment.total)}</td>
+        <td><strong>#${o.number}</strong>${dupNumber(o) ? ` <span class="status-badge status-cancelled" title="رقم مكرر">⚠ ${lang === "en" ? "duplicate no." : "رقم مكرر"}</span>` : ""}</td><td>${cust ? esc(cust.name) : "—"}</td><td>${pieces}</td><td>${money(o.payment.total)}</td>
         <td><span class="priority-badge ${o.priority === "urgent" ? "priority-urgent" : "priority-normal"}">${o.priority === "urgent" ? t("opt_urgent") : t("opt_normal")}</span></td>
         <td><span class="status-badge ${statusClass(o.status)}">${statusLabel(o.status)}</span>${o.status === "ready" && !o.paymentConfirmed ? ` <span class="priority-badge priority-urgent">${lang === "en" ? "Unpaid" : "غير مدفوع"}</span>` : ""}</td>
         <td>${o.expectedDelivery ? fmtDT(o.expectedDelivery) : "—"}</td>
@@ -4226,6 +4252,7 @@
         <button class="icon-btn" id="closeOrderDialog">✕</button>
       </div>
       ${flowStepsHtml(order)}
+      ${dupNumber(order) ? `<div class="cloud-warn">⚠ ${lang === "en" ? "Another order has the same number." : "يوجد طلب آخر بنفس الرقم."} ${can("create_order") ? `<button class="mini-btn" id="renumberOrderBtn" type="button">🔢 ${lang === "en" ? "Give this order a new number" : "إعطاء هذا الطلب رقماً جديداً"}</button>` : ""}</div>` : ""}
       <div class="order-details-grid">
         <div class="details-box">
           <h4>${t("dlg_items")}</h4>
@@ -4373,6 +4400,7 @@
       else sendOrderConfirmation(order, cust);
       toast("تم فتح واتساب — اضغط إرسال داخل واتساب لإكمال الإرسال");
     });
+    document.getElementById("renumberOrderBtn")?.addEventListener("click", () => renumberOrder(order));
     document.getElementById("dialogReceiptPdfBtn")?.addEventListener("click", () => shareReceiptFile(order, cust, "pdf"));
     document.getElementById("dialogReceiptImgBtn")?.addEventListener("click", () => shareReceiptFile(order, cust, "image"));
     document.getElementById("dialogReceiptWaBtn")?.addEventListener("click", () => {

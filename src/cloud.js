@@ -328,9 +328,13 @@
       if (withPull !== false) maybeApply();
     }
   }
+  // أعلى رقم طلب على هذا الجهاز — أول كتلة أرقام من السحابة لا تبدأ تحته
+  const localMaxNumber = () => (read("l997_orders", []) || []).reduce((m, o) => Math.max(m, Number(o && o.number) || 0), 0);
   function start() {
     stop();
     sync(true);
+    // حجز أرقام الطلبات فور الدخول إن لم يكن لدينا أرقام (لا ننتظر أول طلب، ولا نحجز من جديد مع كل تحديث للصفحة)
+    if (st && !((st.numbers && st.numbers[0] <= st.numbers[1]) || st.nextBlock)) refillNumbers(localMaxNumber() + 1);
     timer = setInterval(() => { if (typeof document === "undefined" || !document.hidden) sync(true); }, CFG.pollMs);
   }
   function stop() { clearInterval(timer); timer = null; }
@@ -498,10 +502,18 @@
       if (!st.numbers || st.numbers[0] > st.numbers[1]) { st.numbers = null; saveSt(); refillNumbers(min); return null; }
       const n = st.numbers[0];
       st.numbers = [n + 1, st.numbers[1]]; saveSt();
-      if (st.numbers[1] - st.numbers[0] < 8 && !st.nextBlock) refillNumbers(min);
+      if (st.numbers[1] - st.numbers[0] < 3 && !st.nextBlock) refillNumbers(min);
       return n;
     },
     prepareNumbers: (min) => refillNumbers(min),
+    // قبل حفظ طلب: نتأكد من وجود رقم محجوز من السحابة (ننتظر حتى 6 ثوانٍ إن كان الحجز جارياً). false = بدون إنترنت
+    async ensureNumbers(min) {
+      if (!st || !st.shopId || !user) return false;
+      const ready = () => (st.numbers && st.numbers[0] <= st.numbers[1]) || !!st.nextBlock;
+      if (ready()) return true;
+      await Promise.race([refillNumbers(Math.max(Number(min) || 1, localMaxNumber() + 1)), new Promise((r) => setTimeout(r, 6000))]);
+      return ready();
+    },
     syncNow: () => sync(true),
     applyNow: () => { if (staged.size) reloadNow(); },
     status,
@@ -511,17 +523,22 @@
     clearNotes() { if (st) { st.conflicts = []; st.rejected = []; saveSt(); renderChip(); } },
     _debug: () => ({ dirty: [...dirty], staged: staged.size, cursor: st && st.cursor, stagedCursor }),
   };
-  let refilling = false;
-  async function refillNumbers(min) {
-    if (refilling || !st || !user) return;
-    refilling = true;
+  const NUM_BLOCK = 10; // أرقام محجوزة لكل جهاز في كل مرة — صغيرة حتى تبقى الفجوات بين الأجهزة قليلة
+  let refilling = null;
+  function refillNumbers(min) {
+    if (refilling) return refilling;
+    if (!st || !st.shopId || !user) return Promise.resolve();
+    refilling = refillNow(min).finally(() => { refilling = null; });
+    return refilling;
+  }
+  async function refillNow(min) {
     try {
-      const first = await api("/rest/v1/rpc/reserve_order_numbers", { method: "POST", body: { p_count: 30, p_min: Math.max(1, Number(min) || 1) } });
+      const first = await api("/rest/v1/rpc/reserve_order_numbers", { method: "POST", body: { p_count: NUM_BLOCK, p_min: Math.max(1, Number(min) || 1) } });
       // الكتلة الحالية لم تنتهِ بعد → نحتفظ بالجديدة احتياطاً للمرة القادمة
-      if (!st.numbers || st.numbers[0] > st.numbers[1]) st.numbers = [first, first + 29];
-      else st.nextBlock = [first, first + 29];
+      if (!st.numbers || st.numbers[0] > st.numbers[1]) st.numbers = [first, first + NUM_BLOCK - 1];
+      else st.nextBlock = [first, first + NUM_BLOCK - 1];
       saveSt();
-    } catch (e) { /* بدون إنترنت — النظام يستخدم الترقيم المحلي */ } finally { refilling = false; }
+    } catch (e) { /* بدون إنترنت — النظام يستخدم الترقيم المحلي */ }
   }
   function status() {
     return {
