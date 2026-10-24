@@ -81,8 +81,9 @@ async function startStandin(opts = {}) {
     };
     if (req.method === "OPTIONS") return send(204);
     if (offline) { req.socket.destroy(); return; }
+    if (opts.latencyMs) await new Promise((r) => setTimeout(r, opts.latencyMs)); // like a far-away real server
     let raw = "";
-    for await (const chunk of req) raw += chunk;
+    try { for await (const chunk of req) raw += chunk; } catch (e) { return; } // browser closed mid-request
     const body = raw ? JSON.parse(raw) : null;
     const u = new URL(req.url, "http://x");
     if (!req.headers.apikey) return send(401, { message: "No API key found in request" });

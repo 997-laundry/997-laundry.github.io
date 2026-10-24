@@ -293,8 +293,10 @@
   }
 
   /* ---------- حلقة المزامنة ---------- */
+  // رفع/سحب واحد فقط في نفس الوقت — تزامن عمليتين كان يرسل نفس السجل مرتين (تعارض وهمي بعد الربط)
+  async function lock() { while (busy) await new Promise((r) => setTimeout(r, 200)); busy = true; }
   async function sync(withPull) {
-    if (!st || !user || busy) return;
+    if (!st || !st.shopId || !user || busy) return;
     busy = true;
     try {
       await push();
@@ -409,6 +411,7 @@
     async uploadAll(employeeId, onProgress) {
       if (!st || !user) return { error: "not-linked" };
       await api(`/rest/v1/shop_members?user_id=eq.${user.uid}`, { method: "PATCH", body: { employee_id: employeeId || null } }).catch(() => {});
+      await lock();
       storeDirtyAll();
       let done = 0;
       try {
@@ -421,9 +424,10 @@
         st.cursor = 0; stagedCursor = 0;
         await pull(); staged = new Map(); // ما رفعناه للتو يعود بنفس النسخ — لا شيء جديد
         st.cursor = stagedCursor; st.linkedAt = new Date().toISOString(); st.lastSyncAt = st.linkedAt; saveSt();
+        busy = false;
         start();
         return { ok: true, rejected: (st.rejected || []).length };
-      } catch (e) { storeDirtyAll(); return { error: msgOf(e) }; }
+      } catch (e) { storeDirtyAll(); return { error: msgOf(e) }; } finally { busy = false; }
     },
     // جهاز جديد: الدخول بحساب سحابي وتنزيل كل البيانات (يستبدل بيانات هذا الجهاز)
     async joinDevice(username, password) {

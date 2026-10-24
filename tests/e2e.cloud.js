@@ -18,7 +18,7 @@ function check(name, cond, detail) {
 const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
 
 (async () => {
-  const cloud = await startStandin();
+  const cloud = await startStandin({ latencyMs: Number(process.env.CLOUD_LATENCY_MS || 150) }); // a far-away server, like the real one
   const url = await serve(file);
   const browser = await chromium.launch();
   const errors = [];
@@ -70,6 +70,9 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   check("recovery code hash stays on the device", sec.length === 1 && !("recoveryHash" in sec[0].data));
   const set = await rows("settings");
   check("prices uploaded, local order counter not", set.length === 1 && set[0].data.prices && !("orderSeq" in set[0].data));
+  await A.waitForTimeout(2500);
+  const afterLink = await a.cloudStatus();
+  check("no false conflicts right after linking (upload and sync never overlap)", afterLink.conflicts === 0 && afterLink.rejected === 0, JSON.stringify(afterLink.conflictList));
   await A.waitForSelector("#cloudChip");
   check("cloud indicator shows synced", await until(async () => /متزامن/.test(await A.textContent("#cloudChip"))), await A.textContent("#cloudChip"));
 
