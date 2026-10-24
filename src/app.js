@@ -37,6 +37,8 @@
  const r3=n=>+(Number(n||0)).toFixed(3);
  const stockMove=(it,type,qty,extra={})=>{const m={id:uid(),at:new Date().toISOString(),itemId:it.id,itemName:it.name,unit:it.unit,type,qty:r3(qty),balanceAfter:r3(it.qty),user:lsStr('l997_role',''),...extra};stockMoves.unshift(m);if(stockMoves.length>3000)stockMoves.length=3000;save(EXT_KEYS.stockMoves,stockMoves);return m};
  window.L997Enterprise={
+  // بعد تطبيق تحديثات السحابة بدون إعادة تحميل الصفحة
+  reloadData(){expenses=load(EXT_KEYS.expenses,[]);inventory=load(EXT_KEYS.inventory,[]);purchases=load(EXT_KEYS.purchases,[]);suppliers=load(EXT_KEYS.suppliers,[]);employees=load(EXT_KEYS.employees,[]);stockMoves=load(EXT_KEYS.stockMoves,[]);attendance=load(EXT_KEYS.attendance,[]);payroll=load(EXT_KEYS.payroll,[]);closures=load(EXT_KEYS.closures,[]);audit=load(EXT_KEYS.audit,[]);recurringExpenses=load(EXT_KEYS.recurringExpenses,[])},
   data:{get expenses(){return expenses},get inventory(){return inventory},get purchases(){return purchases},get suppliers(){return suppliers},get employees(){return employees},get attendance(){return attendance},get payroll(){return payroll},get closures(){return closures},get audit(){return audit},get recurringExpenses(){return recurringExpenses},get stockMoves(){return stockMoves}},
   addExpense(x){const u=window.L997Auth&&window.L997Auth.user?window.L997Auth.user():null;x={id:uid(),date:new Date().toISOString(),byId:u?u.id:'',by:u?u.name:'',...x};expenses.unshift(x);save(EXT_KEYS.expenses,expenses);log('إضافة مصروف',x.amount,x);return x},
   deleteExpense(id){expenses=expenses.filter(x=>x.id!==id);save(EXT_KEYS.expenses,expenses)},
@@ -2290,6 +2292,15 @@
     busy: () => !!document.querySelector("dialog[open]") || !$a("authScreen").hidden || draftItems.length > 0
       || !!(document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && document.activeElement.id !== "globalSearch"),
     page: () => currentPage,
+    // تحديثات الأجهزة الأخرى (طلبات، عملاء، دفعات…) تظهر فوراً بدون إعادة تحميل الصفحة — أسرع بكثير على الجوال
+    refresh: () => {
+      customers = load(KEYS.customers, []); orders = load(KEYS.orders, []); ledger = load(KEYS.ledger, []);
+      customerPackages = load(KEYS.customerPackages, []); suspendedOrders = load("l997_suspended_orders", []); shifts = load(SHIFT_KEY, []);
+      if (window.L997Enterprise.reloadData) window.L997Enterprise.reloadData();
+      if (reconcileDerived()) persistAll();
+      if (me) { const fresh = emps().find((e) => e.id === me.id); if (fresh) me = fresh; }
+      openPage(currentPage);
+    },
     openCloudPanel: () => { if (role === "owner") { openPage("profile"); setTimeout(() => document.getElementById("cloudPanel")?.scrollIntoView({ block: "start" }), 50); } },
   };
 

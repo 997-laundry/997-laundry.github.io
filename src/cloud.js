@@ -15,7 +15,7 @@
   const CFG = Object.assign({
     url: "https://szlfvwzuyllitqkdysju.supabase.co",
     key: "sb_publishable_UrGITH1hX1-Ds8fA0eHPew_vMFzFkdS",
-    pollMs: 10000, idleMs: 8000, emailDomain: "997laundry.app",
+    pollMs: 4000, idleMs: 8000, softIdleMs: 1500, emailDomain: "997laundry.app",
   }, root.__L997_CLOUD_CONFIG || {});
 
   // [اسم المجموعة في السحابة, مفتاح التخزين المحلي, نوعها, خيارات]
@@ -235,7 +235,7 @@
   }
   function schedulePush() {
     clearTimeout(debounce);
-    debounce = setTimeout(() => { sync(false).catch(() => {}); }, 1500);
+    debounce = setTimeout(() => { sync(false).catch(() => {}); }, 400); // رفع شبه فوري بعد الحفظ
   }
 
   /* ---------- سحب تغييرات الأجهزة الأخرى ---------- */
@@ -305,9 +305,20 @@
     applyStaged(false);
     root.location.reload();
   }
+  // ما يمكن عرضه فوراً بدون إعادة تحميل الصفحة؛ غيرها (إعدادات، صلاحيات، موظفون…) يحتاج إعادة تهيئة كاملة
+  const SOFT = new Set(["orders", "customers", "ledger", "customer_packages", "suspended_orders", "shifts", "attendance", "audit", "expenses"]);
   function maybeApply() {
-    showUpdateChip(staged.size > 0);
-    if (staged.size && idle()) reloadNow();
+    if (!staged.size) { showUpdateChip(false); return; }
+    const h = host();
+    const soft = h && h.refresh && [...staged.values()].every((r) => SOFT.has(r.collection));
+    if (soft && !h.busy() && Date.now() - lastInput > CFG.softIdleMs) {
+      applyStaged(false);
+      try { h.refresh(); } catch (e) { reloadNow(); return; }
+      showUpdateChip(false); renderChip();
+      return;
+    }
+    showUpdateChip(true);
+    if (idle()) reloadNow();
   }
 
   /* ---------- حلقة المزامنة ---------- */

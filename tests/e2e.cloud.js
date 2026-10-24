@@ -28,7 +28,7 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
     page.on("pageerror", (e) => errors.push(`[${tag}] ${e.message}`));
     await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
     await page.addInitScript((cfg) => { window.__L997_CLOUD_CONFIG = cfg; window.open = () => ({ closed: false }); window.print = () => {}; HTMLAnchorElement.prototype.click = function () {}; },
-      { url: cloud.url, key: "sb_publishable_test", pollMs: 1200, idleMs: 400 });
+      { url: cloud.url, key: "sb_publishable_test", pollMs: Number(process.env.CLOUD_POLL_MS || 1200), idleMs: 400 });
     await page.goto(url);
     return page;
   }
@@ -170,6 +170,18 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   check("owner device receives the worker's orders while idle", await until(async () => ((await a.ls("l997_orders")) || []).length === 3, 20000));
   await A.waitForSelector("body:not(.auth-locked)");
   check("owner stays signed in after the automatic refresh", !(await A.evaluate(() => document.body.classList.contains("auth-locked"))));
+
+  // speed: a new order from the worker appears on the owner's open Orders screen without reloading the page
+  await A.waitForTimeout(3000);
+  await a.nav("orders"); await A.evaluate(() => { window.__noReload = true; }); await A.mouse.move(8, 8);
+  await b.closeDialogs(); await b.nav("new-order");
+  await B.click("#posCustomerBarBtn"); await B.fill("#orderCustomerPhone", "33001122"); await B.waitForTimeout(150);
+  await B.click("#customerResults [data-pick]"); await B.click('#posProductGrid [data-cloth="shirt"]');
+  await B.click("#posSaveOrderMainBtn"); await b.later(); await b.closeDialogs();
+  const liveNum = (await b.ls("l997_orders"))[0].number, t0 = Date.now();
+  const shown = await until(async () => (await A.textContent("#ordersBody")).includes("#" + liveNum), 15000);
+  const kept = await A.evaluate(() => window.__noReload === true).catch(() => false);
+  check("new order shows on the other device's open screen within seconds, without a page reload", shown && kept, `${Date.now() - t0} ms, no reload: ${kept}`);
 
   // offline on A: work continues, uploads later
   cloud.setOffline(true);
