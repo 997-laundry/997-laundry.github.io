@@ -127,7 +127,7 @@ async function startStandin(opts = {}) {
         const args = Object.keys(body || {});
         if (!args.every((a) => IDENT.test(a))) return send(400, { message: "bad args" });
         const sql = `select public.${name}(${args.map((a, i) => `${a} => $${i + 1}`).join(", ")}) as r`;
-        const r = await asUser(uid, (c) => c.query(sql, args.map((a) => body[a])));
+        const r = await asUser(uid, (c) => c.query(sql, args.map((a) => (body[a] !== null && typeof body[a] === "object" ? JSON.stringify(body[a]) : body[a]))));
         return send(200, r.rows[0].r);
       }
       const { where, vals } = parseFilters(u.searchParams);

@@ -140,6 +140,9 @@
   const msgOf = (e) => (e.offline ? "offline" : e.status === 400 || e.status === 401 ? "bad-credentials" : e.message || "error");
 
   /* ---------- رفع التغييرات ---------- */
+  // مجموعة يكتب فيها الدور ولا يقرأها (مثل سجل النشاط للعامل) — تُضاف عبر دالة الإضافة فقط
+  const canRead = (c) => !st || !st.rules || !st.rules[c.name] || (user && st.rules[c.name].r.includes(user.role));
+  const retried = new Set(); // سجلات رُفضت سابقاً — تُعاد محاولتها مرة واحدة في كل فتح للنظام
   const canWrite = (c) => !st || !st.rules || !st.rules[c.name] || (user && st.rules[c.name].w.includes(user.role));
   function note(list, item, max) { st[list] = [item, ...(st[list] || [])].slice(0, max || 40); }
   async function serverRow(c, rid) {
@@ -153,12 +156,27 @@
   async function pushCollection(c) {
     const recs = localRecords(c), b = base[c.name] || (base[c.name] = {});
     const inserts = [], updates = [], removes = [];
+    const readable = canRead(c);
     recs.forEach((d, rid) => {
-      const h = hashOf(d), bb = b[rid];
-      if (!bb) inserts.push([rid, d, h]);
-      else if (bb[1] !== h) updates.push([rid, d, h, bb[0]]);
+      const h = hashOf(d), bb = b[rid], key = c.name + "\u0000" + rid;
+      if (!bb || (bb[0] === 0 && !retried.has(key))) { retried.add(key); inserts.push([rid, d, h]); }
+      else if (bb[1] !== h) { if (readable) updates.push([rid, d, h, bb[0]]); else bb[1] = h; } // لا تعديل لما لا نقرؤه
     });
-    if (!c.keepRemoved) Object.keys(b).forEach((rid) => { if (!recs.has(rid) && b[rid][0] > 0) removes.push([rid, b[rid][0]]); });
+    if (!c.keepRemoved && readable) Object.keys(b).forEach((rid) => { if (!recs.has(rid) && b[rid][0] > 0) removes.push([rid, b[rid][0]]); });
+    if (!readable) {
+      for (let i = 0; i < inserts.length; i += 100) {
+        const chunk = inserts.slice(i, i + 100);
+        try {
+          await api("/rest/v1/rpc/append_records", { method: "POST", body: { p_shop: st.shopId, p_collection: c.name, p_items: chunk.map(([rid, d]) => ({ id: rid, data: d })) } });
+          chunk.forEach(([rid, , h]) => { b[rid] = [1, h]; });
+        } catch (e) {
+          if (e.offline || e.noSession) throw e;
+          note("rejected", { at: new Date().toISOString(), collection: c.name, id: chunk[0][0], why: e.message });
+          chunk.forEach(([rid, , h]) => { b[rid] = [0, h]; });
+        }
+      }
+      return;
+    }
     for (let i = 0; i < inserts.length; i += 100) {
       const chunk = inserts.slice(i, i + 100);
       try {
@@ -489,6 +507,8 @@
     status,
     // يُفك ربط هذا الجهاز فقط (البيانات تبقى في السحابة وعلى الجهاز)
     unlink() { stop(); st = null; user = null; base = {}; staged = new Map(); dirty.clear(); try { ["l997_cloud", "l997_cloud_base", "l997_cloud_tokens"].forEach((k) => ls.removeItem(k)); } catch (e) { /* ignore */ } renderChip(); showUpdateChip(false); },
+    // بعد مراجعة المالك: مسح قائمة التعارضات والرفض من اللوحة
+    clearNotes() { if (st) { st.conflicts = []; st.rejected = []; saveSt(); renderChip(); } },
     _debug: () => ({ dirty: [...dirty], staged: staged.size, cursor: st && st.cursor, stagedCursor }),
   };
   let refilling = false;

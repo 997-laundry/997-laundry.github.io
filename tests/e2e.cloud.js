@@ -132,6 +132,9 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   const nums = (await rows("orders")).map((r) => r.data.number).sort();
   check("order numbers are unique across devices", new Set(nums).size === 2, nums.join(","));
   check("worker's shift uploaded", await until(async () => (await rows("shifts")).length === 1));
+  const wUid = (await cloud.query("select id from auth.users where email = 'worker1@997laundry.app'")).rows[0].id;
+  check("worker's activity-log entries reach the cloud (add-only)", await until(async () => (await cloud.query("select count(*)::int n from public.records where collection = 'audit' and updated_by = $1", [wUid])).rows[0].n > 0));
+  check("worker device: nothing rejected by the cloud", (await b.cloudStatus()).rejected === 0, JSON.stringify((await b.cloudStatus()).rejectedList));
 
   // device A (idle) picks up the worker's order and refreshes itself
   await a.nav("dashboard"); await A.mouse.move(5, 5);

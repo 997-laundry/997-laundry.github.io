@@ -78,6 +78,7 @@ select t.refused('outsider cannot create a second shop', $q$select public.create
 select t.ok('outsider sees no records', (select count(*) = 0 from public.records));
 select t.ok('outsider sees no shop or members', (select count(*) = 0 from public.shops) and (select count(*) = 0 from public.shop_members));
 select t.refused('outsider cannot write into the shop (knowing its id)', $q$insert into public.records (shop_id, collection, record_id, data) select shop, 'orders', 'x1', '{}' from t.ctx$q$);
+select t.refused('outsider cannot use the add-only function', $q$select public.append_records((select shop from t.ctx), 'audit', '[{"id":"x9","data":{}}]'::jsonb)$q$);
 select t.refused('outsider cannot add themselves as owner (knowing the shop id)', $q$insert into public.shop_members (shop_id, user_id, role) select shop, auth.uid(), 'owner' from t.ctx$q$);
 select t.rows('outsider cannot change any membership', $q$update public.shop_members set role = 'worker'$q$, 0);
 reset role;
@@ -111,6 +112,9 @@ select t.refused('records cannot be renamed', $q$update public.records set recor
 select t.refused('unknown collection refused', $q$insert into public.records (shop_id, collection, record_id, data) select id, 'hacks', 'h1', '{}' from public.shops$q$);
 select t.rows('worker writes an audit entry', $q$insert into public.records (shop_id, collection, record_id, data) select id, 'audit', 'a1', '{"action":"login"}' from public.shops$q$, 1);
 select t.ok('worker cannot read the audit log', (select count(*) = 0 from public.records where collection = 'audit'));
+select t.ok('worker adds audit entries through the add-only function', (select public.append_records((select shop from t.ctx), 'audit', '[{"id":"a2","data":{"x":1}},{"id":"a3","data":{"x":2}}]'::jsonb)) = 2);
+select t.ok('adding the same entry twice changes nothing', (select public.append_records((select shop from t.ctx), 'audit', '[{"id":"a2","data":{"x":9}}]'::jsonb)) = 0);
+select t.refused('worker cannot add expenses through the add-only function', $q$select public.append_records((select shop from t.ctx), 'expenses', '[{"id":"e9","data":{}}]'::jsonb)$q$);
 select t.ok('worker cannot read change history', (select count(*) = 0 from public.record_history));
 select t.rows('worker cannot promote themselves', $q$update public.shop_members set role = 'owner' where user_id = auth.uid()$q$, 0);
 select t.ok('worker is still a worker', (select role = 'worker' from public.shop_members where user_id = auth.uid()));

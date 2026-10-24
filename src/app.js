@@ -2442,9 +2442,11 @@
       ${noCloud.length ? `<div class="cloud-warn">⚠ موظفون لهم دخول على هذا الجهاز وليس لهم حساب سحابي بعد: <b>${noCloud.map((e) => esc(e.name)).join("، ")}</b>.<br><button class="primary-btn" id="cloudStaffBtn" type="button" style="margin-top:8px">☁ إنشاء حساباتهم في السحابة الآن</button></div>` : ""}
       ${s.conflicts ? `<details class="cloud-warn"><summary>⚠ ${s.conflicts} تعديل تعارض مع جهاز آخر (اعتُمدت نسخة السحابة) — اضغط للتفاصيل</summary>${s.conflictList.map((c) => `<div class="cloud-row">${fmtDT(c.at)} · ${esc(c.collection)} · ${esc(c.id)}</div>`).join("")}</details>` : ""}
       ${s.rejected ? `<details class="cloud-warn"><summary>⚠ ${s.rejected} تعديل رفضته السحابة (صلاحيات) — اضغط للتفاصيل</summary>${s.rejectedList.map((c) => `<div class="cloud-row">${fmtDT(c.at)} · ${esc(c.collection)} · ${esc(c.why)}</div>`).join("")}</details>` : ""}
+      ${s.conflicts || s.rejected ? `<button class="ghost-btn" id="cloudClearNotesBtn" type="button">✓ تمت المراجعة — مسح التنبيهات</button>` : ""}
       <p class="section-note">لإضافة جهاز: افتح الرابط على الجهاز الجديد ← «لدي حساب في السحابة».</p>
       <button class="ghost-btn" id="cloudUnlinkBtn" type="button">فك ربط هذا الجهاز فقط</button>`;
     document.getElementById("cloudStaffBtn")?.addEventListener("click", () => openCloudStaffForm(noCloud));
+    document.getElementById("cloudClearNotesBtn")?.addEventListener("click", () => { CLOUD.clearNotes(); renderCloudPanel(); toast("تم مسح التنبيهات"); });
     document.getElementById("cloudSyncNowBtn").addEventListener("click", () => { CLOUD.syncNow().then(() => { renderCloudPanel(); toast("تمت المزامنة"); }); });
     document.getElementById("cloudUnlinkBtn").addEventListener("click", () => {
       openQuickForm({

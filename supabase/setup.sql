@@ -177,6 +177,22 @@ begin
     where id = p_user;
 end $$;
 
+-- add-only for collections a role may write but not read (e.g. workers and the audit log): inserting
+-- through the API would also need read access to return the row, so these go through this function
+create or replace function public.append_records(p_shop uuid, p_collection text, p_items jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; it jsonb;
+begin
+  if not public.can_access(p_shop, p_collection, true) then raise exception 'not allowed'; end if;
+  if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) > 200 then raise exception 'send 1 to 200 items'; end if;
+  for it in select value from jsonb_array_elements(p_items) loop
+    insert into public.records (shop_id, collection, record_id, data)
+      values (p_shop, p_collection, it->>'id', it->'data') on conflict do nothing;
+    if found then n := n + 1; end if;
+  end loop;
+  return n;
+end $$;
+
 -- ---------- record rules enforced on the server ----------
 create or replace function public.records_guard() returns trigger
 language plpgsql security definer set search_path = public as $$
@@ -282,8 +298,8 @@ grant select, insert, update on public.records to authenticated;
 grant select on public.record_history to authenticated;
 revoke all on function public.create_shop(text, text) from public, anon;
 grant execute on function public.create_shop(text, text) to authenticated;
-revoke all on function public.reserve_order_numbers(int, bigint), public.set_member_password(uuid, text) from public, anon;
-grant execute on function public.reserve_order_numbers(int, bigint), public.set_member_password(uuid, text) to authenticated;
+revoke all on function public.reserve_order_numbers(int, bigint), public.set_member_password(uuid, text), public.append_records(uuid, text, jsonb) from public, anon;
+grant execute on function public.reserve_order_numbers(int, bigint), public.set_member_password(uuid, text), public.append_records(uuid, text, jsonb) to authenticated;
 revoke all on function public.member_role(uuid), public.can_access(uuid, text, boolean) from public, anon;
 grant execute on function public.member_role(uuid), public.can_access(uuid, text, boolean) to authenticated;
 revoke all on function public.records_guard(), public.records_history(), public.members_guard() from public, anon, authenticated;
