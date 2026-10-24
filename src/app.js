@@ -3697,6 +3697,137 @@
     if (profile.phone) lines.push(`📞 ${profile.phone}`);
     return lines.join("\n");
   }
+  /* ---------- إيصال PDF / صورة للمشاركة عبر واتساب ----------
+     يُرسم الإيصال على canvas (المتصفح يشكّل الحروف العربية تلقائياً)، ثم يُغلَّف بصفحة PDF واحدة.
+     المشاركة عبر قائمة «مشاركة» في الجهاز (واتساب يرفق الملف)؛ وإن لم يدعمها الجهاز يُنزَّل الملف ويُفتح واتساب. */
+  function receiptCanvas(order, cust) {
+    const en = lang === "en" || lang === "ur", L = (ar, eng) => (en ? eng : ar);
+    const p = order.payment, profile = loadProfile();
+    const S = 2, W = 380 * S, pad = 22 * S;
+    const FONT = (w, px) => `${w} ${px * S}px Tajawal, "Geeza Pro", "Segoe UI", Tahoma, Arial, sans-serif`;
+    const C = { brand: "#1f7ea8", ink: "#132630", muted: "#5d707a", line: "#dbe6eb", good: "#1f7a55", goodBg: "#e2f3eb", warn: "#a86411", warnBg: "#fbf0e0", bad: "#b4372f", badBg: "#f9e6e4", soft: "#f4f8fa" };
+    // المحتوى أولاً لحساب الطول
+    const rows = order.items.map((it) => ({ a: `${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}`, q: it.qty, v: it.fromPackageId ? L("من الباقة", "Package") : money(it.total) }));
+    (order.extras || []).forEach((l) => rows.push({ a: `+ ${extraName(l.id)}`, q: l.per === "piece" ? l.qty : "", v: money(l.total) }));
+    const totals = [[L("المجموع الأساسي", "Subtotal"), money(p.subtotal)]];
+    if (p.urgentFee > 0) totals.push([L("رسوم الاستعجال", "Urgent fee"), money(p.urgentFee)]);
+    if (p.discount > 0) totals.push([L("الخصم", "Discount"), "-" + money(p.discount)]);
+    if (p.vat > 0) totals.push([`${L("ضريبة القيمة المضافة", "VAT")} ${p.vatPercent}%`, money(p.vat)]);
+    let status;
+    if (order.status === "cancelled") status = [L("الطلب ملغي", "Order cancelled"), C.bad, C.badBg];
+    else if (!order.paymentConfirmed) status = [`${L("المستحق عند الاستلام", "Due on pickup")}: ${money(p.total)}`, C.warn, C.warnBg];
+    else {
+      const owed = order.debtRecorded && cust ? FIN.allocateDebts([cust], orders)[order.id] || 0 : 0;
+      status = owed > 0 ? [`${L("المتبقي عليكم", "Balance due")}: ${money(owed)}`, C.bad, C.badBg] : [`✓ ${L("مدفوع بالكامل", "Fully paid")} — ${orderPayLabel(order)}`, C.good, C.goodBg];
+    }
+    const pkgs = orderPackageLines(order);
+    const footer = [profile.cr ? `${L("س.ت", "CR")}: \u2066${profile.cr}\u2069` : "", profile.vat ? `${L("الرقم الضريبي", "VAT No.")}: \u2066${profile.vat}\u2069` : ""].filter(Boolean).join("   ·   ");
+    const rowH = 30 * S, H = Math.round(150 * S + 110 * S + rows.length * rowH + 20 * S + totals.length * 26 * S + 60 * S + 70 * S + pkgs.length * 24 * S + 90 * S + (footer ? 20 * S : 0));
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    const g = cv.getContext("2d");
+    g.direction = en ? "ltr" : "rtl";
+    const start = en ? pad : W - pad, end = en ? W - pad : pad; // جهة بداية السطر ونهايته
+    const txt = (s0, x, y, font, color, align) => { g.font = font; g.fillStyle = color; g.textAlign = align; g.fillText(s0, x, y); };
+    const fit = (s0, font, max) => { g.font = font; let x = String(s0); while (x.length > 3 && g.measureText(x).width > max) x = x.slice(0, -2); return x === String(s0) ? x : x + "…"; };
+    const rrect = (x, y, w, h, r, color) => { g.fillStyle = color; g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); g.fill(); };
+    const startAlign = en ? "left" : "right", endAlign = en ? "right" : "left";
+    const iso = (x) => "\u2066" + x + "\u2069"; // رقم أو نص إنجليزي داخل سطر عربي يبقى بترتيبه الصحيح
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, W, H);
+    // الترويسة
+    g.fillStyle = C.brand; g.fillRect(0, 0, W, 130 * S);
+    const bx = en ? pad : W - pad - 58 * S;
+    rrect(bx, 34 * S, 58 * S, 58 * S, 14 * S, "#ffffff");
+    txt("997", bx + 29 * S, 72 * S, FONT(800, 20), C.brand, "center");
+    const nx = en ? pad + 72 * S : W - pad - 72 * S;
+    txt(fit((en ? profile.nameEn : profile.nameAr) || "997 Laundry", FONT(800, 22), W - 150 * S), nx, 62 * S, FONT(800, 22), "#ffffff", startAlign);
+    txt(fit([profile.phone ? iso(profile.phone) : "", profile.address].filter(Boolean).join(" · ") || iso("997 Laundry"), FONT(500, 13), W - 150 * S), nx, 88 * S, FONT(500, 13), "#e3f1f7", startAlign);
+    let y = 166 * S;
+    txt(`${L("إيصال طلب", "Receipt — Order")} #${order.number}`, start, y, FONT(800, 18), C.ink, startAlign);
+    txt(fmtDT(order.createdAt), end, y, FONT(500, 13), C.muted, endAlign);
+    y += 28 * S;
+    if (cust) { txt(fit(cust.name, FONT(700, 15), W * 0.55), start, y, FONT(700, 15), C.ink, startAlign); txt(iso(cust.phone || ""), end, y, FONT(500, 13), C.muted, endAlign); }
+    y += 22 * S;
+    g.fillStyle = C.line; g.fillRect(pad, y, W - 2 * pad, 2 * S); y += 30 * S;
+    // القطع
+    txt(L("القطعة / الخدمة", "Item / service"), start, y, FONT(700, 12), C.muted, startAlign);
+    txt(L("الكمية", "Qty"), W / 2 + (en ? 60 : -60) * S, y, FONT(700, 12), C.muted, "center");
+    txt(L("المبلغ", "Amount"), end, y, FONT(700, 12), C.muted, endAlign);
+    y += 12 * S;
+    rows.forEach((r, i) => {
+      if (i % 2 === 0) { g.fillStyle = C.soft; g.fillRect(pad - 6 * S, y, W - 2 * pad + 12 * S, rowH); }
+      const ty = y + 20 * S;
+      txt(fit(r.a, FONT(500, 14), W * 0.5), start, ty, FONT(500, 14), C.ink, startAlign);
+      txt(String(r.q), W / 2 + (en ? 60 : -60) * S, ty, FONT(700, 14), C.ink, "center");
+      txt(r.v, end, ty, FONT(600, 14), C.ink, endAlign);
+      y += rowH;
+    });
+    y += 22 * S;
+    txt(`${L("عدد القطع", "Pieces")}: ${piecesOf(order)}`, start, y, FONT(600, 12), C.muted, startAlign);
+    y += 32 * S;
+    totals.forEach(([k, v]) => { txt(k, start, y, FONT(500, 14), C.muted, startAlign); txt(v, end, y, FONT(600, 14), C.ink, endAlign); y += 26 * S; });
+    g.fillStyle = C.line; g.fillRect(pad, y - 8 * S, W - 2 * pad, 2 * S);
+    y += 26 * S;
+    txt(L("الإجمالي", "Total"), start, y, FONT(800, 20), C.ink, startAlign);
+    txt(money(p.total), end, y, FONT(800, 22), C.brand, endAlign);
+    y += 24 * S;
+    rrect(pad, y, W - 2 * pad, 44 * S, 12 * S, status[2]);
+    txt(fit(status[0], FONT(800, 15), W - 4 * pad), W / 2, y + 28 * S, FONT(800, 15), status[1], "center");
+    y += 66 * S;
+    pkgs.forEach((l) => { txt(fit("🎟 " + l, FONT(500, 13), W - 2 * pad), start, y, FONT(500, 13), C.good, startAlign); y += 24 * S; });
+    y += 10 * S;
+    txt(L(`شكراً لتعاملكم مع ${iso("997 Laundry")} 💙`, "Thank you for choosing 997 Laundry 💙"), W / 2, y, FONT(700, 15), C.ink, "center");
+    y += 24 * S;
+    if (footer) { txt(footer, W / 2, y, FONT(500, 11), C.muted, "center"); y += 20 * S; }
+    // قصّ الفراغ الزائد أسفل الإيصال
+    const out = document.createElement("canvas"); out.width = W; out.height = Math.min(H, Math.round(y + 14 * S));
+    const og = out.getContext("2d"); og.fillStyle = "#ffffff"; og.fillRect(0, 0, W, out.height); og.drawImage(cv, 0, 0);
+    return out;
+  }
+  // صفحة PDF واحدة تحتوي صورة الإيصال (JPEG) — بدون مكتبات خارجية
+  function pdfFromCanvas(cv) {
+    const b64 = cv.toDataURL("image/jpeg", 0.92).split(",")[1];
+    const bin = atob(b64), jpg = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) jpg[i] = bin.charCodeAt(i);
+    const wPt = 288, hPt = Math.round((288 * cv.height) / cv.width);
+    const enc = new TextEncoder(), parts = [], offsets = [];
+    let len = 0;
+    const add = (x) => { const b = typeof x === "string" ? enc.encode(x) : x; parts.push(b); len += b.length; };
+    const obj = (n, body) => { offsets[n] = len; add(`${n} 0 obj\n${body}\nendobj\n`); };
+    add("%PDF-1.4\n");
+    obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    obj(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+    obj(3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${wPt} ${hPt}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`);
+    offsets[4] = len;
+    add(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${cv.width} /Height ${cv.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`);
+    add(jpg); add("\nendstream\nendobj\n");
+    const content = `q ${wPt} 0 0 ${hPt} 0 0 cm /Im0 Do Q`;
+    obj(5, `<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+    const xref = len;
+    add(`xref\n0 6\n0000000000 65535 f \n${[1, 2, 3, 4, 5].map((n) => String(offsets[n]).padStart(10, "0") + " 00000 n \n").join("")}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+    return new Blob(parts, { type: "application/pdf" });
+  }
+  async function shareReceiptFile(order, cust, kind) {
+    try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) { /* تجاهل */ }
+    const cv = receiptCanvas(order, cust);
+    const blob = kind === "image" ? await new Promise((r) => cv.toBlob(r, "image/png")) : pdfFromCanvas(cv);
+    const name = `997-laundry-receipt-${order.number}.${kind === "image" ? "png" : "pdf"}`;
+    const caption = lang === "en" ? `Receipt for order #${order.number} — 997 Laundry` : `إيصال طلبك رقم #${order.number} — 997 Laundry`;
+    let file = null; try { file = new File([blob], name, { type: blob.type }); } catch (e) { file = null; }
+    logActivity(`مشاركة إيصال ${kind === "image" ? "صورة" : "PDF"} للطلب #${order.number} بواسطة ${me ? me.name : ""}`);
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: caption, text: caption }); return "shared"; }
+      catch (e) { if (e && e.name === "AbortError") return "cancelled"; }
+    }
+    // الجهاز لا يدعم مشاركة الملفات: تنزيل الملف + فتح محادثة العميل لإرفاقه
+    const url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast(lang === "en" ? "Receipt downloaded — attach it in the customer's WhatsApp chat" : "تم تنزيل الإيصال — أرفقه في محادثة العميل على واتساب (📎)");
+    if (cust) setTimeout(() => openWhatsApp(cust.phone, caption), 600);
+    return "downloaded";
+  }
+  window.receiptFile997 = async (id, kind) => { const o = orders.find((x) => x.id === id); if (!o) return null; const cv = receiptCanvas(o, customers.find((c) => c.id === o.customerId)); return kind === "image" ? cv.toDataURL("image/png") : pdfFromCanvas(cv); };
+
   window.receiptText997 = (id) => { const o = orders.find((x) => x.id === id); return o ? receiptText(o, customers.find((c) => c.id === o.customerId)) : ""; };
 
   function ensurePrintContainer() {
@@ -4126,7 +4257,9 @@
         ${order.status !== "cancelled" && order.status !== "delivered" ? `<button class="secondary-btn" id="cancelOrderBtn">${t("dlg_cancel_order")}</button>` : ""}
         ${can("cancel_order") && order.status === "delivered" && order.deliveredAt && (Date.now() - new Date(order.deliveredAt).getTime() <= 24 * 3600 * 1000) ? `<button class="secondary-btn" id="revertDeliveryBtn">↩ إرجاع من التسليم (خلال 24 ساعة)</button>` : ""}
         <button class="whatsapp-btn" id="dialogWhatsappBtn">${t("dlg_send_whatsapp")}</button>
-        ${cust ? `<button class="whatsapp-btn" id="dialogReceiptWaBtn">🧾 ${lang === "en" ? "Receipt on WhatsApp" : "الإيصال على واتساب"}</button>` : ""}
+        <button class="whatsapp-btn" id="dialogReceiptPdfBtn">📄 ${lang === "en" ? "PDF receipt (WhatsApp)" : "إيصال PDF (واتساب)"}</button>
+        <button class="secondary-btn" id="dialogReceiptImgBtn">🖼 ${lang === "en" ? "Receipt image" : "صورة الإيصال"}</button>
+        ${cust ? `<button class="whatsapp-btn" id="dialogReceiptWaBtn">🧾 ${lang === "en" ? "Text receipt on WhatsApp" : "إيصال نصي على واتساب"}</button>` : ""}
         <button class="ghost-btn" id="dialogPrintBtn">${t("dlg_print")}</button>
       </div>
       <div class="modal-actions"><button class="ghost-btn" id="closeOrderDialog2">${t("dlg_close")}</button></div>
@@ -4240,6 +4373,8 @@
       else sendOrderConfirmation(order, cust);
       toast("تم فتح واتساب — اضغط إرسال داخل واتساب لإكمال الإرسال");
     });
+    document.getElementById("dialogReceiptPdfBtn")?.addEventListener("click", () => shareReceiptFile(order, cust, "pdf"));
+    document.getElementById("dialogReceiptImgBtn")?.addEventListener("click", () => shareReceiptFile(order, cust, "image"));
     document.getElementById("dialogReceiptWaBtn")?.addEventListener("click", () => {
       logActivity(`إرسال إيصال الطلب #${order.number} على واتساب بواسطة ${me ? me.name : ""}`);
       openWhatsApp(cust.phone, receiptText(order, cust));

@@ -14,7 +14,7 @@ function check(name, cond, detail) {
 
 (async () => {
   const browser = await chromium.launch();
-  const ctx = await browser.newContext({ timezoneId: "Asia/Bahrain", viewport: { width: 1280, height: 900 } });
+  const ctx = await browser.newContext({ timezoneId: "Asia/Bahrain", viewport: { width: 1280, height: 900 }, acceptDownloads: true });
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -86,6 +86,21 @@ function check(name, cond, detail) {
   let msg = decodeURIComponent((waUrls[waUrls.length - 1] || "").split("text=")[1] || "");
   check("receipt lists items, add-ons and total", /غسيل جاف/.test(msg) && /تعطير/.test(msg) && /تغليف/.test(msg) && /1\.750/.test(msg) && /#\d{5}/.test(msg), msg.split("\n").slice(0, 8).join(" | "));
   check("unpaid receipt says amount due on pickup", /المستحق عند الاستلام/.test(msg));
+
+  // PDF receipt: shared as a file through the device's share sheet (WhatsApp attaches it)
+  await page.evaluate(() => { window.__shared = null; navigator.canShare = () => true; navigator.share = async (d) => { const f = d.files[0]; const head = new TextDecoder().decode(new Uint8Array(await f.slice(0, 8).arrayBuffer())); window.__shared = { name: f.name, type: f.type, size: f.size, head }; }; });
+  await page.click("#dialogReceiptPdfBtn"); await page.waitForTimeout(800);
+  const shared = await page.evaluate(() => window.__shared);
+  check("PDF receipt goes to the share sheet as a real PDF file", shared && shared.type === "application/pdf" && /^%PDF-1\.4/.test(shared.head) && shared.size > 20000 && /receipt-\d{5}\.pdf$/.test(shared.name), JSON.stringify(shared));
+  await page.click("#dialogReceiptImgBtn"); await page.waitForTimeout(800);
+  const sharedImg = await page.evaluate(() => window.__shared);
+  check("receipt image goes to the share sheet as PNG", sharedImg && sharedImg.type === "image/png", JSON.stringify(sharedImg));
+  // a device without file sharing: the PDF downloads and WhatsApp opens on the customer's chat
+  await page.evaluate(() => { navigator.canShare = () => false; });
+  waUrls.length = 0;
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#dialogReceiptPdfBtn")]);
+  await page.waitForTimeout(900);
+  check("without file sharing: PDF downloaded + customer's WhatsApp chat opened", /receipt-\d{5}\.pdf$/.test(dl.suggestedFilename()) && waUrls.some((u) => /wa\.me\/97333001122/.test(u)), dl.suggestedFilename());
 
   // Pay cash, deliver: piece count is 1 (add-ons are not pieces)
   await page.click("#advanceStatusBtn");

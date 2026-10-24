@@ -12,7 +12,7 @@ module.exports = [
         L997Enterprise: "readonly", alert: "readonly", confirm: "readonly", location: "readonly", history: "readonly",
         TextEncoder: "readonly", Intl: "readonly", getComputedStyle: "readonly", requestAnimationFrame: "readonly",
         module: "writable", self: "readonly", performance: "readonly", HTMLElement: "readonly", KeyboardEvent: "readonly",
-        Storage: "readonly", AbortController: "readonly",
+        Storage: "readonly", AbortController: "readonly", atob: "readonly", File: "readonly",
       },
     },
     rules: { "no-undef": "error", "no-unreachable": "error", "no-dupe-keys": "error", "no-redeclare": "error", "no-const-assign": "error", "no-unused-vars": "off" },
