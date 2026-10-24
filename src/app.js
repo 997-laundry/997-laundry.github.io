@@ -843,6 +843,15 @@
   // التخزين محجوب (متصفح داخل تطبيق، وضع خصوصية...): النظام يعمل مؤقتاً بالذاكرة ولن يحفظ شيئاً —
   // تحذير ثابت وواضح بدل شاشة «إعداد أول» توحي بأن البيانات اختفت
   const MEM_STORAGE_WARN = `⚠ <b>الحفظ غير متاح في هذا المتصفح</b> — أي بيانات تُدخلها الآن ستضيع عند إغلاق الصفحة، وبياناتك السابقة لا تظهر هنا. افتح الرابط مباشرة في Safari أو Chrome (ليس من داخل واتساب أو انستغرام) وبدون وضع التصفح الخاص.<br><span dir="ltr">Storage is blocked in this browser — nothing will be saved and earlier data is not shown. Open the link directly in Safari or Chrome (not inside WhatsApp/Instagram), not in private mode.</span>`;
+  // الرابط القديم: تنبيه بالانتقال إلى رابط المحل الجديد (البيانات المحلية هنا لا تتزامن)
+  const OLD_HOST = /^jassimal3akbry\.github\.io$/i.test(location.hostname);
+  const MOVED_NOTE = `🔗 <b>انتقل النظام إلى رابط جديد:</b> <a href="https://997-laundry.github.io" style="color:#fff;text-decoration:underline" dir="ltr">997-laundry.github.io</a> — هذا الرابط القديم لا يتزامن مع السحابة. صدّر نسخة احتياطية إن كانت هنا بيانات لم تُنقل، ثم استخدم الرابط الجديد.`;
+  if (OLD_HOST) {
+    const mv = document.createElement("div");
+    mv.style.cssText = "background:#1f7ea8;color:#fff;padding:12px 16px;text-align:center;font-weight:700;line-height:1.7";
+    mv.innerHTML = MOVED_NOTE;
+    getBannerStack().appendChild(mv);
+  }
   if (window.__l997MemStorage) {
     const memBanner = document.createElement("div");
     memBanner.id = "memStorageBanner";
@@ -2107,7 +2116,9 @@
       html += `<h2>${esc(AX("login_title"))}</h2><p class="auth-sub">${esc(AX("login_sub"))}</p>${noticeHtml()}
         <form id="au_form" novalidate>${txtField("au_user", AX("f_user"), "username")}${pwField("au_pass", AX("f_pass"), "current-password")}
         <div class="auth-err" id="au_err" role="alert"></div><button type="submit" class="primary-btn full" id="au_go">${esc(AX("btn_login"))}</button></form>
-        <div class="auth-links"><button type="button" class="link-btn" id="au_forgot">${esc(AX("forgot"))}</button></div>`;
+        <div class="auth-links"><button type="button" class="link-btn" id="au_forgot">${esc(AX("forgot"))}</button></div>
+        ${CLOUD && !cloudOn() ? `<div class="auth-links"><button type="button" class="link-btn" id="au_cloud_join_replace">☁ ${lang === "en" ? "This device is not linked to the cloud — download the shop's data" : "هذا الجهاز غير مربوط بالسحابة — تنزيل بيانات المحل من السحابة"}</button></div>` : ""}
+        ${cloudOn() ? `<p class="auth-hint" style="text-align:center;margin-top:8px">☁ ${lang === "en" ? "This device is linked to the cloud" : "هذا الجهاز مربوط بالسحابة"}</p>` : ""}`;
     } else if (authView === "setup") {
       html += `<h2>${esc(AX("setup_title"))}</h2><p class="auth-sub">${esc(AX("setup_sub"))}</p>
         <form id="au_form" novalidate>${txtField("au_name", AX("f_name"), "name").replace('dir="ltr"', "")}${txtField("au_user", AX("f_username"), "username")}${txtField("au_email", AX("f_email"), "email")}
@@ -2118,6 +2129,7 @@
         ${CLOUD ? `<div class="auth-links"><button type="button" class="link-btn" id="au_cloud_join">☁ ${lang === "en" ? "I have an account in the cloud — download the shop's data to this device" : "لدي حساب في السحابة — تنزيل بيانات المحل لهذا الجهاز"}</button></div>` : ""}`;
     } else if (authView === "cloudJoin") {
       html += `<h2>☁ ${lang === "en" ? "Sign in from the cloud" : "الدخول من السحابة"}</h2><p class="auth-sub">${lang === "en" ? "Your shop's data will be downloaded to this device. Use the username and password you use in the system." : "ستُنزَّل بيانات المحل كاملة لهذا الجهاز. استخدم اسم الدخول وكلمة المرور التي تستخدمها في النظام."}</p>
+        ${authCtx.replace ? `<div class="cloud-warn">⚠ ${lang === "en" ? "This replaces the data currently on this device with the shop's cloud data. A backup file of this device is downloaded first." : "سيتم استبدال البيانات الموجودة على هذا الجهاز ببيانات المحل من السحابة. يُنزَّل أولاً ملف نسخة احتياطية من بيانات هذا الجهاز."}</div>` : ""}
         <form id="au_form" novalidate>${txtField("au_user", AX("f_user"), "username")}${pwField("au_pass", AX("f_pass"), "current-password")}
         <div class="auth-err" id="au_err" role="alert"></div><button type="submit" class="primary-btn full">☁ ${lang === "en" ? "Sign in and download" : "دخول وتنزيل البيانات"}</button></form>
         <div class="auth-links"><button type="button" class="link-btn" id="au_back">${esc(AX("back_login"))}</button></div>`;
@@ -2144,6 +2156,7 @@
     }
     card.innerHTML = html;
     if (window.__l997MemStorage) card.insertAdjacentHTML("afterbegin", `<div class="auth-mem-warn" id="authMemWarn">${MEM_STORAGE_WARN}</div>`);
+    if (OLD_HOST) card.insertAdjacentHTML("afterbegin", `<div class="auth-mem-warn" style="background:#1f7ea8">${MOVED_NOTE}</div>`);
     const sel = $a("au_lang"); if (sel) sel.value = lang;
     wireAuth();
     const first = card.querySelector("input[type=text], input[type=password]");
@@ -2167,6 +2180,7 @@
     if (authView === "mustChange") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitMustChange(); });
     if (authView === "cloudJoin") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitCloudJoin(); });
     $a("au_cloud_join")?.addEventListener("click", () => showAuth("cloudJoin"));
+    $a("au_cloud_join_replace")?.addEventListener("click", () => showAuth("cloudJoin", "", { replace: true }));
     if (authView === "setup") {
       $a("au_restore").addEventListener("click", () => { if (cloudOn()) { setErr("الجهاز مربوط بالسحابة — استخدم «الدخول من السحابة»"); return; } $a("au_restore_file").click(); });
       $a("au_restore_file").addEventListener("change", (ev) => { const f = ev.target.files[0]; if (f) restoreBackupFile(f); });
@@ -2368,11 +2382,23 @@
   }
 
   /* ---------- استعادة نسخة احتياطية من شاشة الإعداد الأول ---------- */
+  // ملف نسخة احتياطية بكل بيانات هذا الجهاز (بدون الحاجة لتسجيل الدخول)
+  function downloadLocalBackup(tag) {
+    try {
+      const backup = { exportedAt: new Date().toISOString(), version: 1, data: {} };
+      BACKUP_KEYS.forEach((k) => { const v = localStorage.getItem(k); if (v !== null) backup.data[k] = v; });
+      const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = `997-laundry-backup-${tag || "device"}-${todayStr()}.json`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    } catch (e) { /* تجاهل */ }
+  }
   // جهاز جديد: تنزيل بيانات المحل من السحابة ثم إعادة فتح النظام على شاشة الدخول
   async function submitCloudJoin() {
     const ident = $a("au_user").value.trim(), pw = $a("au_pass").value;
     if (!ident || !pw) return setErr(AX("e_empty"));
     const btn = $a("au_form").querySelector("button[type=submit]");
+    if (authCtx.replace) downloadLocalBackup("before-cloud"); // بيانات هذا الجهاز تُحفظ في ملف قبل استبدالها
     btn.disabled = true; setErr(lang === "en" ? "☁ Downloading the shop's data…" : "☁ جاري تنزيل بيانات المحل…");
     const r = await CLOUD.joinDevice(ident, pw);
     btn.disabled = false;
@@ -2413,11 +2439,12 @@
         <div><span>بانتظار الرفع</span><strong>${s.pending}</strong></div>
         <div><span>تحديثات واردة</span><strong>${s.incoming}</strong></div>
       </div>
-      ${noCloud.length ? `<div class="cloud-warn">⚠ موظفون لهم دخول على هذا الجهاز وليس لهم حساب سحابي بعد: <b>${noCloud.map((e) => esc(e.name)).join("، ")}</b>.<br>من «المستخدمون والصلاحيات» اضغط «كلمة المرور» لكل واحد — يُنشأ حسابه السحابي بكلمة مؤقتة جديدة.</div>` : ""}
+      ${noCloud.length ? `<div class="cloud-warn">⚠ موظفون لهم دخول على هذا الجهاز وليس لهم حساب سحابي بعد: <b>${noCloud.map((e) => esc(e.name)).join("، ")}</b>.<br><button class="primary-btn" id="cloudStaffBtn" type="button" style="margin-top:8px">☁ إنشاء حساباتهم في السحابة الآن</button></div>` : ""}
       ${s.conflicts ? `<details class="cloud-warn"><summary>⚠ ${s.conflicts} تعديل تعارض مع جهاز آخر (اعتُمدت نسخة السحابة) — اضغط للتفاصيل</summary>${s.conflictList.map((c) => `<div class="cloud-row">${fmtDT(c.at)} · ${esc(c.collection)} · ${esc(c.id)}</div>`).join("")}</details>` : ""}
       ${s.rejected ? `<details class="cloud-warn"><summary>⚠ ${s.rejected} تعديل رفضته السحابة (صلاحيات) — اضغط للتفاصيل</summary>${s.rejectedList.map((c) => `<div class="cloud-row">${fmtDT(c.at)} · ${esc(c.collection)} · ${esc(c.why)}</div>`).join("")}</details>` : ""}
       <p class="section-note">لإضافة جهاز: افتح الرابط على الجهاز الجديد ← «لدي حساب في السحابة».</p>
       <button class="ghost-btn" id="cloudUnlinkBtn" type="button">فك ربط هذا الجهاز فقط</button>`;
+    document.getElementById("cloudStaffBtn")?.addEventListener("click", () => openCloudStaffForm(noCloud));
     document.getElementById("cloudSyncNowBtn").addEventListener("click", () => { CLOUD.syncNow().then(() => { renderCloudPanel(); toast("تمت المزامنة"); }); });
     document.getElementById("cloudUnlinkBtn").addEventListener("click", () => {
       openQuickForm({
@@ -2440,6 +2467,36 @@
         try { navigator.clipboard.writeText(sql).then(done, () => { document.getElementById("qf_sql")?.select(); toast("حدّد النص وانسخه يدوياً"); }); } catch (e) { document.getElementById("qf_sql")?.select(); }
         return false;
       },
+    });
+  }
+  // حسابات سحابية لكل الموظفين دفعة واحدة — كلمة مؤقتة لكل واحد (يغيّرها عند أول دخول) وقائمة جاهزة للتسليم
+  function openCloudStaffForm(list) {
+    if (role !== "owner") { denied(); return; }
+    openQuickForm({
+      title: "☁ حسابات الموظفين في السحابة",
+      sub: `سيُنشأ لكل من: ${list.map((e) => e.name).join("، ")} حساب سحابي بكلمة مرور مؤقتة جديدة (كلماتهم الحالية على هذا الجهاز تتوقف). بعدها تظهر قائمة الأسماء وكلمات المرور لتسليمها.`,
+      fields: [], submitLabel: "☁ إنشاء الحسابات",
+      onSubmit: () => cloudStep(async () => {
+        const out = [];
+        for (const e of list) {
+          const pw = genTempPassword();
+          const r = await CLOUD.createStaff(e.username, pw, validRole(e.role), e.name, e.id);
+          if (r.error) { out.push({ e, error: r.error }); continue; }
+          e.cloudUserId = r.uid; setPassword(e, pw, true); attClear("u:" + e.id);
+          out.push({ e, pw });
+        }
+        persistEmps();
+        return { out };
+      }, ({ out }) => {
+        logActivity(`إنشاء حسابات سحابية للموظفين (${out.filter((x) => x.pw).length}) بواسطة ${me.name}`);
+        renderCloudPanel(); renderAccessPage();
+        openQuickForm({
+          title: "✅ حسابات الموظفين جاهزة",
+          sub: "سلّم كل موظف اسم الدخول وكلمته المؤقتة. على جهازه: افتح الرابط ← «لدي حساب في السحابة» (أو «هذا الجهاز غير مربوط بالسحابة») ← ثم يختار كلمة مرور جديدة. الرابط: https://997-laundry.github.io",
+          fields: out.map((x, i) => ({ id: "s" + i, label: x.e.name, type: "text", value: x.pw ? `اسم الدخول: ${x.e.username} — الكلمة المؤقتة: ${x.pw}` : `لم يُنشأ: ${cloudErr(x.error)}` })),
+          submitLabel: "تم", onSubmit: () => {},
+        });
+      }),
     });
   }
   function openCloudLinkForm() {

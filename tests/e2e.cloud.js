@@ -56,6 +56,11 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   await A.click('#posProductGrid [data-cloth="shirt"]'); await A.click("#posSaveOrderMainBtn"); await a.later();
   await a.nav("finance"); await A.click("#addExpenseBtn"); await A.fill("#qf_amount", "5"); await a.submit();
 
+  // a staff member with a local login, created before linking (like raul / amin / Yaseen)
+  await a.nav("access"); await A.click("#accessAddUserBtn");
+  await A.fill("#qf_name", "Raul"); await A.selectOption("#qf_role", "worker"); await A.fill("#qf_username", "raul");
+  await A.click("#quickFormSubmitBtn"); await A.waitForTimeout(300); await a.closeDialogs();
+
   // link + upload
   await a.nav("profile");
   await A.waitForSelector("#cloudLinkBtn");
@@ -64,8 +69,9 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   await A.click("#quickFormSubmitBtn");
   check("owner links and uploads the device's data", await until(async () => (await rows("orders")).length === 1 && (await rows("expenses")).length === 1 && (await rows("customers")).length === 1), JSON.stringify([(await rows("orders")).length, (await rows("expenses")).length]));
   const empRows = await rows("employees");
-  check("password hashes and salts never reach the cloud", empRows.length === 1 && !JSON.stringify(empRows).match(/passHash|"salt"|password/), Object.keys(empRows[0] ? empRows[0].data : {}).join(","));
-  check("owner's employee record knows its cloud account", !!(empRows[0] && empRows[0].data.cloudUserId));
+  const ownerRow = empRows.find((r) => r.data.role === "owner");
+  check("password hashes and salts never reach the cloud", empRows.length === 2 && !JSON.stringify(empRows).match(/passHash|"salt"|password/), Object.keys(ownerRow ? ownerRow.data : {}).join(","));
+  check("owner's employee record knows its cloud account", !!(ownerRow && ownerRow.data.cloudUserId));
   const sec = await rows("security");
   check("recovery code hash stays on the device", sec.length === 1 && !("recoveryHash" in sec[0].data));
   const set = await rows("settings");
@@ -75,6 +81,17 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   check("no false conflicts right after linking (upload and sync never overlap)", afterLink.conflicts === 0 && afterLink.rejected === 0, JSON.stringify(afterLink.conflictList));
   await A.waitForSelector("#cloudChip");
   check("cloud indicator shows synced", await until(async () => /متزامن/.test(await A.textContent("#cloudChip"))), await A.textContent("#cloudChip"));
+
+  // staff created before linking: one button creates their cloud accounts and lists the temporary passwords
+  await a.nav("dashboard"); await a.nav("profile");
+  await A.waitForSelector("#cloudStaffBtn");
+  await A.click("#cloudStaffBtn"); await A.click("#quickFormSubmitBtn");
+  await A.waitForSelector("#qf_s0", { timeout: 15000 });
+  const raulLine = await A.inputValue("#qf_s0");
+  const raulPw = (/الكلمة المؤقتة: (\S+)/.exec(raulLine) || [])[1];
+  check("one button creates cloud accounts for existing staff and shows their passwords", !!raulPw && /raul/.test(raulLine), raulLine);
+  check("raul is a cloud member now", (await cloud.query("select m.role from public.shop_members m join auth.users u on u.id = m.user_id where u.email = 'raul@997laundry.app'")).rows[0]?.role === "worker");
+  await a.closeDialogs();
 
   // owner adds a worker → cloud account + membership
   await a.nav("access"); await A.click("#accessAddUserBtn");
@@ -133,12 +150,22 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   // edit conflict: both devices change the same customer; the first upload wins, the other is logged
   const custId = (await a.ls("l997_customers"))[0].id;
   cloud.setOffline(true);
-  await A.evaluate((id) => { const l = JSON.parse(localStorage.getItem("l997_customers")); l.find((c) => c.id === id).notes = "from A"; localStorage.setItem("l997_customers", JSON.stringify(l)); }, custId);
-  await B.evaluate((id) => { const l = JSON.parse(localStorage.getItem("l997_customers")); l.find((c) => c.id === id).notes = "from B"; localStorage.setItem("l997_customers", JSON.stringify(l)); }, custId);
-  await A.waitForTimeout(800);
+  // edits written straight into each device's storage; re-written until they stick (a screen may save its
+  // in-memory copy over a direct write), then confirmed queued for upload before the internet comes back
+  const editOn = async (P, val) => {
+    for (let k = 0; k < 10; k++) {
+      await P.evaluate(([id, v]) => { const l = JSON.parse(localStorage.getItem("l997_customers")); l.find((c) => c.id === id).notes = v; localStorage.setItem("l997_customers", JSON.stringify(l)); }, [custId, val]).catch(() => {});
+      await P.waitForTimeout(700);
+      const ok = await P.evaluate(([id, v]) => JSON.parse(localStorage.getItem("l997_customers")).find((c) => c.id === id).notes === v, [custId, val]).catch(() => false);
+      if (ok) return true;
+    }
+    return false;
+  };
+  check("both offline edits saved on their devices", (await editOn(A, "from A")) && (await editOn(B, "from B")));
   cloud.setOffline(false);
   await B.evaluate(() => window.L997Cloud.syncNow());
-  check("first upload wins", await until(async () => (await rows("customers"))[0].data.notes === "from B"));
+  const bWon = await until(async () => (await rows("customers"))[0].data.notes === "from B", 20000);
+  check("first upload wins", bWon, bWon ? undefined : JSON.stringify({ cloud: (await rows("customers"))[0].data.notes, bLocal: await B.evaluate((id) => JSON.parse(localStorage.getItem("l997_customers")).find((c) => c.id === id).notes, custId).catch((e) => e.message), bStatus: await b.cloudStatus().catch(() => null), bDebug: await B.evaluate(() => window.L997Cloud._debug()).catch(() => null) }));
   await A.evaluate(() => window.L997Cloud.syncNow());
   check("second device's edit is not silently lost: logged as a conflict", await until(async () => (await a.cloudStatus()).conflicts >= 1));
   await A.waitForLoadState("load");
@@ -153,6 +180,27 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   await B.waitForTimeout(500);
   check("worker device cannot add expenses to the cloud", !(await rows("expenses")).some((r) => r.record_id === "fake-exp"));
   check("change history is kept on the server", (await cloud.query("select count(*)::int as n from public.record_history")).rows[0].n > 10);
+
+  // a device that already has its own (unlinked) data joins from the LOGIN screen
+  const C = await device("C");
+  await C.fill("#au_name", "Old"); await C.fill("#au_user", "olddevice"); await C.fill("#au_pw", OWNER_PW); await C.fill("#au_pw2", OWNER_PW);
+  await C.click("#au_form button[type=submit]"); await C.check("#au_saved"); await C.click("#au_next");
+  await C.waitForSelector("body:not(.auth-locked)");
+  await C.evaluate(() => document.getElementById("logoutBtn").click());
+  await C.waitForSelector("#au_cloud_join_replace");
+  check("login screen of an unlinked device offers joining the cloud", true);
+  await C.click("#au_cloud_join_replace");
+  check("joining from the login screen warns that this device's data is replaced", /استبدال/.test(await C.textContent("#authCard")));
+  await C.fill("#au_user", "raul"); await C.fill("#au_pass", raulPw);
+  await Promise.all([C.waitForEvent("load"), C.click("#au_form button[type=submit]")]);
+  await C.waitForSelector("#au_user"); await C.waitForTimeout(200);
+  check("after joining, the login screen says the device is linked", /مربوط بالسحابة/.test(await C.textContent("#authCard")));
+  await C.fill("#au_user", "raul"); await C.fill("#au_pass", raulPw); await C.click("#au_form button[type=submit]");
+  await C.waitForSelector("#au_pw2"); await C.waitForTimeout(150);
+  await C.fill("#au_pw", "Raul#2026new"); await C.fill("#au_pw2", "Raul#2026new"); await C.click("#au_form button[type=submit]");
+  await C.waitForSelector("body:not(.auth-locked)");
+  const cOrders = await helpers(C).ls("l997_orders");
+  check("raul's device now has the shop's orders (old local data replaced)", cOrders.length >= 2 && !(await helpers(C).ls("l997_employees")).some((e) => e.username === "olddevice"), cOrders.length);
 
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();
