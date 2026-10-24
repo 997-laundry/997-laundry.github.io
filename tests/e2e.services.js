@@ -146,6 +146,23 @@ function check(name, cond, detail) {
   check("blocked storage shows a clear 'nothing will be saved' warning on the first screen", /الحفظ غير متاح/.test(warn) && /nothing will be saved/.test(warn), warn.slice(0, 60));
   await ctx2.close();
 
+  // Browsers that wipe the tab's session storage on every load (owner report: signed out after each order / refresh)
+  const ctx3 = await browser.newContext({ timezoneId: "Asia/Bahrain" });
+  const p3 = await ctx3.newPage();
+  await p3.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+  await p3.addInitScript(() => { try { sessionStorage.clear(); } catch (e) { /* ignore */ } });
+  await p3.goto(await serve(file));
+  await p3.fill("#au_name", "Owner"); await p3.fill("#au_user", "owner"); await p3.fill("#au_pw", PW); await p3.fill("#au_pw2", PW);
+  await p3.click("#au_form button[type=submit]"); await p3.check("#au_saved"); await p3.click("#au_next");
+  await p3.waitForSelector("body:not(.auth-locked)");
+  await p3.reload(); await p3.waitForTimeout(800);
+  check("stays signed in after a page refresh even when the browser wipes tab storage", !(await p3.evaluate(() => document.body.classList.contains("auth-locked"))));
+  check("no false 'nothing will be saved' warning", !(await p3.isVisible("#authMemWarn")) && !(await p3.isVisible("#memStorageBanner")));
+  await p3.click("#logoutBtn"); await p3.waitForTimeout(300);
+  await p3.reload(); await p3.waitForTimeout(800);
+  check("after signing out, a refresh shows the sign-in screen", await p3.evaluate(() => document.body.classList.contains("auth-locked")));
+  await ctx3.close();
+
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();
   console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL SERVICE CHECKS PASSED");

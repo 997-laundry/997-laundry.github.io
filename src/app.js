@@ -7,7 +7,7 @@
     var m={};
     var fake={getItem:function(k){return Object.prototype.hasOwnProperty.call(m,k)?m[k]:null},setItem:function(k,v){m[k]=String(v)},removeItem:function(k){delete m[k]},clear:function(){m={}},key:function(i){return Object.keys(m)[i]||null},get length(){return Object.keys(m).length}};
     try{Object.defineProperty(window,n,{value:fake,configurable:true});}catch(e){try{window[n]=fake}catch(e2){}}
-    window.__l997MemStorage=true;
+    if(n==="localStorage")window.__l997MemStorage=true; // تحذير «لن يُحفظ شيء» فقط إن مُنع التخزين الدائم
   });
 })();
 (function(){
@@ -1936,9 +1936,14 @@
   function attClear(key) { const o = attGet(); if (o[key]) { delete o[key]; attSet(o); } }
 
   /* ---------- الجلسة ---------- */
-  function sessGet() { try { return JSON.parse(sessionStorage.getItem("l997_session") || "null"); } catch (e) { return null; } }
-  function sessSet(s) { try { sessionStorage.setItem("l997_session", JSON.stringify(s)); } catch (e) { /* تجاهل */ } }
-  function sessClear() { try { sessionStorage.removeItem("l997_session"); } catch (e) { /* تجاهل */ } }
+  // الجلسة تُحفظ في الجهاز أيضاً (لا في ذاكرة التبويب فقط): بعض المتصفحات تمسح ذاكرة التبويب عند تحديث الصفحة
+  // فيخرج المستخدم مع كل تحديث تلقائي بعد المزامنة. الخروج بعد الخمول (حد الأمان) يبقى كما هو.
+  function sessGet() {
+    for (const st of [sessionStorage, localStorage]) { try { const v = JSON.parse(st.getItem("l997_session") || "null"); if (v && v.id) return v; } catch (e) { /* تجاهل */ } }
+    return null;
+  }
+  function sessSet(s) { [sessionStorage, localStorage].forEach((st) => { try { st.setItem("l997_session", JSON.stringify(s)); } catch (e) { /* تجاهل */ } }); }
+  function sessClear() { [sessionStorage, localStorage].forEach((st) => { try { st.removeItem("l997_session"); } catch (e) { /* تجاهل */ } }); }
 
   let lastAct = Date.now();
   let lastPersist = 0;
