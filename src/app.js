@@ -943,7 +943,36 @@
       return inMemoryArray;
     }
   }
+  /* مصدر الحقيقة الواحد للأرقام المشتقة:
+     - رصيد العميل = مجموع حركاته في سجل الأرصدة + رصيد افتتاحي معتمد (openingBalance)
+     - قطع الباقة المتبقية = إجمالي القطع − المستهلك في الطلبات غير الملغاة
+     الحركات سجلات مستقلة لا تتعارض بين الأجهزة، أما الرقم المخزّن فقد يتعارض (دفعتان من جهازين في نفس الوقت)
+     — لذلك يُعاد حسابه دائماً من الحركات. العملاء/الباقات القديمة التي لا يطابق رقمها السجل لا تُغيَّر تلقائياً:
+     تظهر للمراجعة في صفحة الأرصدة. */
+  function reconcileDerived() {
+    let changed = false;
+    const sums = new Map();
+    ledger.forEach((tx) => sums.set(tx.customerId, round3((sums.get(tx.customerId) || 0) + (Number(tx.amount) || 0))));
+    customers.forEach((c) => {
+      const fromLedger = round3((sums.get(c.id) || 0) + (Number(c.openingBalance) || 0));
+      const same = Math.abs(round3(Number(c.balance) || 0) - fromLedger) < 0.0005;
+      if (typeof c.openingBalance !== "number") { if (same) { c.openingBalance = 0; changed = true; } return; }
+      if (!same) { c.balance = fromLedger; changed = true; }
+    });
+    FIN.packageUsage(customerPackages, orders).forEach((u) => {
+      if (u.pkg.derivedPieces !== true) { if (u.consistent) { u.pkg.derivedPieces = true; changed = true; } return; }
+      if (!u.consistent) { u.pkg.remainingPieces = u.remaining; changed = true; }
+    });
+    return changed;
+  }
+  // عملاء رصيدهم القديم لا يطابق سجل حركاتهم — بانتظار قرار المالك/المدير
+  function balanceMismatches() {
+    const sums = new Map();
+    ledger.forEach((tx) => sums.set(tx.customerId, round3((sums.get(tx.customerId) || 0) + (Number(tx.amount) || 0))));
+    return customers.filter((c) => typeof c.openingBalance !== "number").map((c) => ({ c, ledgerSum: round3(sums.get(c.id) || 0), diff: round3((Number(c.balance) || 0) - (sums.get(c.id) || 0)) }));
+  }
   function persistAll() {
+    reconcileDerived();
     save(KEYS.settings, settings);
     customers = mergeSaveById(KEYS.customers, customers);
     orders = mergeSaveById(KEYS.orders, orders);
@@ -2586,6 +2615,7 @@
 
   function initAuth() {
     migrateAccounts();
+    if (reconcileDerived()) persistAll();
     me = null;
     let notice = "";
     const s = sessGet();
@@ -4620,7 +4650,7 @@
       area: document.getElementById("customerArea").value.trim(),
       address: document.getElementById("customerAddress").value.trim(),
       notes: document.getElementById("customerNotes").value.trim(),
-      balance: 0, createdAt: new Date().toISOString(),
+      balance: 0, openingBalance: 0, createdAt: new Date().toISOString(),
     };
     customers.unshift(cust);
     logActivity(`${t("toast_customer_saved")}: ${cust.name}`);
@@ -4806,8 +4836,22 @@
     if (bv.stmt && !customers.find((c) => c.id === bv.stmt)) bv.stmt = null;
     if (bv.stmt) { root.innerHTML = balStatementHtml(customers.find((c) => c.id === bv.stmt)); return; }
     const tabs = ["customers", "ledger", "debtors"].map((k) => `<button type="button" class="cloth-chip ${bv.tab === k ? "active" : ""}" data-bact="tab" data-id="${k}">${BX("tab_" + k)}${k === "debtors" && customers.some((c) => c.balance < 0) ? ` (${customers.filter((c) => c.balance < 0).length})` : ""}</button>`).join("");
-    root.innerHTML = `${balMetricsHtml()}<div class="chip-grid" style="margin-top:16px">${tabs}</div>${bv.tab === "customers" ? balCustomersHtml() : bv.tab === "ledger" ? balLedgerHtml() : balDebtorsHtml()}`;
+    const mm = can("balance_adjust") ? balanceMismatches() : [];
+    const review = mm.length ? `<div class="cloud-warn" style="margin-bottom:12px"><b>⚠ ${mm.length} ${lang === "en" ? "customer balance(s) differ from their transaction history (older data). Choose for each:" : "عميل رصيده لا يطابق سجل حركاته (بيانات قديمة). اختر لكل واحد:"}</b>
+      ${mm.map((x) => `<div class="cloud-row" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:6px 0"><b>${esc(x.c.name)}</b> — ${lang === "en" ? "balance" : "الرصيد"} ${money(x.c.balance)} · ${lang === "en" ? "history" : "السجل"} ${money(x.ledgerSum)} · ${lang === "en" ? "difference" : "الفرق"} ${money(x.diff)}
+        <button class="mini-btn" type="button" data-recon="ledger" data-id="${x.c.id}">${lang === "en" ? "Use history" : "اعتماد السجل"} (${money(x.ledgerSum)})</button>
+        <button class="mini-btn" type="button" data-recon="keep" data-id="${x.c.id}">${lang === "en" ? "Keep balance (difference = opening balance)" : "الإبقاء على الرصيد (الفرق = رصيد افتتاحي)"}</button></div>`).join("")}</div>` : "";
+    root.innerHTML = `${review}${balMetricsHtml()}<div class="chip-grid" style="margin-top:16px">${tabs}</div>${bv.tab === "customers" ? balCustomersHtml() : bv.tab === "ledger" ? balLedgerHtml() : balDebtorsHtml()}`;
   }
+  document.addEventListener("click", (ev) => {
+    const b = ev.target.closest && ev.target.closest("[data-recon]");
+    if (!b) return;
+    if (!can("balance_adjust")) { denied(); return; }
+    const x = balanceMismatches().find((m) => m.c.id === b.dataset.id); if (!x) return;
+    if (b.dataset.recon === "ledger") { x.c.openingBalance = 0; x.c.balance = x.ledgerSum; logActivity(`مراجعة رصيد ${x.c.name}: اعتماد سجل الحركات ${money(x.ledgerSum)} (كان ${money(x.diff + x.ledgerSum)})`); }
+    else { x.c.openingBalance = x.diff; logActivity(`مراجعة رصيد ${x.c.name}: الإبقاء على ${money(x.c.balance)} — رصيد افتتاحي ${money(x.diff)}`); }
+    persistAll(); renderBalancesPage(); toast(lang === "en" ? "Saved" : "تم الحفظ");
+  });
   function renderLedger() { if (document.getElementById("page-balances").classList.contains("active")) renderBalancesPage(); }
 
   /* ---------- العمليات ---------- */

@@ -178,6 +178,30 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   check("device A now shows the cloud's value", await until(async () => (await a.ls("l997_customers")).find((c) => c.id === custId).notes === "from B"));
   check("cloud keeps one consistent value", (await rows("customers"))[0].data.notes === "from B");
 
+  // two devices record a payment for the SAME customer while offline (as the app does: balance + ledger entry)
+  // → after reconnecting, the balance on every device and in the cloud = the sum of both payments
+  const pay = (P, amount, tag) => P.evaluate(([id, amt, tg]) => {
+    const cs = JSON.parse(localStorage.getItem("l997_customers")), c = cs.find((x) => x.id === id);
+    c.balance = Math.round((c.balance + amt) * 1000) / 1000;
+    const lg = JSON.parse(localStorage.getItem("l997_ledger") || "[]");
+    lg.unshift({ id: "pay-" + tg, customerId: id, type: "deposit", amount: amt, balanceAfter: c.balance, method: "cash", note: "test " + tg, at: new Date().toISOString() });
+    localStorage.setItem("l997_ledger", JSON.stringify(lg)); localStorage.setItem("l997_customers", JSON.stringify(cs));
+  }, [custId, amount, tag]);
+  await A.waitForLoadState("load"); await B.waitForLoadState("load");
+  const before = (await rows("customers"))[0].data.balance;
+  cloud.setOffline(true);
+  await pay(A, 1.25, "A"); await pay(B, 0.75, "B");
+  await A.waitForTimeout(600);
+  cloud.setOffline(false);
+  await A.evaluate(() => window.L997Cloud.syncNow()).catch(() => {}); await B.evaluate(() => window.L997Cloud.syncNow()).catch(() => {});
+  const want = Math.round((before + 2) * 1000) / 1000;
+  const ledgerSum = async () => (await cloud.query("select coalesce(sum((data->>'amount')::numeric),0)::float8 s from public.records where collection='ledger' and not deleted and data->>'customerId' = $1", [custId])).rows[0].s;
+  check("both offline payments reach the cloud ledger", await until(async () => (await rows("ledger")).some((r) => r.record_id === "pay-A") && (await rows("ledger")).some((r) => r.record_id === "pay-B"), 20000));
+  const settle = async (P) => { await P.waitForTimeout(500); return until(async () => { const c = (await helpers(P).ls("l997_customers")).find((x) => x.id === custId); return Math.abs(c.balance - want) < 0.0005; }, 30000); };
+  check("device A shows the balance with BOTH payments", await settle(A), JSON.stringify({ want, a: (await a.ls("l997_customers")).find((x) => x.id === custId).balance }));
+  check("device B shows the balance with BOTH payments", await settle(B), JSON.stringify({ want, b: (await b.ls("l997_customers")).find((x) => x.id === custId).balance }));
+  check("cloud customer balance = cloud ledger sum", await until(async () => Math.abs((await rows("customers"))[0].data.balance - (await ledgerSum()) - ((await rows("customers"))[0].data.openingBalance || 0)) < 0.0005, 30000), JSON.stringify({ bal: (await rows("customers"))[0].data.balance, ledger: await ledgerSum() }));
+
   // a worker cannot push expenses even if the data is changed on the device
   await B.waitForLoadState("load");
   await until(async () => B.evaluate(() => !!window.L997Cloud));

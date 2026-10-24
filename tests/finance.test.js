@@ -274,3 +274,39 @@ test("auto-translation: phrases translated, unknown sentences never half-transla
   T._force(false);
   assert.equal(T.tr("لاحقاً"), "لاحقاً");
 });
+
+// ---------- BHD precision (3 decimals = fils): totals must be exact, never 0.30000000000000004 ----------
+test("fils precision: tiny amounts add up exactly", () => {
+  const orders = [];
+  for (let i = 0; i < 1000; i++) orders.push(order({ id: "f" + i, total: 0.001, paidAt: at(D1, "11:00") }));
+  const s = F.summarize({ orders }, D1, D1);
+  assert.equal(s.salesTotal, 1);
+  assert.equal(s.collectedBy.cash, 1);
+});
+
+test("fils precision: typical BHD amounts (0.005, 0.010, 0.125, 1.000, 10.375)", () => {
+  const amts = [0.005, 0.01, 0.125, 1, 10.375, 0.1, 0.2];
+  const orders = amts.map((t, i) => order({ id: "p" + i, total: t, paidAt: at(D1, "12:00") }));
+  const s = F.summarize({ orders }, D1, D1);
+  assert.equal(s.salesTotal, 11.815); // 0.005+0.010+0.125+1+10.375+0.1+0.2
+  assert.equal(F.r3(0.1 + 0.2), 0.3);
+  assert.equal(F.r3(1.0005), 1.001); // half-up at the fils
+  assert.equal(F.r3(-1.0005), -1.001); // symmetric for refunds
+});
+
+test("fils precision: large monthly totals stay exact", () => {
+  const orders = [];
+  for (let i = 0; i < 3000; i++) orders.push(order({ id: "m" + i, total: 3.375, paidAt: at(D1, "13:00") }));
+  assert.equal(F.summarize({ orders }, D1, D1).salesTotal, 10125); // 3000 × 3.375
+});
+
+test("package usage is derived from non-cancelled orders and never exceeds the package", () => {
+  const cp = { id: "pk", customerId: "c1", totalPieces: 5, remainingPieces: 1, purchasedAt: at(D1) };
+  const used = (q, st) => ({ id: "u" + q + (st || ""), status: st || "received", createdAt: at(D1), items: [{ fromPackageId: "pk", qty: q }] });
+  let u = F.packageUsage([cp], [used(2), used(2)], "c1")[0];
+  assert.equal(u.remaining, 1); assert.equal(u.consistent, true);
+  u = F.packageUsage([cp], [used(2), used(2, "cancelled")], "c1")[0];
+  assert.equal(u.remaining, 3); // cancelling returns the pieces
+  u = F.packageUsage([cp], [used(4), used(3)], "c1")[0];
+  assert.equal(u.remaining, 0); // over-use never shows negative pieces
+});
