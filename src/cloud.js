@@ -402,7 +402,7 @@
         return { uid };
       } catch (e) {
         st = null; user = null; try { ls.removeItem(ST_KEY); } catch (e2) { /* ignore */ }
-        return { error: e.offline ? "offline" : /already exists/.test(e.message) ? "shop-exists" : e.message };
+        return { error: e.offline ? "offline" : /already exists/.test(e.message) ? "shop-exists" : /not the shop owner/.test(e.message) ? "owner-not-named" : e.message };
       }
     },
     // رفع كل بيانات الجهاز (بعد linkOwner، وبعد أن يحفظ النظام رقم الحساب السحابي للمالك)

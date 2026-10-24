@@ -39,6 +39,18 @@ select t.refused('anonymous visitor cannot read records', 'select * from public.
 select t.refused('anonymous visitor cannot create a shop', $q$select public.create_shop('x')$q$);
 reset role;
 
+-- ---------- before the owner is named, nobody can create the shop ----------
+update auth.users set email = 'owner@997laundry.app' where id = '11111111-1111-1111-1111-111111111111';
+update auth.users set email = 'stranger@997laundry.app' where id = '55555555-5555-5555-5555-555555555555';
+set role authenticated;
+select set_config('request.jwt.claim.sub', '55555555-5555-5555-5555-555555555555', false);
+select t.refused('stranger cannot claim the shop before the owner links', $q$select public.create_shop('fake')$q$);
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', false);
+select t.refused('even the owner cannot create it until named in shop_setup', $q$select public.create_shop('997')$q$);
+select t.refused('the owner setting cannot be read or changed through the API', 'select * from public.shop_setup');
+reset role;
+insert into public.shop_setup (id, owner_email) values (1, 'owner@997laundry.app');
+
 -- ---------- owner creates the shop and adds staff ----------
 set role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', false);

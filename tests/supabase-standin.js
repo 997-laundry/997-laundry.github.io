@@ -26,6 +26,7 @@ async function startStandin(opts = {}) {
   for (const f of [path.join(root, "test", "auth_stub.sql"), path.join(root, "setup.sql")]) {
     pgAdmin(`psql -X -q -v ON_ERROR_STOP=1 -d ${db} -f ${f} >/dev/null 2>&1`);
   }
+  if (opts.owner !== false) pgAdmin(`psql -X -q -d ${db} -c "insert into public.shop_setup (id, owner_email) values (1, '${opts.owner || "owner"}@997laundry.app')"`);
   pgAdmin(`psql -X -q -d ${db} -c "do \\$\\$ begin if not exists (select 1 from pg_roles where rolname='l997_standin') then create role l997_standin login password 'standin' in role authenticated, anon; end if; end \\$\\$; grant authenticated, anon to l997_standin; alter role l997_standin bypassrls; grant select, insert, update on auth.users to l997_standin; grant usage on schema extensions to l997_standin;"`);
   const pool = new Pool({ host: "127.0.0.1", user: "l997_standin", password: "standin", database: db, max: 8 });
   const sessions = new Map(); // token -> user id

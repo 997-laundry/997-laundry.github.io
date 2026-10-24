@@ -9,6 +9,7 @@ delete from public.records;
 delete from public.shop_counters;
 delete from public.shop_members;
 delete from public.shops;
+delete from public.shop_setup;
 delete from auth.users where email like '%@997laundry.app';
 alter sequence public.records_seq restart with 1;
 commit;

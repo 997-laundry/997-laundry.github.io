@@ -43,6 +43,12 @@ create table if not exists public.shop_counters (
   next_order bigint not null default 1
 );
 
+-- who is allowed to create the shop (set once by the owner in the SQL Editor — see supabase/set_owner.sql)
+create table if not exists public.shop_setup (
+  id int primary key default 1 check (id = 1),
+  owner_email text not null
+);
+
 create table if not exists public.collection_rules (
   collection text primary key,
   read_roles text[] not null,
@@ -131,6 +137,10 @@ declare v_id uuid;
 begin
   if auth.uid() is null then raise exception 'sign in first'; end if;
   if exists (select 1 from public.shops) then raise exception 'the shop already exists — ask the owner to add you'; end if;
+  -- only the account named in shop_setup may create the shop (stops strangers claiming it before the owner links)
+  if not exists (select 1 from public.shop_setup s join auth.users u on lower(u.email) = lower(s.owner_email) where u.id = auth.uid()) then
+    raise exception 'not the shop owner account';
+  end if;
   insert into public.shops (name, created_by) values (p_name, auth.uid()) returning id into v_id;
   insert into public.shop_members (shop_id, user_id, role, display_name) values (v_id, auth.uid(), 'owner', coalesce(p_display_name, ''));
   return v_id;
@@ -228,7 +238,8 @@ alter table public.shop_members enable row level security;
 alter table public.collection_rules enable row level security;
 alter table public.records enable row level security;
 alter table public.record_history enable row level security;
-alter table public.shop_counters enable row level security; -- no policies: only reserve_order_numbers() touches it
+alter table public.shop_counters enable row level security;
+alter table public.shop_setup enable row level security; -- no policies: only the SQL Editor (admin) can see or change it -- no policies: only reserve_order_numbers() touches it
 
 drop policy if exists shops_read on public.shops;
 create policy shops_read on public.shops for select to authenticated using (public.member_role(id) is not null);
@@ -263,7 +274,7 @@ create policy history_read on public.record_history for select to authenticated
   using (public.member_role(shop_id) in ('owner', 'manager', 'accountant'));
 
 -- ---------- privileges (TRUNCATE/DELETE bypass or skip RLS checks, so they are removed) ----------
-revoke all on public.shops, public.shop_members, public.collection_rules, public.records, public.record_history, public.shop_counters from anon, authenticated;
+revoke all on public.shops, public.shop_members, public.collection_rules, public.records, public.record_history, public.shop_counters, public.shop_setup from anon, authenticated;
 grant select, update on public.shops to authenticated;
 grant select, insert, update on public.shop_members to authenticated;
 grant select on public.collection_rules to authenticated;

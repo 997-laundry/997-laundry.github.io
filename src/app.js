@@ -2200,8 +2200,9 @@
     "shop-exists": "السحابة مرتبطة بمحل/مالك آخر",
     "exists-other-password": "اسم الدخول موجود في السحابة بكلمة مرور مختلفة",
     "not-owner": "هذا الحساب ليس مالك المحل في السحابة",
+    "owner-not-named": "اسم دخول المالك غير مسجّل في السحابة بعد — شغّل ملف set_owner في Supabase باسم دخولك ثم أعد المحاولة",
   };
-  const cloudErr = (code) => CLOUD_ERR[code] || "تعذّر الاتصال بالسحابة: " + code;
+  const cloudErr = (code) => CLOUD_ERR[code] || (/[\u0600-\u06FF]/.test(code) ? code : "تعذّر الاتصال بالسحابة: " + code);
   // يحدّث نسخة كلمة المرور المحفوظة على هذا الجهاز (للدخول بدون إنترنت لاحقاً) بدون تغيير بيانات الحساب
   function cacheLocalPassword(e, pw) {
     if (verifyPw(e, pw)) return;
@@ -2443,6 +2444,7 @@
         document.getElementById("exportBackupBtn")?.click(); // نسخة احتياطية قبل أي شيء
         return cloudStep(async () => {
           const l = await CLOUD.linkOwner(me.username, v.pw, loadProfile().nameEn || "997 Laundry", me.name);
+          if (l.error === "owner-not-named") l.error = cloudErr("owner-not-named").replace("باسم دخولك", `باسم الدخول «${me.username}»`);
           if (l.error) return l;
           me.cloudUserId = l.uid; persistEmps();
           return CLOUD.uploadAll(me.id);
