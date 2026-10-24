@@ -2716,6 +2716,8 @@ body.auth-locked .top-logout{display:none!important}
   const localMaxNumber = () => (read("l997_orders", []) || []).reduce((m, o) => Math.max(m, Number(o && o.number) || 0), 0);
   function start() {
     stop();
+    // ما تغيّر محلياً ولم يُرفع قبل إعادة تحميل الصفحة (مثلاً بدون إنترنت) — الرفع يقارن بالنسخ المرفوعة فلا يُرسل إلا المختلف
+    if (st && st.shopId) storeDirtyAll();
     sync(true);
     // حجز أرقام الطلبات فور الدخول إن لم يكن لدينا أرقام (لا ننتظر أول طلب، ولا نحجز من جديد مع كل تحديث للصفحة)
     if (st && !((st.numbers && st.numbers[0] <= st.numbers[1]) || st.nextBlock)) refillNumbers(localMaxNumber() + 1);
@@ -2777,6 +2779,14 @@ body.auth-locked .top-logout{display:none!important}
     emailOf,
     // تسجيل دخول الموظف في السحابة (قبل الدخول المحلي). offline → يكمل النظام بالدخول المحلي فقط
     async signIn(username, password) { return signInRaw(username, password); },
+    // تحقق فقط من كلمة مرور شخص آخر (موافقة مشرف على جهاز موظف): لا تُحفظ جلسته، وتُنهى فوراً
+    async verifyPassword(username, password) {
+      try {
+        const s = await api("/auth/v1/token?grant_type=password", { method: "POST", auth: false, body: { email: emailOf(username), password } });
+        if (s && s.access_token) root.fetch(CFG.url + "/auth/v1/logout", { method: "POST", headers: { apikey: CFG.key, Authorization: "Bearer " + s.access_token } }).catch(() => {});
+        return { ok: !!(s && s.user), uid: s && s.user ? s.user.id : null };
+      } catch (e) { return { error: msgOf(e) }; }
+    },
     // الدخول تم (محلياً) — تبدأ المزامنة باسم هذا الموظف
     async setUser(emp) {
       if (!st || !emp) { user = null; stop(); renderChip(); showUpdateChip(false); return; }
@@ -2830,10 +2840,9 @@ body.auth-locked .top-logout{display:none!important}
         st.cursor = 0; stagedCursor = 0;
         await pull(); staged = new Map(); // ما رفعناه للتو يعود بنفس النسخ — لا شيء جديد
         st.cursor = stagedCursor; st.linkedAt = new Date().toISOString(); st.lastSyncAt = st.linkedAt; saveSt();
-        busy = false;
-        start();
-        return { ok: true, rejected: (st.rejected || []).length };
       } catch (e) { storeDirtyAll(); return { error: msgOf(e) }; } finally { busy = false; }
+      start(); // بعد فك القفل — وإلا فكّ القفلُ المتأخر قفلَ أول مزامنة فتتداخل عمليتا رفع
+      return { ok: true, rejected: (st.rejected || []).length };
     },
     // جهاز جديد: الدخول بحساب سحابي وتنزيل كل البيانات (يستبدل بيانات هذا الجهاز)
     async joinDevice(username, password) {
@@ -5033,8 +5042,22 @@ body.auth-locked .top-logout{display:none!important}
         const key = "ov:" + (sup ? sup.id : toLatinDigits(v.u).toLowerCase());
         const left = lockLeftMs(key);
         if (left > 0) { toast(AX("e_locked", Math.ceil(left / 60000))); return false; }
-        const ok = sup && sup.active !== false && !isExpired(sup) && verifyPw(sup, v.p);
-        if (!ok) {
+        const usable = sup && sup.active !== false && !isExpired(sup);
+        // على جهاز موظف لا توجد كلمة مرور المشرف محلياً (لا تُنزَّل من السحابة) — نتحقق منها في السحابة
+        if (usable && !verifyPw(sup, v.p) && cloudOn() && sup.username && !v._cloudOk) {
+          const btn = document.getElementById("quickFormSubmitBtn"); btn.disabled = true;
+          CLOUD.verifyPassword(sup.username, v.p).then((r) => {
+            btn.disabled = false;
+            if (r.ok && (!sup.cloudUserId || r.uid === sup.cloudUserId)) { v._cloudOk = true; finishOverride(true); }
+            else if (r.error === "offline") toast(cloudErr("offline"));
+            else finishOverride(false);
+          });
+          return false;
+        }
+        const ok = usable && (verifyPw(sup, v.p) || v._cloudOk);
+        return finishOverride(ok);
+        function finishOverride(ok2) {
+        if (!ok2) {
           const f = attFail(key);
           logActivity(`محاولة موافقة مشرف فاشلة — ${what} — بواسطة ${me ? me.name : "؟"}`);
           toast(f.locked ? AX("e_locked", sec.lockMin) : AX("e_bad"));
@@ -5043,8 +5066,10 @@ body.auth-locked .top-logout{display:none!important}
         if (me && sup.id === me.id) { toast("لا يمكنك اعتماد إجراء بنفسك"); return false; }
         if (!can(permId, sup)) { toast("هذا المشرف لا يملك صلاحية اعتماد هذا الإجراء"); return false; }
         attClear(key);
-        logActivity(`موافقة مشرف: ${sup.name} اعتمد «${what}» — طلب بواسطة ${me ? me.name : "؟"}`);
+        logActivity(`موافقة مشرف: ${sup.name} اعتمد «${what}» — طلب بواسطة ${me ? me.name : "؟"}${v._cloudOk ? " (تحقق سحابي)" : ""}`);
+        if (v._cloudOk) quickFormDialog.close(); // اكتمل بعد التحقق السحابي (النموذج كان ينتظر)
         setTimeout(() => onApproved(sup, true), 60);
+        }
       },
     });
   }

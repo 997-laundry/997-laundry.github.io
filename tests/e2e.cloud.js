@@ -37,9 +37,17 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
     submit: async () => { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(300); },
     later: async () => { await page.waitForTimeout(250); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } else if (await page.isVisible("#quickFormSubmitBtn") && /واتساب|WhatsApp/.test(await page.textContent("#quickFormSubmitBtn"))) { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(200); } },
     closeDialogs: () => page.evaluate(() => document.querySelectorAll("dialog[open]").forEach((d) => d.close())),
-    ls: (k) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) || "null"), k),
-    cloudStatus: () => page.evaluate(() => window.L997Cloud.status()),
+    // reads retry once when the page is in the middle of its own automatic refresh
+    ls: (k) => settled(page, () => page.evaluate((k) => JSON.parse(localStorage.getItem(k) || "null"), k)),
+    cloudStatus: () => settled(page, () => page.evaluate(() => window.L997Cloud.status())),
   });
+  async function settled(page, fn) {
+    try { return await fn(); } catch (e) {
+      if (!/context was destroyed|navigation/.test(e.message)) throw e;
+      await page.waitForLoadState("load"); await page.waitForTimeout(300);
+      return fn();
+    }
+  }
   const rows = async (collection) => (await cloud.query("select record_id, data, deleted, version from public.records where collection = $1 and not deleted", [collection])).rows;
   // waits for a condition; tolerates the page refreshing itself (devices reload after applying cloud updates)
   const until = async (fn, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (await fn()) return true; } catch (e) { /* page was refreshing */ } await new Promise((r) => setTimeout(r, 250)); } return false; };
@@ -137,11 +145,29 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   check("worker's shift uploaded", await until(async () => (await rows("shifts")).length === 1));
   const wUid = (await cloud.query("select id from auth.users where email = 'worker1@997laundry.app'")).rows[0].id;
   check("worker's activity-log entries reach the cloud (add-only)", await until(async () => (await cloud.query("select count(*)::int n from public.records where collection = 'audit' and updated_by = $1", [wUid])).rows[0].n > 0));
+  // full worker flow under the server's financial rules: partial payment (debt) → delivery → cancel another order with owner approval
+  const myOrderId = (await b.ls("l997_orders")).find((o) => o.createdById && o.status === "received" && o.number === nums.sort().slice(-1)[0])?.id || (await b.ls("l997_orders"))[0].id;
+  await b.nav("orders");
+  await B.click(`#ordersBody tr:has-text("#${(await b.ls("l997_orders")).find((o) => o.id === myOrderId).number}") [data-view]`);
+  await B.click("#advanceStatusBtn"); await B.selectOption("#qf_method", "cash"); await B.fill("#qf_paid", "0.2"); await b.submit(); await b.later();
+  await B.click("#advanceStatusBtn"); await B.fill("#qf_count", "2"); await b.submit(); await b.later(); await b.closeDialogs();
+  check("worker's payment + delivery accepted by the cloud", await until(async () => { const r = (await rows("orders")).find((x) => x.record_id === myOrderId); return r && r.data.status === "delivered" && r.data.paymentConfirmed; }, 20000));
+  // a new order, then cancelled by the worker with the owner's approval
+  await b.nav("new-order");
+  await B.click("#posCustomerBarBtn"); await B.fill("#orderCustomerPhone", "33001122"); await B.waitForTimeout(150);
+  await B.click("#customerResults [data-pick]"); await B.click('#posProductGrid [data-cloth="shirt"]');
+  await B.click("#posSaveOrderMainBtn"); await b.later(); await b.closeDialogs();
+  const toCancel = (await b.ls("l997_orders"))[0];
+  await b.nav("orders"); await B.click(`#ordersBody tr:has-text("#${toCancel.number}") [data-view]`);
+  await B.click("#cancelOrderBtn"); await B.waitForTimeout(300);
+  await B.fill("#qf_u", "owner"); await B.fill("#qf_p", OWNER_PW); await B.click("#quickFormSubmitBtn"); await B.waitForTimeout(400);
+  await B.fill("#qf_reason", "customer changed mind"); await b.submit(); await b.closeDialogs();
+  check("worker's approved cancellation accepted by the cloud", await until(async () => (await rows("orders")).find((x) => x.record_id === toCancel.id)?.data.status === "cancelled", 20000));
   check("worker device: nothing rejected by the cloud", (await b.cloudStatus()).rejected === 0, JSON.stringify((await b.cloudStatus()).rejectedList));
 
   // device A (idle) picks up the worker's order and refreshes itself
   await a.nav("dashboard"); await A.mouse.move(5, 5);
-  check("owner device receives the worker's order while idle", await until(async () => ((await a.ls("l997_orders")) || []).length === 2, 20000));
+  check("owner device receives the worker's orders while idle", await until(async () => ((await a.ls("l997_orders")) || []).length === 3, 20000));
   await A.waitForSelector("body:not(.auth-locked)");
   check("owner stays signed in after the automatic refresh", !(await A.evaluate(() => document.body.classList.contains("auth-locked"))));
 
@@ -149,9 +175,11 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   cloud.setOffline(true);
   await a.nav("finance"); await A.click("#addExpenseBtn"); await A.fill("#qf_amount", "2"); await a.submit();
   await A.waitForTimeout(2500);
+  // the page reloads before the internet returns (phone restarted / automatic refresh): the change must still upload
+  await A.reload(); await A.waitForSelector("body:not(.auth-locked)"); await A.waitForTimeout(2500);
   check("offline: indicator says it will upload later", /بدون إنترنت/.test(await A.textContent("#cloudChip")), await A.textContent("#cloudChip"));
   cloud.setOffline(false);
-  check("back online: the offline expense is uploaded", await until(async () => (await rows("expenses")).length === 2, 20000));
+  check("back online: the offline expense is uploaded", await until(async () => (await rows("expenses")).length === 2, 20000), JSON.stringify([(await rows("expenses")).length, ((await a.ls("l997_expenses")) || []).length, (await a.cloudStatus()).pending]));
 
   // edit conflict: both devices change the same customer; the first upload wins, the other is logged
   const custId = (await a.ls("l997_customers"))[0].id;

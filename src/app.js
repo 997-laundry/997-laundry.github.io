@@ -2094,8 +2094,22 @@
         const key = "ov:" + (sup ? sup.id : toLatinDigits(v.u).toLowerCase());
         const left = lockLeftMs(key);
         if (left > 0) { toast(AX("e_locked", Math.ceil(left / 60000))); return false; }
-        const ok = sup && sup.active !== false && !isExpired(sup) && verifyPw(sup, v.p);
-        if (!ok) {
+        const usable = sup && sup.active !== false && !isExpired(sup);
+        // على جهاز موظف لا توجد كلمة مرور المشرف محلياً (لا تُنزَّل من السحابة) — نتحقق منها في السحابة
+        if (usable && !verifyPw(sup, v.p) && cloudOn() && sup.username && !v._cloudOk) {
+          const btn = document.getElementById("quickFormSubmitBtn"); btn.disabled = true;
+          CLOUD.verifyPassword(sup.username, v.p).then((r) => {
+            btn.disabled = false;
+            if (r.ok && (!sup.cloudUserId || r.uid === sup.cloudUserId)) { v._cloudOk = true; finishOverride(true); }
+            else if (r.error === "offline") toast(cloudErr("offline"));
+            else finishOverride(false);
+          });
+          return false;
+        }
+        const ok = usable && (verifyPw(sup, v.p) || v._cloudOk);
+        return finishOverride(ok);
+        function finishOverride(ok2) {
+        if (!ok2) {
           const f = attFail(key);
           logActivity(`محاولة موافقة مشرف فاشلة — ${what} — بواسطة ${me ? me.name : "؟"}`);
           toast(f.locked ? AX("e_locked", sec.lockMin) : AX("e_bad"));
@@ -2104,8 +2118,10 @@
         if (me && sup.id === me.id) { toast("لا يمكنك اعتماد إجراء بنفسك"); return false; }
         if (!can(permId, sup)) { toast("هذا المشرف لا يملك صلاحية اعتماد هذا الإجراء"); return false; }
         attClear(key);
-        logActivity(`موافقة مشرف: ${sup.name} اعتمد «${what}» — طلب بواسطة ${me ? me.name : "؟"}`);
+        logActivity(`موافقة مشرف: ${sup.name} اعتمد «${what}» — طلب بواسطة ${me ? me.name : "؟"}${v._cloudOk ? " (تحقق سحابي)" : ""}`);
+        if (v._cloudOk) quickFormDialog.close(); // اكتمل بعد التحقق السحابي (النموذج كان ينتظر)
         setTimeout(() => onApproved(sup, true), 60);
+        }
       },
     });
   }

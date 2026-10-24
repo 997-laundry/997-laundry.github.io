@@ -193,6 +193,55 @@ begin
   return n;
 end $$;
 
+-- ---------- financial integrity rules (server side — cannot be bypassed from a device) ----------
+-- Workers and accountants cannot rewrite financial history; owner and manager can (and every change is
+-- kept in record_history). Corrections are made with new entries (reversals, refunds, adjustments).
+create or replace function public.jdiff(a jsonb, b jsonb, keys text[]) returns boolean
+language sql immutable as $$
+  select exists (select 1 from unnest(keys) k where (a -> k) is distinct from (b -> k))
+$$;
+
+create or replace function public.business_rules(p_role text, p_collection text, o jsonb, n jsonb) returns void
+language plpgsql stable set search_path = public as $$
+declare trusted boolean := p_role in ('owner', 'manager');
+begin
+  if p_collection = 'ledger' then
+    -- a recorded transaction is a fact: amount/type/customer/method/time never change (a reversal is a new entry)
+    if o is not null and jdiff(o, n, array['amount', 'type', 'customerId', 'method', 'at', 'orderId']) then
+      raise exception 'ledger entries cannot be changed — record a reversal instead';
+    end if;
+    if o is not null and p_role = 'worker' then raise exception 'workers cannot change ledger entries'; end if;
+  elsif p_collection = 'orders' and not trusted then
+    if o is null then
+      if coalesce((n ->> 'paymentConfirmed')::boolean, false) then raise exception 'a new order cannot start as paid'; end if;
+      return;
+    end if;
+    if o ->> 'status' = 'cancelled' and o is distinct from n then raise exception 'a cancelled order cannot be changed'; end if;
+    if o ->> 'status' = 'delivered' and coalesce(n ->> 'status', '') <> 'delivered' then raise exception 'only the owner or a manager can undo a delivery'; end if;
+    if not ((coalesce(o ->> 'status', 'received'), coalesce(n ->> 'status', 'received')) in (('received','received'), ('received','ready'), ('received','cancelled'),
+            ('ready','ready'), ('ready','delivered'), ('ready','cancelled'), ('delivered','delivered'))) then
+      raise exception 'order status cannot move from % to %', coalesce(o ->> 'status', 'received'), coalesce(n ->> 'status', 'received');
+    end if;
+    if coalesce((o ->> 'paymentConfirmed')::boolean, false) then
+      if not coalesce((n ->> 'paymentConfirmed')::boolean, false) then raise exception 'a confirmed payment cannot be undone'; end if;
+      if jdiff(o -> 'payment', n -> 'payment', array['total', 'paid', 'method', 'balanceUse', 'discount']) or (o -> 'items') is distinct from (n -> 'items') then
+        raise exception 'a paid order''s amounts and items cannot be changed';
+      end if;
+    end if;
+  elsif p_collection = 'expenses' and o is not null and not trusted then
+    if jdiff(o, n, array['amount', 'method', 'catId', 'category', 'date']) then raise exception 'an expense amount cannot be changed — void it and record a new one'; end if;
+    if coalesce((o ->> 'voided')::boolean, false) and not coalesce((n ->> 'voided')::boolean, false) then raise exception 'a voided expense cannot be restored'; end if;
+  elsif p_collection in ('closures', 'payroll') and o is not null and p_role <> 'owner' then
+    raise exception 'closings and payroll entries are final';
+  elsif p_collection = 'customers' and p_role = 'worker' then
+    if coalesce((n ->> 'openingBalance')::numeric, 0) <> coalesce((o ->> 'openingBalance')::numeric, 0) then
+      raise exception 'workers cannot set opening balances';
+    end if;
+  elsif p_collection = 'customer_packages' and p_role = 'worker' and o is not null then
+    if jdiff(o, n, array['totalPieces', 'price', 'customerId', 'purchasedAt']) then raise exception 'workers cannot change a sold package'; end if;
+  end if;
+end $$;
+
 -- ---------- record rules enforced on the server ----------
 create or replace function public.records_guard() returns trigger
 language plpgsql security definer set search_path = public as $$
@@ -203,6 +252,7 @@ begin
   if tg_op = 'INSERT' then
     new.version := 1;
     new.deleted := false;
+    perform public.business_rules(public.member_role(new.shop_id), new.collection, null, new.data);
     return new;
   end if;
   if new.shop_id <> old.shop_id or new.collection <> old.collection or new.record_id <> old.record_id then
@@ -214,6 +264,9 @@ begin
      and old.collection in ('orders', 'customers', 'ledger', 'customer_packages', 'closures', 'payroll')
      and public.member_role(old.shop_id) not in ('owner', 'manager') then
     raise exception 'only the owner or a manager can remove records';
+  end if;
+  if new.data is distinct from old.data then
+    perform public.business_rules(public.member_role(old.shop_id), old.collection, old.data, new.data);
   end if;
   new.version := old.version + 1;
   return new;
@@ -303,3 +356,4 @@ grant execute on function public.reserve_order_numbers(int, bigint), public.set_
 revoke all on function public.member_role(uuid), public.can_access(uuid, text, boolean) from public, anon;
 grant execute on function public.member_role(uuid), public.can_access(uuid, text, boolean) to authenticated;
 revoke all on function public.records_guard(), public.records_history(), public.members_guard() from public, anon, authenticated;
+revoke all on function public.business_rules(text, text, jsonb, jsonb) from public, anon, authenticated;

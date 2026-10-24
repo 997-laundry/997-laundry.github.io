@@ -47,8 +47,8 @@ indicator is the only proof of cloud commit. Financial operations are not server
 |---|---|
 | `npm test` (finance engine + fils precision) | 26 / 26 pass |
 | `npm run e2e` (10 browser suites, Arabic/English, desktop/phone, 299-button sweep) | 139 checks, 0 failures |
-| `npm run test:cloud` (RLS / permissions on PostgreSQL 16, role by role, attacker cases) | 66 / 66 pass |
-| `npm run e2e:cloud` (3 devices, 150 ms latency, offline, conflicts, numbering, joins) | 45 / 45 pass |
+| `npm run test:cloud` (RLS / permissions + server-side business rules on PostgreSQL 16, role by role, attacker cases) | 80 / 80 pass |
+| `npm run e2e:cloud` (3 devices, 150 ms latency, offline + reload, conflicts, numbering, joins, worker payment / delivery / approved cancellation under server rules) | 47 / 47 pass, 5 consecutive runs |
 | Live Supabase probes | anonymous: denied on every table/function; stranger account: sees nothing, cannot create a shop |
 | Secret scan of the whole Git history | no secret/service key; only the public publishable key |
 
@@ -67,7 +67,7 @@ indicator is the only proof of cloud commit. Financial operations are not server
 | # | Risk | Severity | Status |
 |---|---|---|---|
 | 1 | Customer balance lost one of two concurrent payments (stored number vs ledger) | Critical | **Fixed** — derived from ledger; legacy differences shown for owner review |
-| 2 | Server rules are per role and collection, not per business rule: a worker with technical skill could write a fake ledger entry or mark an order paid through the API | High | **Open** — detected afterwards (record_history keeps who/when); fix = server-side RPCs for payments/refunds/cancellations (Phase 2 of plan) |
+| 2 | Server rules were per role and collection only: a worker with technical skill could alter ledger amounts or mark an order paid through the API | High | **Mitigated** — `business_rules()` in the database now refuses, for non-managers: editing ledger amounts/types, editing or reopening paid/cancelled/delivered orders, invalid status jumps, new orders created as paid, changing expense amounts, restoring voided expenses, changing package size/price or opening balances; closures/payroll editable by owner only (16 attacker tests) |
 | 3 | Multi-record financial operations (order + ledger + customer) upload as separate records, not one transaction | High | Partially mitigated (derived balances); full fix with the RPCs above |
 | 4 | No automatic cloud backup on the free plan | High | **Open** — weekly export file required; Supabase Pro (~25 USD/month) adds daily backups |
 | 5 | Two devices consuming the last package pieces while offline can over-redeem | Medium | Detected (shown as 0 / used > total); prevention needs the server RPC |
@@ -92,8 +92,17 @@ indicator is the only proof of cloud commit. Financial operations are not server
 | Daily operation on one main device | PASS |
 | Multi-device sync (orders, statuses, customers, balances, packages) | PASS WITH LIMITATIONS (see risks 2, 3, 5) |
 | Security against outsiders / anonymous access | PASS (verified live) |
-| Security against a technically skilled employee | PASS WITH LIMITATIONS (risk 2 — detectable, not yet prevented) |
+| Security against a technically skilled employee | PASS WITH LIMITATIONS (financial edits now blocked by the server; a fabricated new payment entry is still possible but recorded with who/when) |
 | Financial calculations & precision | PASS (automated invariants) |
 | Backup & disaster recovery | PASS WITH LIMITATIONS (manual export + cloud copy; restore-to-cloud not built; no restoration drill in a separate project yet) |
 | WhatsApp automatic sending | NOT IMPLEMENTED (by design; manual Send) |
 | Real-phone share sheet for PDF receipts | NOT TESTED here (owner to confirm on iPhone) |
+
+## 8. Session 4 changes (server-side integrity)
+
+| Change | Evidence |
+|---|---|
+| `business_rules()` + `jdiff()` enforced by the `records_guard` trigger on every insert/update | security_test.sql 80/80 |
+| Supervisor approval works on staff devices: the supervisor's password is checked against the cloud (no password hash is ever downloaded); the session is discarded immediately | e2e.cloud "worker's approved cancellation accepted" |
+| **Bug fixed:** changes made offline were forgotten if the page reloaded before the internet returned (never uploaded) | reproduced without fix (cloud 1 / device 2), passes with fix |
+| **Bug fixed:** right after linking, the upload lock was released after the first sync started, allowing two overlapping uploads (false conflicts) | 5 consecutive clean runs |

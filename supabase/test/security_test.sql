@@ -105,6 +105,30 @@ select t.rows('stale update from another device is not applied', $q$update publi
 select t.ok('order now at version 2 with the first device''s value', (select version = 2 and data->>'total' = '1.6' from public.records where record_id = 'o1'));
 select t.ok('every change gets a higher change number', (select seq > (select max(seq) from public.records where record_id <> 'o1') from public.records where record_id = 'o1'));
 select t.rows('worker cannot change settings (prices)', $q$update public.records set data = '{"urgentPercent":0}' where collection = 'settings'$q$, 0);
+-- financial integrity rules (worker)
+reset role;
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', false); -- fixtures written as the owner
+insert into public.records (shop_id, collection, record_id, data, updated_by)
+select shop, c, rid, d::jsonb, '11111111-1111-1111-1111-111111111111' from t.ctx, (values
+  ('orders', 'paid1', '{"status":"ready","paymentConfirmed":true,"payment":{"total":2,"paid":2,"method":"cash"},"items":[{"qty":2}]}'),
+  ('orders', 'del1', '{"status":"delivered","paymentConfirmed":true,"payment":{"total":1,"paid":1,"method":"cash"},"items":[]}'),
+  ('orders', 'can1', '{"status":"cancelled","payment":{"total":1}}'),
+  ('ledger', 'l1', '{"customerId":"c1","type":"credit","amount":5,"method":"cash","at":"2026-10-24T10:00:00Z"}'),
+  ('customers', 'c1', '{"name":"A","balance":5,"openingBalance":0}'),
+  ('customer_packages', 'cp1', '{"customerId":"c1","totalPieces":10,"remainingPieces":10,"price":5}')) v(c, rid, d);
+set role authenticated;
+select set_config('request.jwt.claim.sub', '44444444-4444-4444-4444-444444444444', false);
+select t.refused('worker cannot change the amount of a paid order', $q$update public.records set data = jsonb_set(data, '{payment,paid}', '0') where record_id = 'paid1'$q$);
+select t.refused('worker cannot undo a confirmed payment', $q$update public.records set data = jsonb_set(data, '{paymentConfirmed}', 'false') where record_id = 'paid1'$q$);
+select t.refused('worker cannot change the items of a paid order', $q$update public.records set data = jsonb_set(data, '{items}', '[]') where record_id = 'paid1'$q$);
+select t.rows('worker can deliver a paid order', $q$update public.records set data = jsonb_set(data, '{status}', '"delivered"') where record_id = 'paid1'$q$, 1);
+select t.refused('worker cannot undo a delivery', $q$update public.records set data = jsonb_set(data, '{status}', '"ready"') where record_id = 'del1'$q$);
+select t.refused('worker cannot revive a cancelled order', $q$update public.records set data = jsonb_set(data, '{status}', '"received"') where record_id = 'can1'$q$);
+select t.refused('a new order cannot be created as already paid', $q$insert into public.records (shop_id, collection, record_id, data) select shop, 'orders', 'fake1', '{"status":"ready","paymentConfirmed":true}' from t.ctx$q$);
+select t.refused('worker cannot change a ledger amount', $q$update public.records set data = jsonb_set(data, '{amount}', '50') where record_id = 'l1'$q$);
+select t.refused('worker cannot set an opening balance', $q$update public.records set data = jsonb_set(data, '{openingBalance}', '100') where record_id = 'c1'$q$);
+select t.refused('worker cannot change a sold package''s pieces', $q$update public.records set data = jsonb_set(data, '{totalPieces}', '99') where record_id = 'cp1'$q$);
+select t.rows('worker can consume package pieces', $q$update public.records set data = jsonb_set(data, '{remainingPieces}', '8') where record_id = 'cp1'$q$, 1);
 select t.refused('worker cannot delete records', $q$delete from public.records where record_id = 'o1'$q$);
 select t.refused('worker cannot wipe the table', 'truncate public.records');
 select t.refused('worker cannot mark records removed', $q$update public.records set deleted = true where record_id = 'o2'$q$);
@@ -140,6 +164,9 @@ select t.refused('manager cannot create another owner', $q$insert into public.sh
 select t.refused('manager cannot promote the worker to manager', $q$update public.shop_members set role = 'manager' where user_id = '44444444-4444-4444-4444-444444444444'$q$);
 select t.runs('manager resets the worker''s password', $q$select public.set_member_password('44444444-4444-4444-4444-444444444444', 'Temp#2026pass')$q$);
 select t.refused('manager cannot reset the owner''s password', $q$select public.set_member_password('11111111-1111-1111-1111-111111111111', 'Hacked#2026')$q$);
+select t.refused('even a manager cannot change a ledger amount', $q$update public.records set data = jsonb_set(data, '{amount}', '1') where record_id = 'l1'$q$);
+select t.rows('manager can mark a ledger entry reversed', $q$update public.records set data = data || '{"reversedBy":"r1"}' where record_id = 'l1'$q$, 1);
+select t.rows('manager can undo a delivery (24-hour correction)', $q$update public.records set data = jsonb_set(data, '{status}', '"ready"') where record_id = 'del1'$q$, 1);
 select t.rows('manager can deactivate the worker', $q$update public.shop_members set active = false where user_id = '44444444-4444-4444-4444-444444444444'$q$, 1);
 select t.rows('manager can remove (soft) an order', $q$update public.records set deleted = true where record_id = 'o2'$q$, 1);
 select t.rows('manager cannot edit the owner account', $q$update public.shop_members set display_name = 'x' where role = 'owner'$q$, 0);

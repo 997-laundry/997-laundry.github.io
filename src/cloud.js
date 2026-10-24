@@ -332,6 +332,8 @@
   const localMaxNumber = () => (read("l997_orders", []) || []).reduce((m, o) => Math.max(m, Number(o && o.number) || 0), 0);
   function start() {
     stop();
+    // ما تغيّر محلياً ولم يُرفع قبل إعادة تحميل الصفحة (مثلاً بدون إنترنت) — الرفع يقارن بالنسخ المرفوعة فلا يُرسل إلا المختلف
+    if (st && st.shopId) storeDirtyAll();
     sync(true);
     // حجز أرقام الطلبات فور الدخول إن لم يكن لدينا أرقام (لا ننتظر أول طلب، ولا نحجز من جديد مع كل تحديث للصفحة)
     if (st && !((st.numbers && st.numbers[0] <= st.numbers[1]) || st.nextBlock)) refillNumbers(localMaxNumber() + 1);
@@ -393,6 +395,14 @@
     emailOf,
     // تسجيل دخول الموظف في السحابة (قبل الدخول المحلي). offline → يكمل النظام بالدخول المحلي فقط
     async signIn(username, password) { return signInRaw(username, password); },
+    // تحقق فقط من كلمة مرور شخص آخر (موافقة مشرف على جهاز موظف): لا تُحفظ جلسته، وتُنهى فوراً
+    async verifyPassword(username, password) {
+      try {
+        const s = await api("/auth/v1/token?grant_type=password", { method: "POST", auth: false, body: { email: emailOf(username), password } });
+        if (s && s.access_token) root.fetch(CFG.url + "/auth/v1/logout", { method: "POST", headers: { apikey: CFG.key, Authorization: "Bearer " + s.access_token } }).catch(() => {});
+        return { ok: !!(s && s.user), uid: s && s.user ? s.user.id : null };
+      } catch (e) { return { error: msgOf(e) }; }
+    },
     // الدخول تم (محلياً) — تبدأ المزامنة باسم هذا الموظف
     async setUser(emp) {
       if (!st || !emp) { user = null; stop(); renderChip(); showUpdateChip(false); return; }
@@ -446,10 +456,9 @@
         st.cursor = 0; stagedCursor = 0;
         await pull(); staged = new Map(); // ما رفعناه للتو يعود بنفس النسخ — لا شيء جديد
         st.cursor = stagedCursor; st.linkedAt = new Date().toISOString(); st.lastSyncAt = st.linkedAt; saveSt();
-        busy = false;
-        start();
-        return { ok: true, rejected: (st.rejected || []).length };
       } catch (e) { storeDirtyAll(); return { error: msgOf(e) }; } finally { busy = false; }
+      start(); // بعد فك القفل — وإلا فكّ القفلُ المتأخر قفلَ أول مزامنة فتتداخل عمليتا رفع
+      return { ok: true, rejected: (st.rejected || []).length };
     },
     // جهاز جديد: الدخول بحساب سحابي وتنزيل كل البيانات (يستبدل بيانات هذا الجهاز)
     async joinDevice(username, password) {
