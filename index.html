@@ -5107,12 +5107,12 @@ body.auth-locked .top-logout{display:none!important}
     e.salt = randHex(16); e.passHash = hashPw(pw, e.salt); delete e.password; persistEmps();
   }
   // تشغيل خطوة سحابية من داخل نموذج مفتوح: يبقى مفتوحاً حتى تنجح، ثم يُغلق ويكمل
-  function cloudStep(run, onOk) {
+  function cloudStep(run, onOk, onErr) {
     const btn = document.getElementById("quickFormSubmitBtn"), label = btn.textContent;
     btn.disabled = true; btn.textContent = "☁ جاري الاتصال بالسحابة…";
     Promise.resolve().then(run).then((r) => {
       btn.disabled = false; btn.textContent = label;
-      if (r && r.error) { toast(cloudErr(r.error)); return; }
+      if (r && r.error) { if (onErr && onErr(r.error)) return; toast(cloudErr(r.error)); return; }
       quickFormDialog.close();
       onOk(r || {});
     }, (err) => { btn.disabled = false; btn.textContent = label; toast(cloudErr(String(err && err.message || err))); });
@@ -5325,6 +5325,21 @@ body.auth-locked .top-logout{display:none!important}
       });
     });
   }
+  // خطوة لمرة واحدة في Supabase: تسجيل حساب المالك — نعرض الأمر جاهزاً مع زر نسخ
+  function showOwnerSql(email) {
+    const sql = `insert into public.shop_setup (id, owner_email) values (1, '${email}') on conflict (id) do update set owner_email = excluded.owner_email;`;
+    openQuickForm({
+      title: "☁ خطوة واحدة في Supabase",
+      sub: "١) اضغط «نسخ الأمر» ٢) في Supabase: SQL Editor ← New query ← الصق ← Run ٣) ارجع هنا واضغط «ربط النظام بالسحابة» مرة ثانية.",
+      fields: [{ id: "sql", label: "الأمر (لا تعدّله)", type: "text", value: sql }],
+      submitLabel: "📋 نسخ الأمر",
+      onSubmit: () => {
+        const done = () => toast("تم النسخ ✓ — الصقه في Supabase واضغط Run");
+        try { navigator.clipboard.writeText(sql).then(done, () => { document.getElementById("qf_sql")?.select(); toast("حدّد النص وانسخه يدوياً"); }); } catch (e) { document.getElementById("qf_sql")?.select(); }
+        return false;
+      },
+    });
+  }
   function openCloudLinkForm() {
     if (role !== "owner" || !me) { denied(); return; }
     if (!me.username) { toast("حساب المالك يحتاج اسم دخول (username) أولاً"); return; }
@@ -5342,7 +5357,6 @@ body.auth-locked .top-logout{display:none!important}
         document.getElementById("exportBackupBtn")?.click(); // نسخة احتياطية قبل أي شيء
         return cloudStep(async () => {
           const l = await CLOUD.linkOwner(me.username, v.pw, loadProfile().nameEn || "997 Laundry", me.name);
-          if (l.error === "owner-not-named") l.error = cloudErr("owner-not-named").replace("باسم دخولك", `باسم الدخول «${me.username}»`);
           if (l.error) return l;
           me.cloudUserId = l.uid; persistEmps();
           return CLOUD.uploadAll(me.id);
@@ -5351,6 +5365,11 @@ body.auth-locked .top-logout{display:none!important}
           CLOUD.setUser(me);
           renderCloudPanel();
           toast(u.rejected ? `تم الربط — ${u.rejected} سجل لم يُقبل (راجع اللوحة)` : "☁ تم الربط ورفع كل البيانات بنجاح");
+        }, (code) => {
+          if (code !== "owner-not-named") return false;
+          quickFormDialog.close();
+          showOwnerSql(CLOUD.emailOf(me.username));
+          return true;
         });
       },
     });
