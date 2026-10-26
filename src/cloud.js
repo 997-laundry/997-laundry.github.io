@@ -51,6 +51,8 @@
   let user = null; // { uid, role }
   let applying = false, busy = false, timer = null, debounce = null, needLogin = false, online = true;
   let lastInput = Date.now(), lastError = "", staged = new Map(), stagedCursor = 0;
+  // طلبات خسر هذا الجهاز تعديلها لصالح جهاز آخر في هذه الجولة — قيود الدفع المرتبطة بها لا تُرفع
+  let lostOrders = new Set(), localChanged = false;
   const dirty = new Set();
   const saveSt = () => { if (st) write(ST_KEY, st); };
   const saveBase = () => write(BASE_KEY, base);
@@ -150,10 +152,30 @@
     return rows && rows[0] ? rows[0] : null;
   }
   function conflict(c, rid, localData, row) {
+    if (c.name === "orders") lostOrders.add(String(rid));
     note("conflicts", { at: new Date().toISOString(), collection: c.name, id: rid, mine: canon(localData).slice(0, 4000) });
     if (row) { staged.set(c.name + "\u0000" + rid, row); stagedCursor = Math.max(stagedCursor, st.cursor || 0); }
   }
+  // قيد دفع/استرداد خاص بطلب (ليس سداداً لاحقاً) — لا يتكرر لنفس الطلب
+  const orderEntry = (d) => d && d.orderId && !d.settles && (d.type === "order_charge" || d.type === "order_refund" || d.type === "credit");
+  // حذف قيود محلية لم تُقبل (الطلب نفسه سُجّل دفعه على جهاز آخر) حتى لا يُحسب المبلغ مرتين على هذا الجهاز
+  function dropLocal(c, ids, why) {
+    if (!ids.length) return;
+    const arr = read(c.key, []);
+    applying = true;
+    try { write(c.key, (Array.isArray(arr) ? arr : []).filter((r) => !ids.includes(String(r && r.id)))); } finally { applying = false; }
+    const b = base[c.name] || {};
+    // يُحفظ حتى لا يعود القيد من ذاكرة الشاشة قبل تحديثها فيُرفع لاحقاً
+    st.dropped = [...new Set([...ids, ...(st.dropped || [])])].slice(0, 500);
+    ids.forEach((rid) => { delete b[rid]; if (why) note("conflicts", { at: new Date().toISOString(), collection: c.name, id: rid, mine: why }); });
+    localChanged = true;
+  }
   async function pushCollection(c) {
+    if (c.name === "ledger") {
+      const recs0 = localRecords(c), b0 = base[c.name] || {}, gone = new Set(st.dropped || []);
+      dropLocal(c, [...recs0.keys()].filter((rid) => gone.has(rid) && !b0[rid]), "");
+      if (lostOrders.size) dropLocal(c, [...recs0].filter(([rid, d]) => !b0[rid] && !gone.has(rid) && orderEntry(d) && lostOrders.has(String(d.orderId))).map(([rid]) => rid), "dropped: this order was paid/cancelled on another device first");
+    }
     const recs = localRecords(c), b = base[c.name] || (base[c.name] = {});
     const inserts = [], updates = [], removes = [];
     const readable = canRead(c);
@@ -191,7 +213,13 @@
             b[rid] = [rows[0].version, h];
           } catch (e2) {
             if (e2.offline || e2.noSession) throw e2;
-            if (e2.status === 409) { conflict(c, rid, d, await serverRow(c, rid)); b[rid] = [0, h]; }
+            if (e2.status === 409) {
+              // «موجود مسبقاً» بنفس المحتوى = محاولة سابقة وصلت للخادم وضاع الرد (انقطاع) — ليس تعارضاً ولا تكراراً
+              const row = await serverRow(c, rid);
+              if (row && !row.deleted && hashOf(row.data) === h) b[rid] = [row.version, h];
+              else { conflict(c, rid, d, row); b[rid] = [0, h]; }
+            }
+            else if (c.name === "ledger" && /already recorded on another device/.test(e2.message)) dropLocal(c, [rid], "dropped: " + e2.message);
             else { note("rejected", { at: new Date().toISOString(), collection: c.name, id: rid, why: e2.message }); b[rid] = [0, h]; }
           }
         }
@@ -225,7 +253,9 @@
     }
   }
   async function push() {
-    const keys = [...dirty];
+    const order = (k) => COLLECTIONS.indexOf(byKey[k]);
+    const keys = [...dirty].sort((x, y) => order(x) - order(y));
+    lostOrders = new Set();
     for (const k of keys) {
       const c = byKey[k];
       if (!canWrite(c)) continue; // يبقى معلّقاً حتى يدخل مستخدم له صلاحية الكتابة
@@ -308,11 +338,12 @@
   // ما يمكن عرضه فوراً بدون إعادة تحميل الصفحة؛ غيرها (إعدادات، صلاحيات، موظفون…) يحتاج إعادة تهيئة كاملة
   const SOFT = new Set(["orders", "customers", "ledger", "customer_packages", "suspended_orders", "shifts", "attendance", "audit", "expenses"]);
   function maybeApply() {
-    if (!staged.size) { showUpdateChip(false); return; }
     const h = host();
+    if (localChanged && !staged.size && h && h.refresh && !h.busy()) { localChanged = false; try { h.refresh(); } catch (e) { reloadNow(); } return; }
+    if (!staged.size) { showUpdateChip(false); return; }
     const soft = h && h.refresh && [...staged.values()].every((r) => SOFT.has(r.collection));
-    if (soft && !h.busy() && Date.now() - lastInput > CFG.softIdleMs) {
-      applyStaged(false);
+    if (soft && !(h.softBusy ? h.softBusy() : h.busy()) && Date.now() - lastInput > CFG.softIdleMs) {
+      applyStaged(false); localChanged = false;
       try { h.refresh(); } catch (e) { reloadNow(); return; }
       showUpdateChip(false); renderChip();
       return;
@@ -563,7 +594,8 @@
   function status() {
     return {
       linked: !!(st && st.shopId), signedIn: !!user, needLogin, online,
-      pending: dirty.size, incoming: staged.size, lastSyncAt: st ? st.lastSyncAt : null, linkedAt: st ? st.linkedAt : null, lastError,
+      // ما لا يملك المستخدم رفعه (صلاحيات) لا يُعدّ «معلّقاً»
+      pending: [...dirty].filter((k) => byKey[k] && canWrite(byKey[k])).length, incoming: staged.size, lastSyncAt: st ? st.lastSyncAt : null, linkedAt: st ? st.linkedAt : null, lastError,
       conflicts: st && st.conflicts ? st.conflicts.length : 0, rejected: st && st.rejected ? st.rejected.length : 0,
       conflictList: st && st.conflicts ? st.conflicts.slice(0, 20) : [], rejectedList: st && st.rejected ? st.rejected.slice(0, 20) : [],
     };

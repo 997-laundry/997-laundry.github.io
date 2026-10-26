@@ -438,3 +438,6 @@ body.auth-locked .top-logout{display:none!important}
 .cloud-warn{background:var(--warning-soft);color:var(--text,inherit);border-radius:12px;padding:10px 12px;margin:8px 0;line-height:1.8}
 .cloud-warn summary{cursor:pointer;font-weight:700}
 .cloud-row{font-size:12px;opacity:.85;border-top:1px dashed rgba(0,0,0,.1);padding:4px 0}
+.cp-pays{margin-top:14px}
+.cp-pay-row{display:grid;grid-template-columns:auto 1fr auto auto auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border,#e5e7eb);font-size:13px}
+@media (max-width:640px){.cp-pay-row{grid-template-columns:1fr auto;}}

@@ -143,6 +143,13 @@ select t.ok('worker cannot read change history', (select count(*) = 0 from publi
 select t.rows('worker cannot promote themselves', $q$update public.shop_members set role = 'owner' where user_id = auth.uid()$q$, 0);
 select t.ok('worker is still a worker', (select role = 'worker' from public.shop_members where user_id = auth.uid()));
 select t.refused('worker cannot add staff', $q$insert into public.shop_members (shop_id, user_id, role) select id, '55555555-5555-5555-5555-555555555555', 'worker' from public.shops$q$);
+-- two devices confirming / cancelling the same order cannot post its payment twice
+select t.rows('first debt entry for an order is accepted', $q$insert into public.records (shop_id, collection, record_id, data) select shop, 'ledger', 'chg1', '{"customerId":"c1","type":"order_charge","amount":-6,"method":"unpaid","orderId":"paid1","at":"2026-10-26T10:00:00Z"}' from t.ctx$q$, 1);
+select t.refused('a second debt entry for the same order (other device) is refused', $q$insert into public.records (shop_id, collection, record_id, data) select shop, 'ledger', 'chg2', '{"customerId":"c1","type":"order_charge","amount":-6,"method":"unpaid","orderId":"paid1","at":"2026-10-26T10:00:01Z"}' from t.ctx$q$);
+select t.rows('a later payment on that order (settles) is still accepted', $q$insert into public.records (shop_id, collection, record_id, data) select shop, 'ledger', 'set1', '{"customerId":"c1","type":"credit","amount":3,"method":"cash","orderId":"paid1","settles":true,"at":"2026-10-26T11:00:00Z"}' from t.ctx$q$, 1);
+select t.rows('and a second later payment too (real separate payments)', $q$insert into public.records (shop_id, collection, record_id, data) select shop, 'ledger', 'set2', '{"customerId":"c1","type":"credit","amount":3,"method":"cash","orderId":"paid1","settles":true,"at":"2026-10-26T12:00:00Z"}' from t.ctx$q$, 1);
+select t.rows('cancellation: debt drop accepted once', $q$insert into public.records (shop_id, collection, record_id, data) select shop, 'ledger', 'ref1', '{"customerId":"c1","type":"order_refund","amount":6,"method":"unpaid","orderId":"can1","at":"2026-10-26T13:00:00Z"}' from t.ctx$q$, 1);
+select t.refused('cancellation on a second device cannot drop the debt again', $q$insert into public.records (shop_id, collection, record_id, data) select shop, 'ledger', 'ref2', '{"customerId":"c1","type":"order_refund","amount":6,"method":"unpaid","orderId":"can1","at":"2026-10-26T13:00:02Z"}' from t.ctx$q$);
 reset role;
 
 -- ---------- accountant ----------

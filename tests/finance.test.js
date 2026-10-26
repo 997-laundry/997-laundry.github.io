@@ -154,7 +154,7 @@ test("customer file: paid, remaining and total owed per customer", () => {
   const s = F.customerSummary(cust, [o1, o2, o3, o4, o5, order({ id: "x", customerId: "other", total: 5 })]);
   const byId = Object.fromEntries(s.rows.map((r) => [r.order.id, r]));
   assert.equal(s.rows.length, 5);
-  assert.deepEqual([byId.o1.paid, byId.o1.remaining, byId.o1.state], [0.5, 0.3, "debt"]);
+  assert.deepEqual([byId.o1.paid, byId.o1.remaining, byId.o1.state], [0.5, 0.3, "partial"]);
   assert.deepEqual([byId.o2.remaining, byId.o2.state], [1, "due_now"]);
   assert.deepEqual([byId.o3.remaining, byId.o3.state], [2, "in_progress"]);
   assert.deepEqual([byId.o4.paid, byId.o4.remaining], [0.4, 0]);
@@ -167,6 +167,40 @@ test("customer file: paid, remaining and total owed per customer", () => {
   // after the customer settles the debt, the old order shows fully paid
   const s2 = F.customerSummary({ id: "c1", balance: 0 }, [o1]);
   assert.deepEqual([s2.rows[0].paid, s2.rows[0].remaining, s2.rows[0].state], [0.8, 0, "paid"]);
+});
+
+test("arrears: 4 orders (10/10, 8/3, 6/0, 4/2) = 13.000; 5.000 paid on order 2 → order 2 settled, 8.000 left", () => {
+  const D = (d) => `2026-10-0${d}T10:00:00.000Z`;
+  const mk = (id, total, paid, day) => { const o = order({ id, total, paid, outstanding: F.r3(total - paid), debt: total > paid, paidAt: D(day), status: "delivered", method: paid > 0 ? "cash" : "unpaid" }); o.createdAt = D(day); return o; };
+  const os = [mk("o1", 10, 10, 1), mk("o2", 8, 3, 2), mk("o3", 6, 0, 3), mk("o4", 4, 2, 4)];
+  const ledger = [];
+  let cust = { id: "c1", balance: -13 };
+  let s = F.customerSummary(cust, os, ledger);
+  const rem = (sum) => Object.fromEntries(sum.rows.map((r) => [r.order.id, r.remaining]));
+  assert.equal(s.debt, 13);
+  assert.deepEqual(rem(s), { o1: 0, o2: 5, o3: 6, o4: 2 });
+  assert.equal(s.totalSpent, 28); assert.equal(s.totalPaid, 15);
+  // targeted payment to order 2
+  ledger.push({ id: "t1", customerId: "c1", type: "credit", amount: 5, orderId: "o2", settles: true });
+  cust = { id: "c1", balance: -8 };
+  s = F.customerSummary(cust, os, ledger);
+  assert.deepEqual(rem(s), { o1: 0, o2: 0, o3: 6, o4: 2 });
+  assert.equal(s.debt, 8);
+  assert.equal(F.r3(s.rows.reduce((a, r) => a + r.remaining, 0)), 8, "sum of order remainders equals the customer's debt");
+  // untargeted 1.000 settles the oldest open debt first (order 3), never counted twice
+  cust = { id: "c1", balance: -7 };
+  s = F.customerSummary(cust, os, ledger);
+  assert.deepEqual(rem(s), { o1: 0, o2: 0, o3: 5, o4: 2 });
+  // a targeted payment to the newest order moves the debt to the older one, total unchanged
+  ledger.push({ id: "t2", customerId: "c1", type: "credit", amount: 2, orderId: "o4", settles: true });
+  cust = { id: "c1", balance: -5 };
+  s = F.customerSummary(cust, os, ledger);
+  assert.deepEqual(rem(s), { o1: 0, o2: 0, o3: 5, o4: 0 });
+  // reversing a targeted payment restores it
+  ledger[1].reversedBy = "r1"; cust = { id: "c1", balance: -7 };
+  s = F.customerSummary(cust, os, ledger);
+  assert.deepEqual(rem(s), { o1: 0, o2: 0, o3: 5, o4: 2 });
+  assert.deepEqual(s.counts, { open: 0, ready: 0, delivered: 4, cancelled: 0 });
 });
 
 test("package usage: used pieces come from real orders; cancelled orders give pieces back", () => {

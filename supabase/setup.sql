@@ -253,6 +253,16 @@ begin
     new.version := 1;
     new.deleted := false;
     perform public.business_rules(public.member_role(new.shop_id), new.collection, null, new.data);
+    -- one payment / refund entry per order: two devices confirming or cancelling the same order cannot post it twice
+    if new.collection = 'ledger' and new.data ->> 'orderId' is not null and not coalesce((new.data ->> 'settles')::boolean, false)
+       and new.data ->> 'type' in ('order_charge', 'order_refund', 'credit')
+       and exists (select 1 from public.records r
+                   where r.shop_id = new.shop_id and r.collection = 'ledger' and not r.deleted and r.record_id <> new.record_id
+                     and r.data ->> 'orderId' = new.data ->> 'orderId' and r.data ->> 'type' = new.data ->> 'type'
+                     and coalesce(r.data ->> 'method', '') = coalesce(new.data ->> 'method', '')
+                     and not coalesce((r.data ->> 'settles')::boolean, false)) then
+      raise exception 'this order''s payment was already recorded on another device';
+    end if;
     return new;
   end if;
   if new.shop_id <> old.shop_id or new.collection <> old.collection or new.record_id <> old.record_id then

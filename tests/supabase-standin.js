@@ -31,7 +31,7 @@ async function startStandin(opts = {}) {
   const pool = new Pool({ host: "127.0.0.1", user: "l997_standin", password: "standin", database: db, max: 8 });
   const sessions = new Map(); // token -> user id
   const refresh = new Map();  // refresh token -> user id
-  let requests = 0, offline = false;
+  let requests = 0, offline = false, loseNextWrite = false;
 
   const issue = (user) => {
     const access = crypto.randomBytes(24).toString("hex"), rt = crypto.randomBytes(24).toString("hex");
@@ -76,6 +76,8 @@ async function startStandin(opts = {}) {
   const server = http.createServer(async (req, res) => {
     requests++;
     const send = (status, body) => {
+      // simulate "saved on the server, but the reply never reached the phone" (connection lost after commit)
+      if (loseNextWrite && req.method !== "GET" && /\/rest\/v1\/records/.test(req.url) && status < 300) { loseNextWrite = false; req.socket.destroy(); return; }
       res.writeHead(status, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,OPTIONS" });
       res.end(body === undefined ? "" : JSON.stringify(body));
     };
@@ -166,6 +168,7 @@ async function startStandin(opts = {}) {
     db,
     get requests() { return requests; },
     setOffline(v) { offline = !!v; },
+    loseNextWriteResponse() { loseNextWrite = true; },
     // test inspection only: runs as the stand-in's own login (bypasses RLS); app requests always switch to "authenticated"
     query: (sql, params) => pool.query(sql, params),
     async close() { server.close(); await pool.end(); try { pgAdmin(`dropdb --if-exists ${db}`); } catch (e) { /* ignore */ } },

@@ -238,16 +238,28 @@
     };
   }
 
-  // توزيع دين العميل الحالي على طلباته الآجلة: الأقدم يُعتبر مسدداً أولاً، والدين المتبقي على الأحدث
-  function allocateDebts(customers, orders) {
+  // دفعات سداد خُصصت لطلب بعينه (غير معكوسة): رقم الطلب → المبلغ
+  function targetedPayments(ledger, customerId) {
+    const out = {};
+    (ledger || []).forEach((tx) => {
+      if (!tx || !tx.settles || !tx.orderId || tx.reversedBy || (customerId && tx.customerId !== customerId)) return;
+      out[tx.orderId] = r3((out[tx.orderId] || 0) + (Number(tx.amount) || 0));
+    });
+    return out;
+  }
+  // توزيع دين العميل الحالي على طلباته الآجلة. الدفعة المخصصة لطلب تُطرح منه أولاً؛ وغير المخصصة تسدد
+  // الأقدم أولاً، فيبقى الدين على الأحدث. مجموع المتبقي على الطلبات = دين العميل دائماً (لا يُحسب مبلغ مرتين).
+  function allocateDebts(customers, orders, ledger) {
     const out = {};
     (customers || []).forEach((c) => {
       let left = r3(Math.max(0, -Number(c.balance) || 0));
+      const tp = targetedPayments(ledger, c.id);
       (orders || [])
         .filter((o) => o.customerId === c.id && o.debtRecorded && o.status !== "cancelled")
         .sort((a, b) => String(orderPaidAt(b)).localeCompare(String(orderPaidAt(a))))
         .forEach((o) => {
-          const owed = r3(Math.min(Number(pay(o).outstanding) || 0, left));
+          const open = r3(Math.max(0, (Number(pay(o).outstanding) || 0) - (tp[o.id] || 0)));
+          const owed = r3(Math.min(open, left));
           out[o.id] = owed;
           left = r3(left - owed);
         });
@@ -256,10 +268,10 @@
   }
 
   // ملف العميل: كل طلباته مع المدفوع والمتبقي لكل طلب، وملخص ما عليه الآن
-  function customerSummary(customer, orders) {
+  function customerSummary(customer, orders, ledger) {
     const mine = (orders || []).filter((o) => o.customerId === customer.id)
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-    const owedNow = allocateDebts([customer], mine);
+    const owedNow = allocateDebts([customer], mine, ledger);
     const rows = mine.map((o) => {
       const total = r3(pay(o).total);
       let paid = 0, remaining = 0, state = "paid";
@@ -270,7 +282,7 @@
       } else {
         remaining = o.debtRecorded ? r3(owedNow[o.id] || 0) : 0;
         paid = r3(total - remaining);
-        if (remaining > 0) state = "debt";
+        if (remaining > 0) state = paid > 0 ? "partial" : "debt";
       }
       return { order: o, total, paid, remaining, state };
     });
@@ -281,7 +293,13 @@
     return {
       rows,
       ordersCount: rows.filter((r) => r.state !== "cancelled").length,
-      totalSpent: sum((r) => (r.state === "paid" || r.state === "debt" ? r.total : 0)),
+      totalSpent: sum((r) => (r.state === "paid" || r.state === "debt" || r.state === "partial" ? r.total : 0)),
+      counts: {
+        open: rows.filter((r) => r.order.status === "received").length,
+        ready: rows.filter((r) => r.order.status === "ready").length,
+        delivered: rows.filter((r) => r.order.status === "delivered").length,
+        cancelled: rows.filter((r) => r.order.status === "cancelled").length,
+      },
       totalPaid: sum((r) => r.paid),
       debt, prepaid: r3(Math.max(0, balance)),
       dueNow,
@@ -371,5 +389,5 @@
     return s;
   }
 
-  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, customerSummary, packageUsage, EXPENSE_GROUPS, EXPENSE_CATEGORIES, expenseCategory, salaryDue, unclosedDays, shiftSummary };
+  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, targetedPayments, customerSummary, packageUsage, EXPENSE_GROUPS, EXPENSE_CATEGORIES, expenseCategory, salaryDue, unclosedDays, shiftSummary };
 });

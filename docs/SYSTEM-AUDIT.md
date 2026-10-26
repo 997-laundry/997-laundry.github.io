@@ -106,3 +106,34 @@ indicator is the only proof of cloud commit. Financial operations are not server
 | Supervisor approval works on staff devices: the supervisor's password is checked against the cloud (no password hash is ever downloaded); the session is discarded immediately | e2e.cloud "worker's approved cancellation accepted" |
 | **Bug fixed:** changes made offline were forgotten if the page reloaded before the internet returned (never uploaded) | reproduced without fix (cloud 1 / device 2), passes with fix |
 | **Bug fixed:** right after linking, the upload lock was released after the first sync started, allowing two overlapping uploads (false conflicts) | 5 consecutive clean runs |
+
+## 9. Order lifecycle & customer financial audit (2026-10-26)
+
+**How money is stored (verified in code):** an order is saved unpaid (`status: received`). Payment is confirmed once, when
+the order is marked ready or delivered (`payment.paid`, `paidAt`, `paymentBy`). Any unpaid part becomes a debt entry in the
+customer ledger (`order_charge`, negative). Later payments are ledger `credit` entries; when made from an order they carry
+`orderId` + `settles: true`. Customer balance = opening balance + Σ ledger (recomputed on every save). Remaining per order =
+order debt − payments allocated to that order, then unallocated payments settle the oldest debt first. The sum of order
+remainders always equals the customer's debt.
+
+| Area | Result | Evidence |
+|---|---|---|
+| Customers: new, search by name / phone, similar names, duplicate phone refused, created from order screen | PASS | e2e.lifecycle |
+| Orders: thobe, shirts, trousers, ghatra, abaya, suit, blanket; remove/adjust lines; urgent fee; totals = Σ qty × price | PASS | e2e.lifecycle |
+| Stored total = screen total = receipt total | PASS | e2e.lifecycle |
+| Empty order / no customer / double-click save / negative quantity on edit | PASS (refused; one order) | e2e.lifecycle |
+| Lifecycle received → ready → delivered; who/when; wrong piece count; deliver twice; refresh; sign-out | PASS | e2e.lifecycle |
+| A full / B partial / C unpaid & pay on pickup & credit / D later payments / E overpayment / F cancellations | PASS | e2e.lifecycle |
+| Arrears 10/10, 8/3, 6/0, 4/2 = 13.000 → 5.000 on order 2 → 8.000; unallocated 1.000 → 7.000 | PASS | e2e.lifecycle, finance.test |
+| Customer file: summary, counts by stage, items per order, payments history with method and employee | PASS | e2e.lifecycle |
+| Packages: active, last piece, exhausted, cancellation returns pieces | PASS | e2e.lifecycle |
+| Two devices: order / payment / status visible live on the other device's open screens | PASS | e2e.syncfin |
+| Same order paid on two devices at once (both orders of arrival) | PASS after fix | e2e.syncfin (without fix: −16.000 instead of −9.000) |
+| Saved on server, reply lost, retried → one entry, no false conflict | PASS after fix | e2e.syncfin |
+| Payment on one device never counted in another employee's shift | PASS | e2e.syncfin |
+| Server refuses a second payment/refund entry for the same order | PASS | security_test.sql (86/86) |
+
+**Bugs found and fixed:** order screen and printed receipt showed the remaining amount frozen at the first payment;
+no way to apply a payment to a specific order; two devices paying the same order could post a debt that contradicts the
+winning payment; a retry after a lost reply was logged as a conflict; staff devices showed "syncing…" forever for data
+they are not allowed to upload.
