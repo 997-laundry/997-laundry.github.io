@@ -49,7 +49,10 @@ const OWNER_PW = "Owner#2026pass", WORKER_PW = "Worker#2026new";
       }, custId),
       async openOrder(id) {
         await h.closeAll(); const o = (await h.ls("l997_orders")).find((x) => x.id === id);
-        await h.nav("orders"); await page.click(`#ordersBody tr:has-text("#${o.number}") [data-view]`); await page.waitForTimeout(150);
+        await h.nav("orders");
+        // by id, so a live redraw of the list (another device's change) cannot swallow the click
+        await page.waitForFunction((id) => !!document.querySelector(`#ordersBody [data-view="${id}"]`), o.id);
+        await page.evaluate((id) => document.querySelector(`#ordersBody [data-view="${id}"]`).click(), o.id); await page.waitForTimeout(150);
       },
       async ready(id, method, paid) {
         await h.openOrder(id); await page.click("#advanceStatusBtn"); await page.selectOption("#qf_method", method);
@@ -154,10 +157,17 @@ const OWNER_PW = "Owner#2026pass", WORKER_PW = "Worker#2026new";
   await a.ready(o4.id, "cash", 10);  // A: paid in full
   await b.ready(o4.id, "cash", 3);   // B: partial → B creates a 7.000 debt entry locally
   check("4d. B recorded a local debt entry while offline", (await b.ls("l997_ledger")).some((t) => t.orderId === o4.id && t.type === "order_charge"));
-  await A.context().setOffline(false); await A.evaluate(() => window.L997Cloud.syncNow());
-  await until(async () => (await a.status()).pending === 0 && (await cloudRows("orders")).find((r) => r.record_id === o4.id).data.paymentConfirmed);
-  await B.context().setOffline(false); await B.evaluate(() => window.L997Cloud.syncNow());
+  await A.context().setOffline(false); await A.evaluate(() => window.L997Cloud && window.L997Cloud.syncNow()).catch(() => {});
+  const aWon = await until(async () => { await A.evaluate(() => window.L997Cloud && window.L997Cloud.syncNow()).catch(() => {}); return (await a.status()).pending === 0 && (await cloudRows("orders")).find((r) => r.record_id === o4.id).data.paymentConfirmed; }, 60000);
+  if (!aWon) console.log("DIAG A:", JSON.stringify({ st: await a.status().catch((e) => e.message), dbg: await A.evaluate(() => window.L997Cloud._debug()).catch((e) => e.message), local: ((await a.ls("l997_orders")) || []).filter((o) => o.id === o4.id).map((o) => [o.status, o.paymentConfirmed, o.payment.paid]), base: await A.evaluate((id) => (JSON.parse(localStorage.getItem("l997_cloud_base")).orders || {})[id], o4.id) }));
+  check("4d. A's full payment reached the cloud first (forced order)", aWon);
+  await B.context().setOffline(false); await B.evaluate(() => window.L997Cloud && window.L997Cloud.syncNow()).catch(() => {});
   const ok4 = await until(async () => (await b.status()).pending === 0 && !(await b.ls("l997_ledger")).some((t) => t.orderId === o4.id && t.type === "order_charge") && (await b.summary(cust.id)).balance === (await cloudBalance(cust.id)), 40000);
+  if (!ok4) {
+    const hist = (await cloud.query("select id, record_id, collection, version, changed_by, (data->>'status') st, (data->>'paymentConfirmed') pc, (data->'payment'->>'paid') paid, changed_at from public.record_history where record_id = $1 or (collection = 'ledger' and data->>'orderId' = $1) order by changed_at", [o4.id])).rows;
+    console.log("DIAG history:", JSON.stringify(hist));
+    console.log("DIAG B conflicts:", JSON.stringify((await b.status()).conflictList.map((x) => [x.collection, x.id, String(x.mine).slice(0, 60)])));
+  }
   check("4e. full payment won: no debt entry in the cloud for that order", !(await cloudRows("ledger")).some((r) => r.data.orderId === o4.id && r.data.type === "order_charge"));
   check("4f. B discarded its now-invalid debt entry; B, A and the cloud show the same balance (unchanged by the 10.000 paid)", ok4 && (await cloudBalance(cust.id)) === balBefore && (await a.summary(cust.id)).balance === balBefore, JSON.stringify([balBefore, await cloudBalance(cust.id), (await b.summary(cust.id)).balance]));
 

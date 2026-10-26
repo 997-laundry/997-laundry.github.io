@@ -66,20 +66,22 @@
   const r3 = (n) => { const x = Number(n) || 0; return Math.round((x + (x >= 0 ? Number.EPSILON : -Number.EPSILON)) * 1000) / 1000; };
   const pad = (n) => String(n).padStart(2, "0");
 
-  // تاريخ اليوم حسب توقيت الجهاز المحلي (وليس UTC) — يمنع اختفاء طلبات بعد منتصف الليل
+  // تاريخ اليوم بتوقيت البحرين دائماً (UTC+3 ثابت، بلا توقيت صيفي) — مهما كان ضبط المنطقة الزمنية في الجهاز.
+  // يمنع اختفاء طلبات بعد منتصف الليل، واختلاف «اليوم» بين جهازين مضبوطين على مناطق مختلفة.
+  const BH_MS = 3 * 3600000;
+  const ymd = (d) => d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate());
   function localDay(v) {
     const d = v instanceof Date ? v : new Date(v);
-    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+    return ymd(new Date(d.getTime() + BH_MS));
   }
   function todayStr() { return localDay(new Date()); }
   function addDays(dayStr, n) {
-    const d = new Date(dayStr + "T12:00:00");
-    d.setDate(d.getDate() + n);
-    return localDay(d);
+    const [y, m, d] = String(dayStr).split("-").map(Number);
+    return ymd(new Date(Date.UTC(y, m - 1, d + n)));
   }
   function monthBounds(dayStr) {
     const [y, m] = dayStr.split("-").map(Number);
-    const last = new Date(y, m, 0).getDate();
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
     return { from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${pad(last)}`, key: `${y}-${pad(m)}` };
   }
   function inRange(iso, from, to) {

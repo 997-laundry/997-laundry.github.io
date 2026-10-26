@@ -137,3 +137,17 @@ remainders always equals the customer's debt.
 no way to apply a payment to a specific order; two devices paying the same order could post a debt that contradicts the
 winning payment; a retry after a lost reply was logged as a conflict; staff devices showed "syncing…" forever for data
 they are not allowed to upload.
+
+## 10. Previously untested items — closed (2026-10-27)
+
+| Item | Result | Evidence |
+|---|---|---|
+| Upgrading the live database: old setup.sql + 1,201 records → new setup.sql (twice) | PASS — records, history, staff, counters byte-identical; normal work accepted; only duplicates refused; old data untouched | upgrade drill (PostgreSQL 16) |
+| Device set to another time zone (India, UTC, New York, UTC+14, UTC−11) | **Bug fixed** — a sale at 23:30 Bahrain was filed under the next day and shown as 02:00; business day and times are now always Bahrain's | e2e.risks, finance.test in 6 zones |
+| Device clock wrong | **New** — offset measured against the server; red warning at ≥ 5 minutes | e2e.risks (42 min detected) |
+| Customer without phone / invalid phone | PASS (refused) | e2e.risks |
+| Price changed after an order; editing that order; negative price | PASS (order keeps its price; new orders use the new one; negative never saved) | e2e.risks |
+| Same manual payment recorded twice | **New guard** — identical amount for the same customer within 10 minutes needs a second press | e2e.risks, e2e.lifecycle |
+| Phone-size touch screen (iPhone 13 size, Chromium engine) | PASS (order, payment, customer file, no sideways scroll) | e2e.risks |
+| Automatic full refresh while offline showed the browser's "no internet" page | **Bug fixed** — never auto-refresh without a connection | e2e.syncfin ×8 |
+| Real Safari / iPhone | BLOCKED — no WebKit engine in this environment | owner to check on device |

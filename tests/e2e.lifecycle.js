@@ -112,7 +112,10 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
     if (orderId) { await openOrder(orderId); await page.click("#payOrderRemainingBtn"); }
     else { await closeAll(); await page.evaluate((id) => window.openCustomerProfile997(id), custId); await page.click("#cpSettle"); }
     await page.fill("#qf_amount", String(amount)); await page.selectOption("#qf_method", method); await page.selectOption("#qf_notify", "no");
-    await submit(); await closeAll();
+    await submit();
+    // same amount for the same customer within 10 minutes → the form asks to press again (possible duplicate)
+    if (await page.isVisible("#quickFormSubmitBtn")) { payment.confirmed = (payment.confirmed || 0) + 1; await submit(); }
+    await closeAll();
   }
   async function cancelOrder(orderId, reason, refund) {
     await openOrder(orderId); await page.click("#cancelOrderBtn"); await wait(200);
@@ -247,6 +250,7 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
   check("D receipt shows remaining 3.000", /المتبقي عليكم: 3\.000/.test(await page.evaluate((id) => window.receiptText997(id), oB.id)));
   await payment(cB.id, 3, oB.id);
   sB = await summary(cB.id);
+  check("D a second identical 3.000 within 10 minutes needed an explicit confirmation (duplicate guard)", payment.confirmed === 1, payment.confirmed);
   check("D final payment: order remaining 0, paid 10, customer owes nothing", sB.rows[B.number].remaining === 0 && sB.rows[B.number].paid === 10 && sB.rows[B.number].state === "paid" && sB.balance === 0);
   check("D payments history lists all three payments once each (4 + 3 + 3)", await (async () => { await page.evaluate((id) => window.openCustomerProfile997(id), cB.id); const t = await page.textContent(".cp-pays"); await closeAll(); return (t.match(/\+4\.000/g) || []).length === 1 && (t.match(/\+3\.000/g) || []).length === 2; })());
 

@@ -3,8 +3,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const F = require("../src/finance.js");
 
-// Fixed local times on one day (process TZ is set to Asia/Bahrain by the npm script)
-const at = (day, hh = "10:00") => new Date(`${day}T${hh}:00`).toISOString();
+// Fixed Bahrain times; the suite must pass in any machine time zone
+const at = (day, hh = "10:00") => new Date(`${day}T${hh}:00+03:00`).toISOString(); // Bahrain time, whatever the machine zone
 const D1 = "2026-10-20", D2 = "2026-10-21";
 
 function order(o) {
@@ -19,7 +19,18 @@ function order(o) {
 
 test("local day is not shifted to UTC after midnight", () => {
   // 01:30 in Bahrain is still the previous day in UTC — must report the local day
-  assert.equal(F.localDay(new Date(`${D2}T01:30:00`)), D2);
+  assert.equal(F.localDay(new Date(`${D2}T01:30:00+03:00`)), D2);
+});
+
+test("the business day is Bahrain's, whatever time zone the device is set to", () => {
+  // 23:30 Bahrain on the 20th = 20:30 UTC = 02:00 next day in India = 16:30 in New York
+  assert.equal(F.localDay("2026-10-20T20:30:00Z"), "2026-10-20");
+  assert.equal(F.localDay("2026-10-20T21:00:00Z"), "2026-10-21"); // 00:00 Bahrain
+  assert.equal(F.addDays("2026-12-31", 1), "2027-01-01");
+  assert.equal(F.addDays("2024-03-01", -1), "2024-02-29");
+  assert.deepEqual(F.monthBounds("2026-02-10"), { from: "2026-02-01", to: "2026-02-28", key: "2026-02" });
+  assert.ok(F.inRange("2026-10-20T20:59:59Z", "2026-10-20", "2026-10-20"));
+  assert.ok(!F.inRange("2026-10-20T21:00:00Z", "2026-10-20", "2026-10-20"));
 });
 
 test("sales are dated by payment confirmation, not order creation", () => {

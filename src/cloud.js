@@ -53,6 +53,8 @@
   let lastInput = Date.now(), lastError = "", staged = new Map(), stagedCursor = 0;
   // طلبات خسر هذا الجهاز تعديلها لصالح جهاز آخر في هذه الجولة — قيود الدفع المرتبطة بها لا تُرفع
   let lostOrders = new Set(), localChanged = false;
+  // فرق ساعة الجهاز عن ساعة الخادم (يُقاس من وقت حفظ السجلات في الخادم) — ساعة خاطئة تُسجّل العمليات بتاريخ خاطئ
+  let clockSkewMs = null;
   const dirty = new Set();
   const saveSt = () => { if (st) write(ST_KEY, st); };
   const saveBase = () => write(BASE_KEY, base);
@@ -107,6 +109,7 @@
     const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
     const to = ctl ? setTimeout(() => ctl.abort(), 15000) : null;
     let r;
+    const t0 = Date.now();
     try { r = await root.fetch(CFG.url + path, { method: opt.method || "GET", headers: h, body: opt.body === undefined ? undefined : JSON.stringify(opt.body), signal: ctl ? ctl.signal : undefined }); }
     catch (e) { online = false; throw Object.assign(new Error("offline"), { offline: true }); }
     finally { if (to) clearTimeout(to); }
@@ -114,6 +117,10 @@
     const txt = await r.text();
     let data = null; try { data = txt ? JSON.parse(txt) : null; } catch (e) { data = txt; }
     if (!r.ok) throw Object.assign(new Error((data && (data.msg || data.message || data.error_description)) || "HTTP " + r.status), { status: r.status, data });
+    if (Array.isArray(data) && data[0] && data[0].updated_at && (opt.method === "POST" || opt.method === "PATCH")) {
+      const srv = Date.parse(data[0].updated_at);
+      if (srv) clockSkewMs = Math.round((t0 + Date.now()) / 2 - srv);
+    }
     return data;
   }
   const rep = { Prefer: "return=representation" };
@@ -329,6 +336,8 @@
     const h = host();
     return !!h && !h.busy() && Date.now() - lastInput > CFG.idleMs;
   }
+  // إعادة تحميل الصفحة بدون إنترنت قد تُظهر صفحة خطأ المتصفح بدل النظام — لا نعيد التحميل إلا مع اتصال
+  const netUp = () => online && (typeof navigator === "undefined" || navigator.onLine !== false);
   function reloadNow() {
     const h = host();
     try { sessionStorage.setItem("l997_cloud_page", h ? h.page() : ""); } catch (e) { /* ignore */ }
@@ -349,7 +358,7 @@
       return;
     }
     showUpdateChip(true);
-    if (idle()) reloadNow();
+    if (idle() && netUp()) reloadNow();
   }
 
   /* ---------- حلقة المزامنة ---------- */
@@ -411,7 +420,7 @@
     const el = chipEl("cloudUpdateChip", "position:fixed;bottom:calc(52px + env(safe-area-inset-bottom,0px));inset-inline-start:10px;z-index:61;border:0;border-radius:12px;padding:10px 14px;font:800 13px Tajawal,system-ui,sans-serif;background:#1f7ea8;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.2);cursor:pointer");
     el.textContent = "🔄 تحديثات من جهاز آخر — اضغط للتحديث";
     el.style.display = on ? "" : "none";
-    el.onclick = () => { const h = host(); if (h && h.busy() && !confirm("أكمل أو احفظ عملك المفتوح أولاً. التحديث الآن يغلق النوافذ المفتوحة. متابعة؟")) return; reloadNow(); };
+    el.onclick = () => { if (!netUp()) { alert("لا يوجد اتصال بالإنترنت الآن — سيُطبَّق التحديث تلقائياً عند عودة الاتصال."); return; } const h = host(); if (h && h.busy() && !confirm("أكمل أو احفظ عملك المفتوح أولاً. التحديث الآن يغلق النوافذ المفتوحة. متابعة؟")) return; reloadNow(); };
   }
 
   /* ---------- واجهة للنظام ---------- */
@@ -595,7 +604,8 @@
     return {
       linked: !!(st && st.shopId), signedIn: !!user, needLogin, online,
       // ما لا يملك المستخدم رفعه (صلاحيات) لا يُعدّ «معلّقاً»
-      pending: [...dirty].filter((k) => byKey[k] && canWrite(byKey[k])).length, incoming: staged.size, lastSyncAt: st ? st.lastSyncAt : null, linkedAt: st ? st.linkedAt : null, lastError,
+      pending: [...dirty].filter((k) => byKey[k] && canWrite(byKey[k])).length, incoming: staged.size,
+      clockSkewMin: clockSkewMs === null ? null : Math.round(clockSkewMs / 60000), lastSyncAt: st ? st.lastSyncAt : null, linkedAt: st ? st.linkedAt : null, lastError,
       conflicts: st && st.conflicts ? st.conflicts.length : 0, rejected: st && st.rejected ? st.rejected.length : 0,
       conflictList: st && st.conflicts ? st.conflicts.slice(0, 20) : [], rejectedList: st && st.rejected ? st.rejected.slice(0, 20) : [],
     };

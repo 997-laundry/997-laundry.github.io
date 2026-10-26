@@ -83,7 +83,7 @@
   deleteRecurringExpense(id){recurringExpenses=recurringExpenses.filter(x=>x.id!==id);save(EXT_KEYS.recurringExpenses,recurringExpenses)},
   updateRecurringExpense(id,patch){const r=recurringExpenses.find(x=>x.id===id);if(!r)return;Object.assign(r,patch);save(EXT_KEYS.recurringExpenses,recurringExpenses)},
   applyRecurringExpenses(){
-    const now=new Date(); const monthKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0'); const dayKey=monthKey+'-'+String(now.getDate()).padStart(2,'0');
+    const now=new Date(); const dayKey=window.L997Finance.todayStr(); const monthKey=dayKey.slice(0,7); // يوم العمل بتوقيت البحرين
     let appliedCount=0;
     recurringExpenses.forEach(r=>{
       if(!r.active) return;
@@ -861,6 +861,23 @@
     memBanner.innerHTML = MEM_STORAGE_WARN;
     getBannerStack().appendChild(memBanner);
   }
+  // ساعة الجهاز: إن اختلفت عن ساعة السحابة 5 دقائق أو أكثر تُسجَّل الطلبات والدفعات بوقت خاطئ — تنبيه واضح للموظف
+  function checkDeviceClock() {
+    const c = window.L997Cloud && window.L997Cloud.status ? window.L997Cloud.status() : null;
+    const off = c && c.clockSkewMin !== null && c.clockSkewMin !== undefined ? c.clockSkewMin : null;
+    let el = document.getElementById("clockWarnBanner");
+    if (off === null || Math.abs(off) < 5) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement("div"); el.id = "clockWarnBanner";
+      el.style.cssText = "background:#b42318;color:#fff;padding:10px 16px;text-align:center;font-weight:700;font-size:13px";
+      getBannerStack().appendChild(el);
+    }
+    const mins = Math.abs(off), dir = off > 0 ? (lang === "en" ? "ahead" : "متقدمة") : (lang === "en" ? "behind" : "متأخرة");
+    el.textContent = lang === "en"
+      ? `⚠ This device's clock is ${mins} min ${dir}. Orders and payments will be recorded at the wrong time — set the date & time to automatic (Bahrain).`
+      : `⚠ ساعة هذا الجهاز ${dir} ${mins} دقيقة. ستُسجَّل الطلبات والدفعات بوقت خاطئ — اضبط التاريخ والوقت على «تلقائي» (توقيت البحرين).`;
+  }
+  setInterval(checkDeviceClock, 20000); setTimeout(checkDeviceClock, 4000);
   // فحص استباقي لمساحة التخزين عند فتح النظام — تنبيه مبكر قبل الوصول لحد الامتلاء الفعلي
   function checkStorageUsage() {
     try {
@@ -996,7 +1013,7 @@
   function fmtDT(iso) {
     if (!iso) return "—";
     const d = new Date(iso);
-    return d.toLocaleString(DATE_LOCALES[lang] || "en-GB", { dateStyle: "medium", timeStyle: "short" });
+    return d.toLocaleString(DATE_LOCALES[lang] || "en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bahrain" });
   }
   function phoneKey(p) { const d = toLatinDigits(p).replace(/\D/g, ""); return d.length > 8 ? d.slice(-8) : d; }
   function samePhone(a, b) { const x = phoneKey(a), y = phoneKey(b); return !!x && x === y; }
@@ -1264,10 +1281,7 @@
     const nums = emps0.map((e) => Number(e.employeeNumber) || 0);
     return String((nums.length ? Math.max(...nums) : 0) + 1).padStart(4, "0");
   }
-  function todayStr() {
-    const d = new Date();
-    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-  }
+  function todayStr() { return window.L997Finance.todayStr(); } // بتوقيت البحرين مهما كان ضبط الجهاز
   // الحساب صالح حتى نهاية يوم تاريخ الانتهاء
   function isExpired(e) { return !!(e && e.expiryDate && todayStr() > e.expiryDate); }
   function activeOwners() { return window.L997Enterprise.data.employees.filter((e) => e.role === "owner" && e.active !== false && e.passHash && !isExpired(e)); }
@@ -2798,7 +2812,7 @@
     const cards = [
       { label: t("metric_active"), value: c.active, icon: "▦", note: t("metric_active_note") },
       { label: statusLabel("ready"), value: c.ready, icon: "✓", note: FX("ready_note") },
-      { label: t("metric_delivered_today"), value: c.deliveredToday, icon: "◎", note: new Date().toLocaleDateString(DATE_LOCALES[lang] || "en-GB", { dateStyle: "medium" }) },
+      { label: t("metric_delivered_today"), value: c.deliveredToday, icon: "◎", note: new Date().toLocaleDateString(DATE_LOCALES[lang] || "en-GB", { dateStyle: "medium", timeZone: "Asia/Bahrain" }) },
       { fin: true, label: FX("sales"), value: money(s.salesTotal), icon: "💰", note: FX("sales_note", s.salesOrders, s.packageCount) },
       { fin: true, label: FX("collected"), value: money(s.collected), icon: "💵", note: FX("collected_note") },
       { fin: true, label: FX("expenses"), value: money(s.expenses), icon: "🧾", note: FX("expenses_note") },
@@ -4236,7 +4250,7 @@
   function openEditOrderForm(order) {
     if (order.status !== "received" || order.paymentConfirmed) { toast(lang === "en" ? "Only unpaid received orders can be edited" : "يمكن تعديل الطلب فقط قبل تأكيد الدفع"); return; }
     if (!can("create_order")) { denied(); return; }
-    const toLocalInput = (iso) => { if (!iso) return ""; const d = new Date(iso); if (isNaN(d)) return iso; return FIN.localDay(d) + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+    const toLocalInput = (iso) => { if (!iso) return ""; const d = new Date(iso); if (isNaN(d)) return iso; return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
     const fields = order.items.map((it, i) => ({ id: "q" + i, label: `${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}${it.fromPackageId ? " (باقة)" : ` (${money(it.unit)})`}`, type: "number", step: "1", value: it.qty, min: 0 }));
     fields.push(
       { id: "priority", label: t("th_priority"), type: "select", value: order.priority, options: [{ value: "normal", label: t("opt_normal") }, { value: "urgent", label: t("opt_urgent") }] },
@@ -4824,7 +4838,7 @@
   const methodLabel997 = (m) => { const f = BAL_METHODS.find((x) => x[0] === m); return f ? BX(f[1]) : (m === "balance" ? t("opt_balance") : m === "unpaid" ? t("opt_unpaid") : m || ""); };
   const txLabel = (tx) => BX((TX_META[tx.type] || { k: "tx_adjust" }).k);
   const txCashEffect = (tx) => (tx.type === "credit" || tx.type === "cash_refund" || (tx.type === "reversal" && tx.cashRev)) && tx.method && tx.method !== "balance" && tx.method !== "unpaid" ? Number(tx.amount || 0) : 0;
-  const isoDay = (iso) => { const d = new Date(iso); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+  const isoDay = (iso) => FIN.localDay(iso);
   const signedMoney = (n) => `${n >= 0 ? "+" : "−"}${money(Math.abs(n))}`;
   const balSign = (n) => (n < 0 ? `<b style="color:var(--danger)">${money(Math.abs(n))} ${BX("owes")}</b>` : n > 0 ? `<b style="color:var(--success)">${money(n)}</b>` : `<b>${money(0)}</b>`);
 
@@ -4936,6 +4950,7 @@
     const type = allowedTypes.includes(opts.type) ? opts.type : allowedTypes[0];
     // سداد مخصص لطلب: يُربط بالطلب فيظهر المتبقي عليه صحيحاً (وليس فقط على رصيد العميل)
     const forOrder = opts.orderId ? orders.find((o) => o.id === opts.orderId && o.customerId === cust.id) : null;
+    let dupWarned = "";
     window.openQuickForm({
       title: forOrder ? (lang === "en" ? `💵 Payment for order #${forOrder.number}` : `💵 سداد على الطلب #${forOrder.number}`) : BX("t_op"),
       sub: `${cust.name} — ${BX("current_balance")}: ${money(cust.balance)}${forOrder ? ` — ${lang === "en" ? "remaining on this order" : "المتبقي على الطلب"}: ${money(opts.amount || 0)}` : ""}`,
@@ -4956,6 +4971,17 @@
         if (amountRaw > 50000) { toast(BX("e_big")); return false; }
         if (v.type === "cash_refund" && amountRaw > Math.max(0, c.balance)) { toast(BX("e_refund_max")); return false; }
         if (v.type !== "credit" && !v.note) { toast(BX("e_note")); return false; }
+        // نفس المبلغ لنفس العميل خلال آخر 10 دقائق (من أي جهاز) — غالباً تسجيل مكرر لنفس الدفعة: تأكيد بضغطة ثانية
+        if (v.type === "credit") {
+          const same = ledger.find((tx) => tx.customerId === c.id && tx.type === "credit" && !tx.reversedBy && round3(tx.amount) === amountRaw && Date.now() - new Date(tx.at).getTime() < 600000);
+          const key = c.id + "|" + amountRaw;
+          if (same && dupWarned !== key) {
+            dupWarned = key;
+            const who = (emps().find((e) => e.id === same.byId) || {}).name || "";
+            toast(lang === "en" ? `⚠ ${money(amountRaw)} was already recorded for ${c.name} at ${fmtDT(same.at)}${who ? " by " + who : ""}. Press again only if this is a second, separate payment.` : `⚠ سُجّلت دفعة ${money(amountRaw)} لـ${c.name} في ${fmtDT(same.at)}${who ? " بواسطة " + who : ""}. اضغط مرة أخرى فقط إن كانت دفعة ثانية مستقلة.`);
+            return false;
+          }
+        }
         const real = v.type === "adj_plus" || v.type === "adj_minus" ? "adjustment" : v.type;
         const amount = (v.type === "cash_refund" || v.type === "debit" || v.type === "adj_minus") ? -amountRaw : amountRaw;
         const hasMethod = real === "credit" || real === "cash_refund";
@@ -5485,7 +5511,7 @@
   const myShift = () => (me ? openShiftOf(me.id) : null);
   const lastClosedShift = () => shifts.filter((x) => x.endAt).sort((a, b) => String(b.endAt).localeCompare(String(a.endAt)))[0] || null;
   const shiftNeeded = () => !!me && role !== "owner";
-  const hhmm = (iso) => { const d = new Date(iso); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+  const hhmm = (iso) => { const d = new Date(new Date(iso).getTime() + 3 * 3600000); return String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0"); }; // توقيت البحرين
   const durTxt = (h) => { const m = Math.round(h * 60); return `${Math.floor(m / 60)}س ${m % 60}د`; };
   // يمنع العمليات المالية بدون وردية مفتوحة (حتى تُنسب كل حركة لوردية وموظف)
   function shiftGuard() {
@@ -5664,7 +5690,7 @@
     body.innerHTML=`<div class="panel"><h3 style="margin:0 0 10px">${t('fin_expenses_by_type')} (${filteredExp.length})</h3>${Object.entries(byCat).length?Object.entries(byCat).map(([k,v])=>`<div class="mini-stat"><span>${esc(k)}</span><b class="kpi-negative">${money(v)}</b></div>`).join(''):`<div class="empty-state compact">${t('no_expenses')}</div>`}</div>`;
   }
 
-  q('expenseList').innerHTML=L997Enterprise.data.expenses.slice(0,30).map(e=>`<div class="ledger-item"${e.voided?' style="opacity:.55"':''}><div><strong${e.voided?' style="text-decoration:line-through"':''}>${esc(e.category||'—')}</strong> <span class="inv-tag">${esc(groupLabel(FIN.expenseCategory(e).group))}</span><small>${new Date(e.date).toLocaleString(window.getLang997?window.getLang997():'ar')} ${esc(e.note||'')}${e.voided?` — ❌ ملغي: ${esc(e.voidReason||'')}${e.voidedBy?' ('+esc(e.voidedBy)+')':''}`:''}</small></div><div class="row-actions"><b class="kpi-negative"${e.voided?' style="text-decoration:line-through"':''}>${money(e.amount)}</b>${!e.voided&&!e.purchaseId&&CAN('delete_records')?`<button class="mini-btn danger-mini" type="button" data-void-exp="${e.id}">إلغاء</button>`:''}</div></div>`).join('')||`<div class="empty-state compact">${t('no_expenses')}</div>`;
+  q('expenseList').innerHTML=L997Enterprise.data.expenses.slice(0,30).map(e=>`<div class="ledger-item"${e.voided?' style="opacity:.55"':''}><div><strong${e.voided?' style="text-decoration:line-through"':''}>${esc(e.category||'—')}</strong> <span class="inv-tag">${esc(groupLabel(FIN.expenseCategory(e).group))}</span><small>${new Date(e.date).toLocaleString(window.getLang997?window.getLang997():'ar',{timeZone:'Asia/Bahrain'})} ${esc(e.note||'')}${e.voided?` — ❌ ملغي: ${esc(e.voidReason||'')}${e.voidedBy?' ('+esc(e.voidedBy)+')':''}`:''}</small></div><div class="row-actions"><b class="kpi-negative"${e.voided?' style="text-decoration:line-through"':''}>${money(e.amount)}</b>${!e.voided&&!e.purchaseId&&CAN('delete_records')?`<button class="mini-btn danger-mini" type="button" data-void-exp="${e.id}">إلغاء</button>`:''}</div></div>`).join('')||`<div class="empty-state compact">${t('no_expenses')}</div>`;
   q('expenseList').querySelectorAll('[data-void-exp]').forEach(btn=>btn.addEventListener('click',()=>{
     const ex=L997Enterprise.data.expenses.find(x=>x.id===btn.dataset.voidExp);if(!ex)return;
     const day=FIN.localDay(ex.date),closed=L997Enterprise.data.closures.some(c=>c.type==='daily'&&c.forDate===day);
@@ -5839,15 +5865,15 @@
  const catName=c=>IX('cat_'+(CATS.includes(c)?c:'other'));
  const supName=id=>{const s=sups().find(x=>x.id===id);return s?s.name:''};
  const waNum=p=>{let d=String(p||'').replace(/\D/g,'');if(d.startsWith('00'))d=d.slice(2);if(d.length===8)d='973'+d;return d};
- const fmtDate=iso=>{try{return new Date(iso).toLocaleString(IL())}catch{return iso||''}};
+ const fmtDate=iso=>{try{return new Date(iso).toLocaleString(IL(),{timeZone:'Asia/Bahrain'})}catch{return iso||''}};
  const activePurchases=()=>E().data.purchases.filter(p=>!p.voided);
  const supplierOptions=sel=>[{value:'',label:IX('f_none')},...sups().map(s=>({value:s.id,label:s.name}))].map(o=>({...o,sel}));
  function invConfirm(message,onYes){window.openQuickForm({title:IX('t_confirm'),sub:message,fields:[],submitLabel:IX('t_confirm'),onSubmit:()=>onYes()})}
  const tbl=(heads,body,empty)=>`<div class="table-wrap"><table><thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body||`<tr><td colspan="${heads.length}" class="empty-state compact">${empty}</td></tr>`}</tbody></table></div>`;
 
  function invMetrics(){
-  const inv=invs();const now=new Date();const mk=now.getFullYear()+'-'+now.getMonth();
-  const month=activePurchases().filter(p=>{const d=new Date(p.date);return d.getFullYear()+'-'+d.getMonth()===mk}).reduce((s,p)=>s+Number(p.total||0),0);
+  const inv=invs();const mk=window.L997Finance.todayStr().slice(0,7);
+  const month=activePurchases().filter(p=>window.L997Finance.localDay(p.date).slice(0,7)===mk).reduce((s,p)=>s+Number(p.total||0),0);
   const owed=activePurchases().filter(p=>p.paid===false).reduce((s,p)=>s+Number(p.total||0),0);
   const cards=[[IX('m_items'),inv.length],[IX('m_low'),inv.filter(i=>itemStatus(i)==='low').length],[IX('m_out'),inv.filter(i=>itemStatus(i)==='out').length],[IX('m_value'),money(inv.reduce((s,i)=>s+i.qty*(i.avgCost||0),0))],[IX('m_month'),money(month)],[IX('m_owed'),money(owed)]];
   return `<div class="metrics-grid">${cards.map(a=>`<div class="metric-card"><div class="metric-top">${a[0]}</div><div class="metric-value">${a[1]}</div></div>`).join('')}</div>`;
@@ -6062,7 +6088,7 @@
   const lang997=window.getLang997?window.getLang997():'ar';
   const ms=(label,v,style)=>`<div class="mini-stat"><span>${label}</span><b${style?` style="${style}"`:''}>${typeof v==='number'?money(v):v}</b></div>`;
   const done=closureFor('daily',selDate), mdone=closureFor('monthly',mb.key);
-  const doneNote=c=>c?`<div class="mini-stat" style="color:var(--success)"><span>✓ ${lang997==='en'?'Closed by':'اعتمده'} ${esc(c.by||'')}</span><b>${new Date(c.date).toLocaleString(lang997)}</b></div>`:'';
+  const doneNote=c=>c?`<div class="mini-stat" style="color:var(--success)"><span>✓ ${lang997==='en'?'Closed by':'اعتمده'} ${esc(c.by||'')}</span><b>${new Date(c.date).toLocaleString(lang997,{timeZone:'Asia/Bahrain'})}</b></div>`:'';
   const today=FIN.todayStr(),monthStart=today.slice(0,8)+'01';
   const pending=FIN.unclosedDays(finData(),L997Enterprise.data.closures,FIN.addDays(monthStart,-31),FIN.addDays(today,-1));
   const steps=done?'':`<ol class="cls-steps"><li>عُدّ النقد الموجود في الدرج</li><li>قارنه بـ «الصندوق المتبقي المتوقع» بالأسفل</li><li>اضغط «اعتماد إغلاق اليوم» وأدخل المبلغ الذي عددته</li></ol>`;
@@ -6074,7 +6100,7 @@
     <div class="mini-stat" style="font-size:15px"><span><strong>${t('cls_remaining_cash')}</strong></span><b style="font-size:17px;${d.expectedCash<0?'color:var(--danger)':'color:var(--success)'}">${money(d.expectedCash)}</b></div>
     ${done?ms(lang997==='en'?'Counted cash / difference':'النقد الفعلي / الفرق',`${money(done.cashActual)} / ${money(done.variance)}`,done.variance?'color:var(--danger)':''):''}${doneNote(done)}`;
   q('monthlyClosurePreview').innerHTML=`<div class="cls-month-bar"><input type="month" id="closureMonth" value="${mb.key}" class="inv-search" style="width:auto;margin:0"><button type="button" class="secondary-btn" id="openMonthlyReportBtn">📄 ${lang997==='en'?'Full monthly report':'التقرير الشهري الكامل'}</button></div><div class="mini-stat"><span><strong>${mb.key}</strong></span><b>${mb.from} → ${mb.to}</b></div>${ms(FX('sales'),m.salesTotal)}${m.vat?ms(FX('net_rev'),m.netRevenue):''}${ms(FX('expenses'),m.expenses)}${ms(groupLabel('salaries'),m.expensesByGroup.salaries||0)}${ms(groupLabel('government'),m.expensesByGroup.government||0)}${ms(lang997==='en'?'Net profit':'صافي الربح',m.profit,m.profit<0?'color:var(--danger)':'color:var(--success)')}${ms(FX('collected'),m.collected)}${doneNote(mdone)}`;
-  q('closuresList').innerHTML=L997Enterprise.data.closures.length?L997Enterprise.data.closures.slice(0,30).map(c=>`<div class="ledger-item"><div><strong>${c.type==='daily'?t('cls_daily_label'):t('cls_monthly_label')}</strong><small>${c.forDate?(t('cls_for_date')+' '+c.forDate+' — '):c.forMonth?(c.forMonth+' — '):''}${new Date(c.date).toLocaleString(lang997)}${c.by?' — '+esc(c.by):''}${c.variance?` — ${lang997==='en'?'difference':'فرق'} ${money(c.variance)}`:''}</small></div><b>${money(c.revenue||0)}</b></div>`).join(''):`<div class="empty-state compact">${t('no_closures')}</div>`;
+  q('closuresList').innerHTML=L997Enterprise.data.closures.length?L997Enterprise.data.closures.slice(0,30).map(c=>`<div class="ledger-item"><div><strong>${c.type==='daily'?t('cls_daily_label'):t('cls_monthly_label')}</strong><small>${c.forDate?(t('cls_for_date')+' '+c.forDate+' — '):c.forMonth?(c.forMonth+' — '):''}${new Date(c.date).toLocaleString(lang997,{timeZone:'Asia/Bahrain'})}${c.by?' — '+esc(c.by):''}${c.variance?` — ${lang997==='en'?'difference':'فرق'} ${money(c.variance)}`:''}</small></div><b>${money(c.revenue||0)}</b></div>`).join(''):`<div class="empty-state compact">${t('no_closures')}</div>`;
   const methods={cash:t('opt_cash'),card:t('opt_card'),benefitpay:'Benefit Pay',bank_transfer:t('opt_bank_transfer')};
   const allMethods=Array.from(new Set([...Object.keys(methods),...Object.keys(d.salesCashBy),...Object.keys(d.expensesBy),...Object.keys(d.depositsBy),...Object.keys(d.refundsBy)]));
   const cell=v=>v?money(v):'--';
@@ -6121,7 +6147,7 @@
  const AX=(k,...a)=>{const d=AT[AL()]||AT.ar;let s=d[k];if(s===undefined)s=AT.ar[k];if(s===undefined)return k;return typeof s==='function'?s(...a):s};
  const CAT_LIST=['orders','customers','money','inventory','staff','system'];
  const av={cat:'all',sens:false,period:'7',from:'',to:'',user:'all',q:'',limit:100,open:{}};
- const aDay=iso=>{const d=new Date(iso);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+ const aDay=iso=>window.L997Finance.localDay(iso);
  const auditCat=e=>e.cat||classifyAction(e.action);
  const auditSens=e=>e.sens!==undefined?!!e.sens:isSensitiveAction(e.action);
  const auditUser=e=>{const cl=s=>String(s||'').replace(/^"|"$/g,'');return (e.who?cl(e.who)+' — ':'')+(cl(e.user)||AX('role_default'))};
@@ -6150,7 +6176,7 @@
  function auditDayLabel(iso){
   const d=aDay(iso),today=aDay(new Date().toISOString()),y=aDay(new Date(Date.now()-86400000).toISOString());
   if(d===today)return AX('day_today');if(d===y)return AX('day_yesterday');
-  try{return new Date(iso).toLocaleDateString(AL(),{weekday:'long',year:'numeric',month:'long',day:'numeric'})}catch(e){return d}
+  try{return new Date(iso).toLocaleDateString(AL(),{weekday:'long',year:'numeric',month:'long',day:'numeric',timeZone:'Asia/Bahrain'})}catch(e){return d}
  }
  function auditDetailsHtml(e){
   const m=e.meta||{},keys=AX('keys');const rows=[];
@@ -6164,7 +6190,7 @@
    const d=aDay(e.at);
    if(d!==lastDay){lastDay=d;out+=`<tr class="audit-day"><td colspan="6">${auditDayLabel(e.at)}</td></tr>`}
    const sens=auditSens(e),cat=auditCat(e),open=!!av.open[e.id];
-   let tm='';try{tm=new Date(e.at).toLocaleTimeString(AL(),{hour:'2-digit',minute:'2-digit'})}catch(x){tm=e.at}
+   let tm='';try{tm=new Date(e.at).toLocaleTimeString(AL(),{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bahrain'})}catch(x){tm=e.at}
    out+=`<tr><td>${tm}</td><td>${esc(auditUser(e))}</td><td><span class="inv-tag">${AX('cat_'+(CAT_LIST.includes(cat)?cat:'other'))}</span></td><td>${sens?`<span class="priority-badge priority-urgent" title="${AX('sens_badge')}">⚠</span> `:''}${esc(e.action)}</td><td>${Number(e.value)?money(e.value):''}</td><td><button class="mini-btn" data-aact="det" data-id="${e.id}">${open?AX('hide'):AX('details')}</button></td></tr>`;
    if(open)out+=`<tr class="audit-det"><td colspan="6">${auditDetailsHtml(e)}</td></tr>`;
   });
