@@ -151,3 +151,12 @@ they are not allowed to upload.
 | Phone-size touch screen (iPhone 13 size, Chromium engine) | PASS (order, payment, customer file, no sideways scroll) | e2e.risks |
 | Automatic full refresh while offline showed the browser's "no internet" page | **Bug fixed** — never auto-refresh without a connection | e2e.syncfin ×8 |
 | Real Safari / iPhone | BLOCKED — no WebKit engine in this environment | owner to check on device |
+
+## 11. Order numbers in sequence (2026-10-27)
+
+Cause: each device reserved a block of 10 numbers (A 1–10, B 11–20 …), so numbers interleaved (11, 12, 1, 2) and unused
+blocks left gaps. Now one number is reserved from the cloud at the moment of saving (strict sequence across devices;
+offline falls back to local numbering with the duplicate warning). Owner tool "🔢 ترتيب أرقام الطلبات" renumbers all
+orders 1…N by creation date, keeps `prevNumber` (searchable, shown on the order), logs it, and resets the cloud counter
+(`set_order_counter`, owner only, never below an existing number). Evidence: e2e.syncfin §7 (old build: 11,12,1,2;
+new: 1,2,3,4), security_test (91).

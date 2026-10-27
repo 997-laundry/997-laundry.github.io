@@ -3407,8 +3407,8 @@
     // في حال وجود تبويب أو جهاز آخر أنشأ طلباً بنفس اللحظة تقريباً
     const storedOrders = load(KEYS.orders, []);
     const maxExistingNum = storedOrders.reduce((m, o) => Math.max(m, Number(o.number) || 0), 0);
-    // مع السحابة: رقم محجوز من الخادم لا يتكرر بين الأجهزة؛ بدونه (لا إنترنت) الترقيم المحلي كما كان
-    const cloudNum = cloudOn() ? CLOUD.takeOrderNumber(maxExistingNum + 1) : null;
+    // مع السحابة: الرقم التالي بالتسلسل يُحجز من الخادم لحظة الحفظ؛ بدونه (لا إنترنت) الترقيم المحلي كما كان
+    const cloudNum = opts.number || null;
     const nextSeq = cloudNum || Math.max(Number(settings.orderSeq) || 1, maxExistingNum + 1);
     const number = String(nextSeq).padStart(5, "0");
     settings.orderSeq = nextSeq;
@@ -3459,14 +3459,15 @@
     const proceed = async (approver, overridden) => {
       if (savingOrder) return;
       savingOrder = true;
+      let number = null;
       try {
-        // مع السحابة: رقم الطلب يأتي من الخادم — ننتظره لحظات بدل الترقيم المحلي الذي قد يتكرر بين الأجهزة
+        // مع السحابة: الرقم التالي بالتسلسل يأتي من الخادم لحظة الحفظ — لا يتكرر ولا يقفز بين الأجهزة
         if (cloudOn()) {
-          const ok = await CLOUD.ensureNumbers(orders.reduce((m, o) => Math.max(m, Number(o.number) || 0), 0) + 1);
-          if (!ok) toast(lang === "en" ? "No internet: local order number used — check for duplicates later" : "بدون إنترنت: رقم الطلب محلي — قد يتكرر مع جهاز آخر، راجعه لاحقاً");
+          number = await CLOUD.reserveNumber(orders.reduce((m, o) => Math.max(m, Number(o.number) || 0), 0) + 1);
+          if (!number) toast(lang === "en" ? "No internet: local order number used — check for duplicates later" : "بدون إنترنت: رقم الطلب محلي — قد يتكرر مع جهاز آخر، راجعه لاحقاً");
         }
       } finally { savingOrder = false; }
-      const order = buildOrder({ discountReason: reason, approver: overridden ? approver : null });
+      const order = buildOrder({ discountReason: reason, approver: overridden ? approver : null, number });
       if (!order) return;
       const cust = customers.find((c) => c.id === order.customerId);
       resetDraft();
@@ -4001,7 +4002,7 @@
   document.getElementById("orderSearch")?.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     const q = toLatinDigits(e.target.value).trim().replace(/^#/, "");
-    const hit = /^\d+$/.test(q) && orders.find((o) => Number(o.number) === Number(q));
+    const hit = /^\d+$/.test(q) && (orders.find((o) => Number(o.number) === Number(q)) || orders.find((o) => Number(o.prevNumber) === Number(q)));
     if (hit) { e.preventDefault(); openOrderDialog(hit.id); }
   });
   document.getElementById("orderPriorityFilter").addEventListener("change", () => renderOrdersPage());
@@ -4012,7 +4013,7 @@
     if (!can("create_order")) { denied(); return; }
     const maxNum = orders.reduce((m, o) => Math.max(m, Number(o.number) || 0), 0);
     let n = null;
-    if (cloudOn() && (await CLOUD.ensureNumbers(maxNum + 1))) n = CLOUD.takeOrderNumber(maxNum + 1);
+    if (cloudOn()) n = await CLOUD.reserveNumber(maxNum + 1);
     if (!n) n = maxNum + 1;
     const old = order.number, number = String(n).padStart(5, "0");
     order.number = number;
@@ -4021,7 +4022,50 @@
     persistAll(); renderOrderDialog(); renderOrdersPage();
     toast(lang === "en" ? `New number #${number} — tell the customer` : `الرقم الجديد #${number} — أبلغ العميل`);
   }
+  // المالك: ترقيم كل الطلبات 1، 2، 3… حسب تاريخ الإنشاء. الرقم القديم يُحفظ في الطلب ويبقى قابلاً للبحث
+  // (إيصالات العملاء القديمة)، ويُسجَّل في سجل الطلب وسجل النشاط. يتطلب اتصالاً وأن تكون كل الأجهزة متزامنة.
+  function renumberAllOrders() {
+    if (role !== "owner") { denied(); return; }
+    const st0 = cloudOn() ? CLOUD.status() : null;
+    if (st0 && (!st0.online || st0.pending)) { toast(lang === "en" ? "Wait until this device shows ☁ Synced ✓, then try again" : "انتظر حتى تظهر «☁ متزامن ✓» على هذا الجهاز ثم أعد المحاولة"); return; }
+    const sorted = orders.slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)) || (Number(a.number) || 0) - (Number(b.number) || 0));
+    const changes = sorted.map((o, i) => ({ o, to: String(i + 1).padStart(5, "0") })).filter((x) => x.o.number !== x.to);
+    if (!changes.length) { toast(lang === "en" ? "Order numbers are already in sequence ✓" : "أرقام الطلبات مرتبة بالفعل ✓"); return; }
+    const sample = changes.slice(0, 5).map((x) => `#${x.o.number} → #${x.to}`).join("، ");
+    openQuickForm({
+      title: "🔢 ترتيب أرقام الطلبات",
+      sub: `سيُعاد ترقيم ${changes.length} طلب حسب تاريخ الإنشاء (1، 2، 3…). مثال: ${sample}. الرقم القديم يُحفظ في كل طلب ويمكن البحث به (للإيصالات التي مع العملاء). المبالغ والدفعات لا تتغير. تأكد أن كل الأجهزة الأخرى متصلة ومتزامنة قبل المتابعة.`,
+      fields: [{ id: "c", label: "اكتب «ترتيب» للتأكيد", type: "text" }],
+      submitLabel: "ترتيب الأرقام",
+      onSubmit: (v) => {
+        if (String(v.c || "").trim() !== "ترتيب") { toast("اكتب «ترتيب» للتأكيد"); return false; }
+        const now = new Date().toISOString();
+        changes.forEach(({ o, to }) => {
+          if (!o.prevNumber) o.prevNumber = o.number;
+          (o.editHistory = o.editHistory || []).push({ at: now, by: me ? me.name : "", reason: `ترتيب أرقام الطلبات #${o.number} → #${to}`, before: { pieces: piecesOf(o), total: o.payment.total }, after: { pieces: piecesOf(o), total: o.payment.total } });
+          o.number = to;
+        });
+        settings.orderSeq = sorted.length + 1;
+        logActivity(`ترتيب أرقام الطلبات: ${changes.length} طلب أُعيد ترقيمه حسب تاريخ الإنشاء (1–${sorted.length}) بواسطة ${me ? me.name : ""}`);
+        persistAll(); renderOrdersPage();
+        toast(lang === "en" ? `${changes.length} orders renumbered 1–${sorted.length}` : `تم ترتيب ${changes.length} طلب (1–${sorted.length})`);
+        // السحابة: بعد رفع الأرقام الجديدة يبدأ الرقم التالي من بعد آخر طلب
+        if (cloudOn()) {
+          const next = sorted.length + 1;
+          const tryCounter = async (n) => {
+            await CLOUD.syncNow();
+            if (CLOUD.status().pending && n > 0) { setTimeout(() => tryCounter(n - 1), 2000); return; }
+            const r = await CLOUD.setOrderCounter(next);
+            if (r.error) toast(lang === "en" ? "Numbers saved; the cloud counter could not be updated — run the latest setup.sql" : "تم حفظ الأرقام؛ تعذّر تحديث عدّاد السحابة — شغّل ملف setup.sql الأحدث في Supabase");
+          };
+          setTimeout(() => tryCounter(10), 500);
+        }
+      },
+    });
+  }
+  document.getElementById("renumberAllBtn")?.addEventListener("click", renumberAllOrders);
   function renderOrdersPage(searchOverride) {
+    const rb = document.getElementById("renumberAllBtn"); if (rb) rb.hidden = role !== "owner";
     populateFilterOptions();
     const statusFilter = document.getElementById("orderStatusFilter").value;
     const priorityFilter = document.getElementById("orderPriorityFilter").value;
@@ -4035,7 +4079,7 @@
       list = list.filter((o) => {
         const cust = customers.find((c) => c.id === o.customerId);
         const phoneMatch = qPhoneDigits.length >= 3 && cust && cust.phone.replace(/[^0-9]/g, "").includes(qPhoneDigits);
-        return o.number.includes(q) || (cust && cust.name.toLowerCase().includes(q)) || phoneMatch;
+        return o.number.includes(q) || (o.prevNumber && String(o.prevNumber).includes(q)) || (cust && cust.name.toLowerCase().includes(q)) || phoneMatch;
       });
       // رقم الطلب المطابق تماماً أولاً (كتابة 5 تُظهر #00005 في الأعلى)
       if (/^\d+$/.test(q)) list.sort((x, y) => (Number(y.number) === Number(q)) - (Number(x.number) === Number(q)));
@@ -4341,6 +4385,7 @@
         <button class="icon-btn" id="closeOrderDialog">✕</button>
       </div>
       ${flowStepsHtml(order)}
+      ${order.prevNumber && order.prevNumber !== order.number ? `<div class="inv-muted" style="padding:0 20px">${lang === "en" ? "Previous number (on older receipts)" : "الرقم السابق (في الإيصالات القديمة)"}: <b>#${esc(order.prevNumber)}</b></div>` : ""}
       ${dupNumber(order) ? `<div class="cloud-warn">⚠ ${lang === "en" ? "Another order has the same number." : "يوجد طلب آخر بنفس الرقم."} ${can("create_order") ? `<button class="mini-btn" id="renumberOrderBtn" type="button">🔢 ${lang === "en" ? "Give this order a new number" : "إعطاء هذا الطلب رقماً جديداً"}</button>` : ""}</div>` : ""}
       <div class="order-details-grid">
         <div class="details-box">

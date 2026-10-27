@@ -37,7 +37,7 @@ const shiftClock = (ms) => `(() => { const RD = Date, off = ${ms};
     nav: (pg) => page.evaluate((pg) => document.querySelector(`.nav-item[data-page="${pg}"]`).click(), pg),
     closeAll: () => page.evaluate(() => document.querySelectorAll("dialog[open]").forEach((d) => d.close())),
     submit: async () => { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(300); },
-    later: async () => { await page.waitForTimeout(250); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } },
+    later: async () => { await page.waitForSelector("#quickFormCancelBtn", { state: "visible", timeout: 2000 }).catch(() => {}); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } },
     ls: (k) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) || "null"), k),
     async setup() {
       await page.fill("#au_name", "Owner"); await page.fill("#au_user", "owner"); await page.fill("#au_pw", PW); await page.fill("#au_pw2", PW);

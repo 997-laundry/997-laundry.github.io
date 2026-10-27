@@ -161,6 +161,21 @@ begin
   return v_first;
 end $$;
 
+-- owner only: after renumbering orders 1..N, the next number continues from N+1 (never below an existing number)
+create or replace function public.set_order_counter(p_next bigint) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare v_shop uuid; v_max bigint; v_next bigint;
+begin
+  select shop_id into v_shop from public.shop_members where user_id = auth.uid() and active and role = 'owner';
+  if v_shop is null then raise exception 'only the owner can reset order numbers'; end if;
+  select coalesce(max((data ->> 'number')::bigint), 0) into v_max from public.records
+    where shop_id = v_shop and collection = 'orders' and not deleted and (data ->> 'number') ~ '^[0-9]{1,15}$';
+  v_next := greatest(coalesce(p_next, 1), v_max + 1);
+  insert into public.shop_counters (shop_id, next_order) values (v_shop, v_next)
+    on conflict (shop_id) do update set next_order = v_next;
+  return v_next;
+end $$;
+
 -- owner (anyone) / manager (accountants and workers only) sets a temporary password for a staff account
 create or replace function public.set_member_password(p_user uuid, p_password text) returns void
 language plpgsql security definer set search_path = public, extensions as $$
@@ -361,8 +376,8 @@ grant select, insert, update on public.records to authenticated;
 grant select on public.record_history to authenticated;
 revoke all on function public.create_shop(text, text) from public, anon;
 grant execute on function public.create_shop(text, text) to authenticated;
-revoke all on function public.reserve_order_numbers(int, bigint), public.set_member_password(uuid, text), public.append_records(uuid, text, jsonb) from public, anon;
-grant execute on function public.reserve_order_numbers(int, bigint), public.set_member_password(uuid, text), public.append_records(uuid, text, jsonb) to authenticated;
+revoke all on function public.reserve_order_numbers(int, bigint), public.set_member_password(uuid, text), public.append_records(uuid, text, jsonb), public.set_order_counter(bigint) from public, anon;
+grant execute on function public.reserve_order_numbers(int, bigint), public.set_member_password(uuid, text), public.append_records(uuid, text, jsonb), public.set_order_counter(bigint) to authenticated;
 revoke all on function public.member_role(uuid), public.can_access(uuid, text, boolean) from public, anon;
 grant execute on function public.member_role(uuid), public.can_access(uuid, text, boolean) to authenticated;
 revoke all on function public.records_guard(), public.records_history(), public.members_guard() from public, anon, authenticated;

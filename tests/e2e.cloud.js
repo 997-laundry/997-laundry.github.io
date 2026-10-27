@@ -35,7 +35,7 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   const helpers = (page) => ({
     nav: (pg) => page.evaluate((pg) => document.querySelector(`.nav-item[data-page="${pg}"]`).click(), pg),
     submit: async () => { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(300); },
-    later: async () => { await page.waitForTimeout(250); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } else if (await page.isVisible("#quickFormSubmitBtn") && /واتساب|WhatsApp/.test(await page.textContent("#quickFormSubmitBtn"))) { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(200); } },
+    later: async () => { await page.waitForSelector("#quickFormCancelBtn", { state: "visible", timeout: 2000 }).catch(() => {}); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } else if (await page.isVisible("#quickFormSubmitBtn") && /واتساب|WhatsApp/.test(await page.textContent("#quickFormSubmitBtn"))) { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(200); } },
     closeDialogs: () => page.evaluate(() => document.querySelectorAll("dialog[open]").forEach((d) => d.close())),
     // reads retry once when the page is in the middle of its own automatic refresh
     ls: (k) => settled(page, () => page.evaluate((k) => JSON.parse(localStorage.getItem(k) || "null"), k)),

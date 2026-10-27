@@ -39,7 +39,7 @@ const OWNER_PW = "Owner#2026pass", WORKER_PW = "Worker#2026new";
       nav: (pg) => page.evaluate((pg) => document.querySelector(`.nav-item[data-page="${pg}"]`).click(), pg),
       closeAll: () => page.evaluate(() => document.querySelectorAll("dialog[open]").forEach((d) => d.close())),
       submit: async () => { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(300); },
-      later: async () => { await page.waitForTimeout(250); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } },
+      later: async () => { await page.waitForSelector("#quickFormCancelBtn", { state: "visible", timeout: 2000 }).catch(() => {}); if (await page.isVisible("#quickFormCancelBtn")) { await page.click("#quickFormCancelBtn"); await page.waitForTimeout(150); } },
       ls: (k) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) || "null"), k),
       status: () => page.evaluate(() => window.L997Cloud.status()),
       summary: (custId) => page.evaluate((id) => {
@@ -85,7 +85,9 @@ const OWNER_PW = "Owner#2026pass", WORKER_PW = "Worker#2026new";
   await A.fill("#qf_name", "Worker One"); await A.selectOption("#qf_role", "worker"); await A.fill("#qf_username", "worker1");
   const tempPw = await A.inputValue("#qf_password"); await A.click("#quickFormSubmitBtn");
   await until(async () => (await cloud.query("select 1 from auth.users where email = 'worker1@997laundry.app'")).rowCount === 1);
-  await a.later(); await a.closeAll();
+  // the credentials notice opens once the cloud account exists — wait for it, then close it
+  await A.waitForFunction(() => !document.getElementById("quickFormSubmitBtn").disabled, null, { timeout: 15000 }).catch(() => {});
+  await a.wait(1200); await a.closeAll();
   // a shared customer
   await a.nav("customers"); await A.click("#addCustomerBtn"); await A.fill("#customerName", "Shared Customer"); await A.fill("#customerPhone", "33660001"); await A.click("#saveCustomerBtn"); await a.wait(300);
   const cust = (await a.ls("l997_customers")).find((c) => String(c.phone).endsWith("33660001"));
@@ -189,6 +191,30 @@ const OWNER_PW = "Owner#2026pass", WORKER_PW = "Worker#2026new";
   const wShift = (await b.ls("l997_shifts")).find((s) => !s.endAt);
   const sum = await B.evaluate((sh) => window.L997Finance.shiftSummary({ orders: JSON.parse(localStorage.getItem("l997_orders")), ledger: JSON.parse(localStorage.getItem("l997_ledger")), expenses: [] }, sh), wShift);
   check("6. the owner's 2.000 payment is not counted in the worker's shift (worker collected 10.000 cash only if their payment won)", !Object.values(sum.inBy).some((v) => v === 2) && sum.deposits === 0, JSON.stringify(sum.inBy));
+
+  /* ---------- 7. order numbers: strictly in sequence across devices; fixing old scrambled numbers ---------- */
+  const seqRows = async () => (await cloudRows("orders")).map((r) => r.data).sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)));
+  await until(async () => (await a.status()).pending === 0 && (await b.status()).pending === 0);
+  const seq1 = (await seqRows()).map((o) => Number(o.number));
+  check("7. orders made alternately on two devices are numbered 1, 2, 3… with no gaps", seq1.every((n, i) => n === i + 1), seq1.join(","));
+  // old version: each device used its own block of 10 → scramble the numbers as they were (11, 2, 21, 3, …)
+  const legacy = ["00011", "00002", "00021", "00003", "00012"];
+  await A.evaluate((nums) => { const l = JSON.parse(localStorage.getItem("l997_orders")); l.sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt))).forEach((o, i) => { if (nums[i]) o.number = nums[i]; }); localStorage.setItem("l997_orders", JSON.stringify(l)); }, legacy);
+  await A.reload(); await A.waitForSelector("body:not(.auth-locked)");
+  await until(async () => (await a.status()).pending === 0 && (await seqRows()).slice(0, 5).map((o) => o.number).join() === legacy.join());
+  await a.closeAll(); await a.nav("orders");
+  await A.click("#renumberAllBtn"); await A.fill("#qf_c", "ترتيب"); await a.submit();
+  const fixed = await until(async () => { const r = await seqRows(); return (await a.status()).pending === 0 && r.every((o, i) => Number(o.number) === i + 1); }, 30000);
+  const after = await seqRows();
+  check("7b. 'renumber' puts every order in creation order 1…N (in the cloud)", fixed, after.map((o) => o.number).join(","));
+  check("7c. each renumbered order keeps its old number (for receipts customers hold)", after[0].prevNumber === "00011" && after[2].prevNumber === "00021", JSON.stringify(after.slice(0, 3).map((o) => [o.number, o.prevNumber])));
+  check("7d. amounts and payments unchanged by renumbering", after.every((o) => typeof o.payment.total === "number") && (await cloudBalance(cust.id)) === (await a.summary(cust.id)).balance);
+  await A.fill("#orderSearch", "21"); await a.wait(300);
+  check("7e. searching the old number finds the order", (await A.textContent("#ordersBody")).includes("#" + after[2].number));
+  await A.fill("#orderSearch", "");
+  check("7f. the other device receives the new numbers", await until(async () => { const l = await b.ls("l997_orders"); return l.length === after.length && l.every((o) => after.find((x) => x.id === o.id).number === o.number); }));
+  const oNext = await b.order(cust.id, "33660001", 2);
+  check("7g. the next order continues the sequence (N + 1)", Number(oNext.number) === after.length + 1, `${oNext.number} after ${after.length}`);
 
   check("nothing rejected by the cloud on either device", (await a.status()).rejected === 0 && (await b.status()).rejected === 0, JSON.stringify([(await a.status()).rejectedList, (await b.status()).rejectedList]));
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));

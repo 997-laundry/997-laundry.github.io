@@ -387,7 +387,8 @@
     if (st && st.shopId) storeDirtyAll();
     sync(true);
     // حجز أرقام الطلبات فور الدخول إن لم يكن لدينا أرقام (لا ننتظر أول طلب، ولا نحجز من جديد مع كل تحديث للصفحة)
-    if (st && !((st.numbers && st.numbers[0] <= st.numbers[1]) || st.nextBlock)) refillNumbers(localMaxNumber() + 1);
+    // الأرقام تُحجز وقت الحفظ فقط (رقم واحد) — كتل الأرقام القديمة المحجوزة مسبقاً لم تعد تُستعمل
+    if (st && (st.numbers || st.nextBlock)) { st.numbers = null; st.nextBlock = null; saveSt(); }
     timer = setInterval(() => { if (typeof document === "undefined" || !document.hidden) sync(true); }, CFG.pollMs);
   }
   function stop() { clearInterval(timer); timer = null; }
@@ -555,24 +556,17 @@
       try { await api("/auth/v1/user", { method: "PUT", body: { password }, as: uid }); return { ok: true }; }
       catch (e) { return { error: msgOf(e) }; }
     },
-    // رقم طلب محجوز من السحابة (لا يتكرر بين الأجهزة)؛ null = يستخدم النظام الترقيم المحلي
-    takeOrderNumber(min) {
-      if (!st || !st.shopId) return null;
-      if ((!st.numbers || st.numbers[0] > st.numbers[1]) && st.nextBlock) { st.numbers = st.nextBlock; st.nextBlock = null; }
-      if (!st.numbers || st.numbers[0] > st.numbers[1]) { st.numbers = null; saveSt(); refillNumbers(min); return null; }
-      const n = st.numbers[0];
-      st.numbers = [n + 1, st.numbers[1]]; saveSt();
-      if (st.numbers[1] - st.numbers[0] < 3 && !st.nextBlock) refillNumbers(min);
-      return n;
+    // رقم الطلب التالي من السحابة لحظة الحفظ — رقم واحد بالتسلسل بين كل الأجهزة (بدون كتل وبدون فجوات).
+    // null = لا إنترنت (ينتظر حتى 6 ثوانٍ) → يستخدم النظام الترقيم المحلي
+    async reserveNumber(min) {
+      if (!st || !st.shopId || !user) return null;
+      const call = api("/rest/v1/rpc/reserve_order_numbers", { method: "POST", body: { p_count: 1, p_min: Math.max(1, Number(min) || 1, localMaxNumber() + 1) } }).then((n) => Number(n) || null).catch(() => null);
+      return Promise.race([call, new Promise((r) => setTimeout(() => r(null), 6000))]);
     },
-    prepareNumbers: (min) => refillNumbers(min),
-    // قبل حفظ طلب: نتأكد من وجود رقم محجوز من السحابة (ننتظر حتى 6 ثوانٍ إن كان الحجز جارياً). false = بدون إنترنت
-    async ensureNumbers(min) {
-      if (!st || !st.shopId || !user) return false;
-      const ready = () => (st.numbers && st.numbers[0] <= st.numbers[1]) || !!st.nextBlock;
-      if (ready()) return true;
-      await Promise.race([refillNumbers(Math.max(Number(min) || 1, localMaxNumber() + 1)), new Promise((r) => setTimeout(r, 6000))]);
-      return ready();
+    // بعد إعادة ترتيب الأرقام: الرقم التالي في السحابة = بعد آخر رقم (للمالك فقط؛ لا ينزل تحت أي رقم موجود)
+    async setOrderCounter(next) {
+      try { return { next: Number(await api("/rest/v1/rpc/set_order_counter", { method: "POST", body: { p_next: Math.max(1, Number(next) || 1) } })) }; }
+      catch (e) { return { error: msgOf(e) }; }
     },
     syncNow: () => sync(true),
     applyNow: () => { if (staged.size) reloadNow(); },
@@ -583,23 +577,6 @@
     clearNotes() { if (st) { st.conflicts = []; st.rejected = []; saveSt(); renderChip(); } },
     _debug: () => ({ dirty: [...dirty], staged: staged.size, cursor: st && st.cursor, stagedCursor }),
   };
-  const NUM_BLOCK = 10; // أرقام محجوزة لكل جهاز في كل مرة — صغيرة حتى تبقى الفجوات بين الأجهزة قليلة
-  let refilling = null;
-  function refillNumbers(min) {
-    if (refilling) return refilling;
-    if (!st || !st.shopId || !user) return Promise.resolve();
-    refilling = refillNow(min).finally(() => { refilling = null; });
-    return refilling;
-  }
-  async function refillNow(min) {
-    try {
-      const first = await api("/rest/v1/rpc/reserve_order_numbers", { method: "POST", body: { p_count: NUM_BLOCK, p_min: Math.max(1, Number(min) || 1) } });
-      // الكتلة الحالية لم تنتهِ بعد → نحتفظ بالجديدة احتياطاً للمرة القادمة
-      if (!st.numbers || st.numbers[0] > st.numbers[1]) st.numbers = [first, first + NUM_BLOCK - 1];
-      else st.nextBlock = [first, first + NUM_BLOCK - 1];
-      saveSt();
-    } catch (e) { /* بدون إنترنت — النظام يستخدم الترقيم المحلي */ }
-  }
   function status() {
     return {
       linked: !!(st && st.shopId), signedIn: !!user, needLogin, online,

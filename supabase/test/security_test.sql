@@ -177,6 +177,15 @@ select t.rows('manager can undo a delivery (24-hour correction)', $q$update publ
 select t.rows('manager can deactivate the worker', $q$update public.shop_members set active = false where user_id = '44444444-4444-4444-4444-444444444444'$q$, 1);
 select t.rows('manager can remove (soft) an order', $q$update public.records set deleted = true where record_id = 'o2'$q$, 1);
 select t.rows('manager cannot edit the owner account', $q$update public.shop_members set display_name = 'x' where role = 'owner'$q$, 0);
+select t.refused('manager cannot reset the order counter', $q$select public.set_order_counter(1)$q$);
+reset role;
+-- owner: order counter after renumbering
+set role authenticated;
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', false);
+select t.runs('owner stores order numbers 1..3', $q$insert into public.records (shop_id, collection, record_id, data) select shop, 'orders', 'n' || g, jsonb_build_object('number', lpad(g::text, 5, '0'), 'status', 'received') from t.ctx, generate_series(1, 3) g$q$);
+select t.ok('owner sets the next number to 4', (select public.set_order_counter(4)) = 4);
+select t.ok('next reserved number is 4 (in sequence)', (select public.reserve_order_numbers(1, 1)) = 4);
+select t.ok('the counter never goes below an existing order number', (select public.set_order_counter(1)) >= 4);
 reset role;
 select t.ok('worker password stored as a bcrypt hash', (select encrypted_password like '$2%' and encrypted_password = extensions.crypt('Temp#2026pass', encrypted_password) from auth.users where id = '44444444-4444-4444-4444-444444444444'));
 
