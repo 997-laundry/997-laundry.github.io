@@ -2969,7 +2969,7 @@
     }
     grid.innerHTML = items.map((g) => {
       const name = g.key ? t(g.key) : g.name;
-      const prices = SERVICES_DEFAULT.map((s) => priceFor(g.id, s.id)).filter((p) => p > 0);
+      const prices = SERVICES_DEFAULT.map((s) => offerPrice(g.id, s.id)).filter((p) => p > 0);
       const minPrice = prices.length ? Math.min(...prices) : 0;
       const inCartQty = draftItems.filter((it) => it.clothingId === g.id && !it.fromPackageId).reduce((s, it) => s + it.qty, 0);
       return `<button type="button" class="pos-tile" data-cloth="${g.id}">
@@ -3023,6 +3023,10 @@
   }
 
   function priceFor(clothingId, serviceId) { return settings.prices[`${clothingId}_${serviceId}`] || 0; }
+  // خدمة مفعّلة للطلبات الجديدة؟ (الإعدادات). الغسيل فقط مطفأ افتراضياً — أسعاره تبقى محفوظة
+  function svcOn(serviceId) { const m = settings.serviceActive || {}; return m[serviceId] !== undefined ? m[serviceId] !== false : serviceId !== "wash"; }
+  // السعر المعروض للطلبات الجديدة: صفر إن كانت الخدمة مطفأة (لا يمس الطلبات المحفوظة ولا الباقات المباعة)
+  function offerPrice(clothingId, serviceId) { return svcOn(serviceId) ? priceFor(clothingId, serviceId) : 0; }
 
   /* -------------------------- نافذة الإضافة السريعة -------------------------- */
   const quickAddDialog = document.getElementById("quickAddDialog");
@@ -3057,8 +3061,8 @@
     return max && names.length > max ? names.slice(0, max).join("، ") + ` (+${names.length - max})` : names.join("، ");
   }
   function defaultServiceFor(clothingId) {
-    if (priceFor(clothingId, "washiron") > 0) return "washiron";
-    const found = SERVICES_DEFAULT.find((s) => priceFor(clothingId, s.id) > 0);
+    if (offerPrice(clothingId, "washiron") > 0) return "washiron";
+    const found = SERVICES_DEFAULT.find((s) => offerPrice(clothingId, s.id) > 0);
     return found ? found.id : null;
   }
   function quickTapAdd(clothingId) {
@@ -3101,7 +3105,7 @@
     document.getElementById("quickAddTitle").textContent = `${CLOTHING_ICONS[clothingId] || g?.icon || ""} ${g ? (g.key ? t(g.key) : g.name) : clothingId}`;
 
     const wrap = document.getElementById("quickAddServices");
-    const availableServices = SERVICES_DEFAULT.filter((s) => priceFor(clothingId, s.id) > 0);
+    const availableServices = SERVICES_DEFAULT.filter((s) => offerPrice(clothingId, s.id) > 0);
     wrap.innerHTML = availableServices.map((s) => {
       const price = priceFor(clothingId, s.id);
       return `<button type="button" class="quick-add-service-chip" data-service="${s.id}">${t(s.key)}<small>${money(price)}</small></button>`;
@@ -3168,7 +3172,7 @@
             ${it.fromPackageId
               ? `<span style="color:var(--success);font-weight:800">🎟 من الباقة (${esc(it.packageName)})${(() => { const cp = customerPackages.find((p) => p.id === it.fromPackageId); return cp ? ` — متبقي ${Math.max(0, pkgLeftInDraft(cp))}` : ""; })()}</span>`
               : `<select class="pos-cart-row-service-select" data-service-change="${it.id}">
-                  ${SERVICES_DEFAULT.filter((s) => priceFor(it.clothingId, s.id) > 0).map((s) => `<option value="${s.id}" ${s.id === it.serviceId ? "selected" : ""}>${t(s.key)}</option>`).join("")}
+                  ${SERVICES_DEFAULT.filter((s) => offerPrice(it.clothingId, s.id) > 0 || s.id === it.serviceId).map((s) => `<option value="${s.id}" ${s.id === it.serviceId ? "selected" : ""}>${t(s.key)}</option>`).join("")}
                 </select> · ${money(it.unit)} × ${it.qty}`}
             ${it.note ? " · " + esc(it.note) : ""}
           </div>
@@ -5343,10 +5347,28 @@
     }).join("");
     body.querySelectorAll("[data-garment-active]").forEach((cb) => {
       cb.addEventListener("change", () => {
+        if (!can("edit_pricing")) { cb.checked = !cb.checked; denied(); return; }
+        // الحالة فقط تُحفظ — بدون إعادة رسم الجدول حتى لا تضيع أسعار كُتبت ولم تُحفظ بعد
         settings.garmentActive[cb.dataset.garmentActive] = cb.checked;
-        persistAll();
-        renderSettingsPage();
+        save(KEYS.settings, settings);
+        const tr = cb.closest("tr"); if (tr) tr.style.opacity = cb.checked ? "" : ".45";
+        logActivity(`${cb.checked ? "تفعيل" : "إيقاف"} منتج: ${clothingName(cb.dataset.garmentActive)}`);
       });
+    });
+    const svcCol = (id) => SERVICES_DEFAULT.findIndex((x) => x.id === id) + 2; // عمود الخدمة في الجدول
+    document.querySelectorAll("[data-service-active]").forEach((cb) => {
+      const id = cb.dataset.serviceActive;
+      cb.checked = svcOn(id);
+      cb.disabled = !can("edit_pricing");
+      const dim = () => document.querySelectorAll(`#pricesBody td:nth-child(${svcCol(id)})`).forEach((td) => (td.style.opacity = cb.checked ? "" : ".4"));
+      dim();
+      cb.onchange = () => {
+        if (!can("edit_pricing")) { cb.checked = !cb.checked; denied(); return; }
+        settings.serviceActive = { ...(settings.serviceActive || {}), [id]: cb.checked };
+        save(KEYS.settings, settings); dim();
+        logActivity(`${cb.checked ? "تفعيل" : "إيقاف"} خدمة «${serviceName(id)}» للطلبات الجديدة`);
+        toast(cb.checked ? `«${serviceName(id)}» مفعّلة للطلبات الجديدة` : `«${serviceName(id)}» مطفأة — لا تظهر في الطلبات الجديدة (الأسعار محفوظة)`);
+      };
     });
     body.querySelectorAll("[data-del-garment]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -5474,7 +5496,7 @@
     const soldActive = existing ? customerPackages.filter((cp) => cp.defId === existing.id && cp.remainingPieces > 0).length : 0;
     const fields = [
       { id: "name", label: "اسم الباقة", type: "text", value: existing ? existing.name : "", placeholder: "مثال: باقة كوي ثياب 30 قطعة" },
-      { id: "serviceType", label: "نوع الخدمة", type: "select", value: existing ? existing.serviceType : "washiron", options: SERVICES_DEFAULT.map((s2) => ({ value: s2.id, label: t(s2.key) })) },
+      { id: "serviceType", label: "نوع الخدمة", type: "select", value: existing ? existing.serviceType : "washiron", options: SERVICES_DEFAULT.filter((s2) => svcOn(s2.id) || (existing && existing.serviceType === s2.id)).map((s2) => ({ value: s2.id, label: t(s2.key) })) },
       { id: "pieceCount", label: "عدد القطع", type: "number", value: existing ? existing.pieceCount : 50, min: 1 },
       { id: "price", label: "سعر الباقة الكامل (د.ب)", type: "number", step: "0.001", value: existing ? existing.price : 0, min: 0 },
       { id: "bonus", label: "هدية مجانية (اختياري)", type: "text", value: existing ? existing.bonus || "" : "", placeholder: "مثال: عباءة مجانية" },

@@ -129,6 +129,9 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
   await page.fill("#au_name", "Owner"); await page.fill("#au_user", "owner"); await page.fill("#au_pw", PW); await page.fill("#au_pw2", PW);
   await page.click("#au_form button[type=submit]"); await page.check("#au_saved"); await page.click("#au_next");
   await page.waitForSelector("body:not(.auth-locked)");
+  // this audit covers every service, so the wash-only service (off by default) is switched back on in Settings
+  await nav("settings"); await page.click('[data-settings-tab="pricing"]'); await page.check('[data-service-active="wash"]'); await wait(200);
+  check("wash-only service can be switched back on in Settings", (await db()).settings.serviceActive.wash === true);
   const P = (await db()).settings.prices;
   check("catalogue prices come from Settings (no invented prices): thobe iron, abaya, suit, blanket, ghatra present", P.thob_cotton_iron > 0 && P.abaya_plain_washiron > 0 && P.suit2pcs_iron > 0 && P.blanket_single_wash > 0 && P.ghatra_iron > 0, JSON.stringify([P.thob_cotton_iron, P.abaya_plain_washiron, P.suit2pcs_iron, P.blanket_single_wash]));
 
