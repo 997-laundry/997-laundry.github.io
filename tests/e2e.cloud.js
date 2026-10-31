@@ -57,6 +57,10 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   await A.fill("#au_name", "Owner"); await A.fill("#au_user", "owner"); await A.fill("#au_pw", OWNER_PW); await A.fill("#au_pw2", OWNER_PW);
   await A.click("#au_form button[type=submit]"); await A.check("#au_saved"); await A.click("#au_next");
   await A.waitForSelector("body:not(.auth-locked)");
+  // this suite covers shifts / cash custody: switch on "staff must start a shift" (off by default)
+  await A.evaluate(() => document.querySelector('.nav-item[data-page="settings"]').click()); await A.click('[data-settings-tab="operating"]');
+  check("shifts are optional and off by default", !(await A.isChecked("#shiftsRequiredSetting")));
+  await A.check("#shiftsRequiredSetting"); await A.click("#saveSettingsBtn"); await A.waitForTimeout(250);
   check("not linked yet: no cloud indicator, nothing sent", !(await A.isVisible("#cloudChip")) && cloud.requests === 0, cloud.requests);
   await a.nav("new-order");
   await A.click("#posCustomerBarBtn"); await A.fill("#orderCustomerPhone", "33001122");

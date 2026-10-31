@@ -117,6 +117,20 @@ function check(name, cond, detail) {
   check("shoes cannot be urgent (crossed out on the list): urgent order refused", ((await F.evaluate(() => JSON.parse(localStorage.getItem("l997_orders") || "[]")))).length === nOrders);
   await F.uncheck("#orderPriorityToggle"); await F.click("#posSaveOrderMainBtn"); await F.waitForTimeout(400);
   check("…as a normal order it is accepted (1.500)", ((await F.evaluate(() => JSON.parse(localStorage.getItem("l997_orders") || "[]"))))[0]?.payment.total === 1.5);
+  // one order with every product of the list (wash & iron): each line and the total exactly as the list
+  await F.evaluate(() => document.querySelectorAll("dialog[open]").forEach((d) => d.close()));
+  await F.evaluate(() => document.querySelector('.nav-item[data-page="new-order"]').click());
+  await F.click("#posCustomerBarBtn"); await F.fill("#orderCustomerPhone", "33001122"); await F.waitForTimeout(150); await F.click("#customerResults [data-pick]");
+  for (const id of Object.keys(LIST)) await F.click(`#posProductGrid [data-cloth="${id}"]`);
+  const shownAll = await F.textContent("#summaryTotal");
+  await F.click("#posSaveOrderMainBtn"); await F.waitForTimeout(500);
+  const big = (await F.evaluate(() => JSON.parse(localStorage.getItem("l997_orders"))))[0];
+  const expectAll = Math.round(Object.values(LIST).reduce((a, [, wi]) => a + wi, 0) * 1000) / 1000;
+  const badLines = big.items.filter((it) => it.serviceId !== "washiron" || it.unit !== LIST[it.clothingId][1] || it.total !== it.unit * it.qty).map((it) => `${it.clothingId}:${it.serviceId}:${it.unit}`);
+  check("order with all 34 products: every line uses the list price (wash & iron)", big.items.length === 34 && badLines.length === 0, badLines.join(","));
+  check(`order total = sum of the list (${expectAll.toFixed(3)}), same on screen and stored`, big.payment.total === expectAll && shownAll.includes(expectAll.toFixed(3)), `${big.payment.total} / ${shownAll}`);
+  const rec = await F.evaluate((id) => window.receiptText997(id), big.id);
+  check("receipt shows the same total", rec.includes(expectAll.toFixed(3)));
   await fresh.close();
   // 5) upgrade of an existing shop: old prices replaced, own dry-clean prices and urgent % kept, old products only switched off
   const up = await browser.newContext({ timezoneId: "Asia/Bahrain" });

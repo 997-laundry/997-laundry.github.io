@@ -2036,7 +2036,7 @@
     // المالك الذي لا يملك رمز استرداد (نظام مُرحَّل من نسخة قديمة) يُطلب منه إنشاؤه فوراً
     if (role === "owner" && !sec.recoveryHash) setTimeout(() => issueRecovery("rec_title", () => hideAuth()), 400);
     // الموظف يبدأ ورديته عند الدخول (= تسجيل حضور)
-    else if (role !== "owner" && !openShiftOf(emp.id)) setTimeout(() => openStartShift(), 450);
+    else if (shiftNeeded() && !openShiftOf(emp.id)) setTimeout(() => openStartShift(), 450);
   }
   function doLogout(reason) {
     if (me) {
@@ -4232,6 +4232,7 @@
           if (order.status !== "received") return;
           order.status = "ready";
           order.readyAt = now;
+          order.readyBy = me ? me.name : ""; order.readyById = me ? me.id : "";
           order.statusHistory.push({ status: "ready", at: now, by: me ? me.name : "", note });
         };
         if (v.method === "later") {
@@ -4387,10 +4388,14 @@
   }
   function staffInfoHtml(order) {
     const rows = [];
-    if (order.createdBy) rows.push(["أنشأ الطلب", esc(order.createdBy)]);
+    const when = (iso) => (iso ? ` <small class="inv-muted">${fmtDT(iso)}</small>` : "");
+    if (order.createdBy) rows.push(["أنشأ الطلب", esc(order.createdBy) + when(order.createdAt)]);
+    const readyH = (order.statusHistory || []).find((h) => h.status === "ready");
+    const readyBy = order.readyBy || (readyH && readyH.by) || "";
+    if (readyBy) rows.push(["جهّز الطلب (جاهز للتسليم)", esc(readyBy) + when(order.readyAt || (readyH && readyH.at))]);
     if (order.discountReason || order.discountApprovedBy) rows.push(["خصم", `${money(order.payment.discount || 0)} — ${esc(order.discountReason || "")}${order.discountApprovedBy ? " (اعتمده " + esc(order.discountApprovedBy) + ")" : ""}`]);
-    if (order.paymentBy) rows.push(["أكّد الدفع", esc(order.paymentBy) + (order.creditApprovedBy ? " — دين اعتمده " + esc(order.creditApprovedBy) : "")]);
-    if (order.deliveredBy) rows.push(["سلّم الطلب", esc(order.deliveredBy) + (order.receiver ? " — المستلم: " + esc(order.receiver) : "")]);
+    if (order.paymentBy) rows.push(["أكّد الدفع", esc(order.paymentBy) + (order.creditApprovedBy ? " — دين اعتمده " + esc(order.creditApprovedBy) : "") + when(order.paidAt)]);
+    if (order.deliveredBy) rows.push(["سلّم الطلب للعميل", esc(order.deliveredBy) + (order.receiver ? " — المستلم: " + esc(order.receiver) : "") + when(order.deliveredAt)]);
     if (order.cancelledBy) rows.push(["ألغى الطلب", esc(order.cancelledBy) + (order.cancelApprovedBy ? " — اعتمده " + esc(order.cancelApprovedBy) : "")]);
     (order.editHistory || []).forEach((h) => rows.push([`عدّل الطلب (${fmtDT(h.at)})`, `${esc(h.by)} — ${h.before.pieces}→${h.after.pieces} قطعة، ${money(h.before.total)}→${money(h.after.total)} — ${esc(h.reason)}${h.approvedBy ? " (اعتمده " + esc(h.approvedBy) + ")" : ""}`]));
     if (!rows.length) return "";
@@ -5352,6 +5357,7 @@
     document.getElementById("urgentPercentageSetting").value = settings.urgentPercent;
     document.getElementById("normalHoursSetting").value = settings.normalHours;
     document.getElementById("urgentHoursSetting").value = settings.urgentHours;
+    document.getElementById("shiftsRequiredSetting").checked = settings.shiftsRequired === true;
 
     const body = document.getElementById("pricesBody");
     body.innerHTML = allGarments().map((g) => {
@@ -5485,6 +5491,9 @@
     settings.urgentPercent = urgent;
     settings.normalHours = normalH;
     settings.urgentHours = urgentH;
+    const shiftsOn = document.getElementById("shiftsRequiredSetting").checked;
+    if ((settings.shiftsRequired === true) !== shiftsOn) logActivity(`${shiftsOn ? "تفعيل" : "إيقاف"} إلزام الموظفين ببدء الوردية`);
+    settings.shiftsRequired = shiftsOn;
     persistAll();
     logActivity(`تعديل إعدادات التشغيل: ${before} → ${urgent}% / ${normalH}س / ${urgentH}س`);
     toast(t("toast_settings_saved"));
@@ -5605,7 +5614,8 @@
   const openShiftOf = (empId) => shifts.find((x) => x.employeeId === empId && !x.endAt) || null;
   const myShift = () => (me ? openShiftOf(me.id) : null);
   const lastClosedShift = () => shifts.filter((x) => x.endAt).sort((a, b) => String(b.endAt).localeCompare(String(a.endAt)))[0] || null;
-  const shiftNeeded = () => !!me && role !== "owner";
+  // الورديات اختيارية (الإعدادات ← إعدادات التشغيل) — مطفأة افتراضياً: الموظف يعمل مباشرة بعد الدخول
+  const shiftNeeded = () => !!me && role !== "owner" && settings.shiftsRequired === true;
   const hhmm = (iso) => { const d = new Date(new Date(iso).getTime() + 3 * 3600000); return String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0"); }; // توقيت البحرين
   const durTxt = (h) => { const m = Math.round(h * 60); return `${Math.floor(m / 60)}س ${m % 60}د`; };
   // يمنع العمليات المالية بدون وردية مفتوحة (حتى تُنسب كل حركة لوردية وموظف)

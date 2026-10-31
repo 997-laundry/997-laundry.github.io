@@ -103,7 +103,7 @@ function check(name, cond, detail) {
     throw err;
   });
   // employees start their shift right after logging in (attendance + cash custody)
-  await page.waitForSelector("#qf_opening"); await page.fill("#qf_opening", "0"); await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(300);
+  await page.waitForSelector("#qf_opening", { timeout: 3000 }).then(async () => { await page.fill("#qf_opening", "0"); await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(300); }).catch(() => {}); // shifts are optional
   await nav("employees");
   const before = (await emps()).length;
   await page.click("#addEmployeeBtn");

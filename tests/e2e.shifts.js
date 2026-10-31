@@ -39,6 +39,11 @@ function check(name, cond, detail) {
   await page.click("#au_form button[type=submit]"); await page.check("#au_saved"); await page.click("#au_next");
   await page.waitForSelector("body:not(.auth-locked)");
   check("owner is not forced into a shift", !(await page.isVisible("#qf_opening")));
+  // this suite covers shifts / cash custody: switch on "staff must start a shift" (off by default)
+  await page.evaluate(() => document.querySelector('.nav-item[data-page="settings"]').click()); await page.click('[data-settings-tab="operating"]');
+  check("shifts are optional and off by default", !(await page.isChecked("#shiftsRequiredSetting")));
+  await page.check("#shiftsRequiredSetting"); await page.click("#saveSettingsBtn"); await page.waitForTimeout(250);
+
   await nav("access"); await page.click("#accessAddUserBtn");
   await page.fill("#qf_name", "Cashier Ali"); await page.selectOption("#qf_role", "worker"); await page.fill("#qf_username", "ali");
   const tmp = await page.inputValue("#qf_password");

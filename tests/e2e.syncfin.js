@@ -78,6 +78,10 @@ const OWNER_PW = "Owner#2026pass", WORKER_PW = "Worker#2026new";
   const A = await device("A"); const a = H(A);
   await A.fill("#au_name", "Owner"); await A.fill("#au_user", "owner"); await A.fill("#au_pw", OWNER_PW); await A.fill("#au_pw2", OWNER_PW);
   await A.click("#au_form button[type=submit]"); await A.check("#au_saved"); await A.click("#au_next"); await A.waitForSelector("body:not(.auth-locked)");
+  // this suite covers shifts / cash custody: switch on "staff must start a shift" (off by default)
+  await A.evaluate(() => document.querySelector('.nav-item[data-page="settings"]').click()); await A.click('[data-settings-tab="operating"]');
+  check("shifts are optional and off by default", !(await A.isChecked("#shiftsRequiredSetting")));
+  await A.check("#shiftsRequiredSetting"); await A.click("#saveSettingsBtn"); await A.waitForTimeout(250);
   await a.nav("profile"); await A.click("#cloudLinkBtn"); await A.fill("#qf_pw", OWNER_PW); await A.fill("#qf_c", "رفع"); await A.click("#quickFormSubmitBtn");
   check("A linked to the cloud", await until(async () => (await a.status()).linked && (await a.status()).pending === 0));
   await until(async () => !(await A.evaluate(() => { const b = document.getElementById("quickFormSubmitBtn"); return document.getElementById("quickFormDialog").open && b.disabled; })));

@@ -93,7 +93,7 @@ function runSql(db, name) {
   await B.waitForSelector("#au_pw2"); await b.wait(150);
   await B.fill("#au_pw", WORKER_PW); await B.fill("#au_pw2", WORKER_PW); await B.click("#au_form button[type=submit]");
   await B.waitForSelector("body:not(.auth-locked)");
-  await B.waitForSelector("#qf_opening"); await B.fill("#qf_opening", "0"); await B.click("#quickFormSubmitBtn"); await b.wait(300);
+  await B.waitForSelector("#qf_opening", { timeout: 3000 }).then(async () => { await B.fill("#qf_opening", "0"); await B.click("#quickFormSubmitBtn"); await B.waitForTimeout(300); }).catch(() => {}); // shifts are optional
   await b.order("33880002", "Walk-in");
   check("test data exists in the cloud (orders, customers, payments, expenses, staff)", await until(async () => (await live("orders")).length === 2 && (await live("customers")).length === 2 && (await live("ledger")).length >= 1 && (await live("expenses")).length === 1 && (await a.status()).pending === 0 && (await b.status()).pending === 0));
   await B.context().close(); // staff device closed before the reset (as instructed)
