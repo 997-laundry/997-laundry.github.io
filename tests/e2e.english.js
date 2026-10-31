@@ -21,6 +21,7 @@ const AR = /[؀-ۿ]+(?:[\s؀-ۿ«»،؛؟.\-—:()]*[؀-ۿ]+)*/g;
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
   await page.addInitScript(() => { window.open = () => ({ closed: false }); window.print = () => {}; if (!localStorage.getItem("l997_lang")) localStorage.setItem("l997_lang", JSON.stringify("en")); });
+  await require("./fixed-prices")(page); // flow test: fixed test prices, independent of the shop's price list
   await page.goto(await serve(file));
   await page.fill("#au_name", "Owner"); await page.fill("#au_user", "owner"); await page.fill("#au_pw", "Owner#2026pass"); await page.fill("#au_pw2", "Owner#2026pass");
   await page.click("#au_form button[type=submit]"); await page.check("#au_saved"); await page.click("#au_next");

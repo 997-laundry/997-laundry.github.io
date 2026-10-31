@@ -63,7 +63,7 @@ const OWNER_PW = "Owner#2026pass", WORKER_PW = "Worker#2026new";
         await h.closeAll(); await h.nav("new-order");
         await page.click("#posCustomerBarBtn"); await page.fill("#orderCustomerPhone", phone); await page.waitForTimeout(200);
         await page.click(`#customerResults [data-pick="${custId}"]`);
-        for (let i = 0; i < qty; i++) await page.click('#posProductGrid [data-cloth="abaya_emb"]');
+        for (let i = 0; i < qty; i++) await page.click('#posProductGrid [data-cloth="bedsheet_single"]');
         const sel = await page.$("[data-service-change]"); if (sel && (await sel.inputValue()) !== "washiron") await page.selectOption("[data-service-change]", "washiron");
         await page.click("#posSaveOrderMainBtn"); await h.later(); await h.closeAll();
         return (await h.ls("l997_orders"))[0];

@@ -133,7 +133,7 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
   await nav("settings"); await page.click('[data-settings-tab="pricing"]'); await page.check('[data-service-active="wash"]'); await wait(200);
   check("wash-only service can be switched back on in Settings", (await db()).settings.serviceActive.wash === true);
   const P = (await db()).settings.prices;
-  check("catalogue prices come from Settings (no invented prices): thobe iron, abaya, suit, blanket, ghatra present", P.thob_cotton_iron > 0 && P.abaya_plain_washiron > 0 && P.suit2pcs_iron > 0 && P.blanket_single_wash > 0 && P.ghatra_iron > 0, JSON.stringify([P.thob_cotton_iron, P.abaya_plain_washiron, P.suit2pcs_iron, P.blanket_single_wash]));
+  check("catalogue prices come from Settings (no invented prices): thobe iron, abaya, suit, blanket, ghatra present", P.thob_cotton_iron > 0 && P.abaya_plain_washiron > 0 && P.suit2pcs_iron > 0 && P.blanket_single_washiron > 0 && P.ghatra_iron > 0, JSON.stringify([P.thob_cotton_iron, P.abaya_plain_washiron, P.suit2pcs_iron, P.blanket_single_washiron]));
 
   /* ---------------- 1. customers: create, search by name / phone, similar names, no duplicates ---------------- */
   const cNew = await newCustomer("Ahmed Ali", "33110001");
@@ -160,18 +160,18 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
   await pickCustomer("Ahmed Alawi", cSim.id);
   await addItem("thob_cotton", "washiron", 3);
   const shirtLine = await addItem("shirt", "iron", 2);
-  await addItem("pants_long", "wash", 2);
+  await addItem("pants_long", "washiron", 2);
   await addItem("ghatra", "iron", 1);
   await addItem("abaya_plain", "washiron", 1);
   await addItem("suit2pcs", "iron", 1);
-  await addItem("blanket_single", "wash", 1);
+  await addItem("blanket_single", "washiron", 1);
   const dressLine = await addItem("dress", "iron", 1);
   await page.click(`[data-remove="${dressLine}"]`); // removed before saving
   await page.click(`[data-qty-plus="${shirtLine}"]`); // shirts 2 → 3
   await page.click(`[data-qty-minus="${shirtLine}"]`); // back to 2
   const shownBefore = await page.textContent("#summaryTotal");
   const o2 = await saveOrder();
-  const expect2 = r3(3 * P.thob_cotton_washiron + 2 * P.shirt_iron + 2 * P.pants_long_wash + P.ghatra_iron + P.abaya_plain_washiron + P.suit2pcs_iron + P.blanket_single_wash);
+  const expect2 = r3(3 * P.thob_cotton_washiron + 2 * P.shirt_iron + 2 * P.pants_long_washiron + P.ghatra_iron + P.abaya_plain_washiron + P.suit2pcs_iron + P.blanket_single_washiron);
   const lineOk = o2 && o2.items.every((it) => it.total === r3(it.qty * P[`${it.clothingId}_${it.serviceId}`]));
   check("mixed order (thobes, shirts, trousers, ghatra, abaya, suit, blanket): each line = qty × price", lineOk && o2.items.length === 7 && !o2.items.some((i) => i.clothingId === "dress"), o2 && o2.items.map((i) => `${i.clothingId}:${i.qty}×${i.unit}=${i.total}`).join(" "));
   check("mixed order total = Σ lines; screen showed the same total before saving", o2.payment.total === expect2 && shownBefore.includes(expect2.toFixed(3)), `${o2.payment.total} vs ${expect2}; screen ${shownBefore}`);
@@ -212,25 +212,25 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
   check("order history survives sign-out and sign-in", (await orderOf(o1.id)).statusHistory.length === 3);
 
   /* ---------------- 4. payment cases A–F (10.000 orders: 20 × abaya embroidered wash+iron at the real price) ---------------- */
-  const unit = P.abaya_emb_washiron; // 0.500 in the official catalogue
+  const unit = P.bedsheet_single_washiron; // bedsheet wash & iron: 0.500 on the shop price list
   const qtyFor = (amt) => Math.round(amt / unit);
-  check("test amounts use real catalogue price (abaya emb. wash+iron)", unit > 0 && Math.abs(qtyFor(10) * unit - 10) < 1e-9, unit);
+  check("test amounts use a real price-list price (bedsheet wash & iron)", unit > 0 && Math.abs(qtyFor(10) * unit - 10) < 1e-9, unit);
   const cA = await newCustomer("Case A", "33220001");
-  const oA = await makeOrder(cA.id, "33220001", [["abaya_emb", "washiron", qtyFor(10)]]);
+  const oA = await makeOrder(cA.id, "33220001", [["bedsheet_single", "washiron", qtyFor(10)]]);
   const A = await makeReady(oA.id, "cash", 10);
   let sA = await summary(cA.id);
   check("A full payment 10.000: paid 10, remaining 0, state paid, no debt entry", A.payment.total === 10 && A.payment.paid === 10 && sA.rows[A.number].remaining === 0 && sA.rows[A.number].state === "paid" && sA.debt === 0 && !(await db()).ledger.some((t) => t.orderId === oA.id), JSON.stringify(sA.rows[A.number]));
   check("A receipt says fully paid", /مدفوع بالكامل/.test(await page.evaluate((id) => window.receiptText997(id), oA.id)));
 
   const cB = await newCustomer("Case B", "33220002");
-  const oB = await makeOrder(cB.id, "33220002", [["abaya_emb", "washiron", qtyFor(10)]]);
+  const oB = await makeOrder(cB.id, "33220002", [["bedsheet_single", "washiron", qtyFor(10)]]);
   const B = await makeReady(oB.id, "cash", 4);
   let sB = await summary(cB.id);
   check("B partial 4 of 10: paid 4, remaining 6, state 'partial', customer owes 6", B.payment.paid === 4 && sB.rows[B.number].paid === 4 && sB.rows[B.number].remaining === 6 && sB.rows[B.number].state === "partial" && sB.debt === 6 && sB.balance === -6, JSON.stringify([sB.rows[B.number], sB.debt]));
   check("B debt recorded once in the ledger (−6.000)", (await db()).ledger.filter((t) => t.orderId === oB.id).map((t) => t.amount).join() === "-6");
 
   const cC = await newCustomer("Case C", "33220003");
-  const oC = await makeOrder(cC.id, "33220003", [["abaya_emb", "washiron", qtyFor(10)]]);
+  const oC = await makeOrder(cC.id, "33220003", [["bedsheet_single", "washiron", qtyFor(10)]]);
   let sC = await summary(cC.id);
   check("C not paid at creation: saved, 10 in progress, nothing counted as collected", sC.inProgress === 10 && sC.debt === 0 && !(await db()).ledger.some((t) => t.customerId === cC.id));
   const C1 = await makeReady(oC.id, "later");
@@ -259,11 +259,11 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
 
   // E: overpayment at ready (12 on 10) and on a debt (8 on 6)
   const cE = await newCustomer("Case E", "33220005");
-  const oE = await makeOrder(cE.id, "33220005", [["abaya_emb", "washiron", qtyFor(10)]]);
+  const oE = await makeOrder(cE.id, "33220005", [["bedsheet_single", "washiron", qtyFor(10)]]);
   const E = await makeReady(oE.id, "cash", 12);
   let sE = await summary(cE.id);
   check("E overpay at ready (12 on 10): order paid 10, extra 2 shown as customer credit", E.payment.paid === 10 && sE.prepaid === 2 && (await db()).ledger.some((t) => t.customerId === cE.id && t.type === "credit" && t.amount === 2));
-  const oE2 = await makeOrder(cE.id, "33220005", [["abaya_emb", "washiron", qtyFor(10)]]);
+  const oE2 = await makeOrder(cE.id, "33220005", [["bedsheet_single", "washiron", qtyFor(10)]]);
   await makeReady(oE2.id, "cash", 4); // balance: +2 − 6 = −4
   sE = await summary(cE.id);
   check("E earlier credit reduces the new debt (2 credit − 6 owed = owes 4)", sE.debt === 4, JSON.stringify([sE.balance, sE.debt]));
@@ -273,16 +273,16 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
 
   // F: cancellations
   const cF = await newCustomer("Case F", "33220006");
-  const fUnpaid = await makeOrder(cF.id, "33220006", [["abaya_emb", "washiron", qtyFor(4)]]);
+  const fUnpaid = await makeOrder(cF.id, "33220006", [["bedsheet_single", "washiron", qtyFor(4)]]);
   const fu = await cancelOrder(fUnpaid.id, "customer changed mind");
   check("F cancel unpaid: cancelled, reason and user recorded, no money moved", fu.status === "cancelled" && fu.cancelReason === "customer changed mind" && fu.cancelledBy === "Owner" && !(await db()).ledger.some((t) => t.orderId === fUnpaid.id));
-  const fPart = await makeOrder(cF.id, "33220006", [["abaya_emb", "washiron", qtyFor(10)]]);
+  const fPart = await makeOrder(cF.id, "33220006", [["bedsheet_single", "washiron", qtyFor(10)]]);
   await makeReady(fPart.id, "cash", 4);
   const fp = await cancelOrder(fPart.id, "damaged item", "cash");
   let sF = await summary(cF.id);
   const ledF = (await db()).ledger.filter((t) => t.orderId === fPart.id).map((t) => t.amount);
   check("F cancel partly paid: 4 refunded in cash, 6 debt dropped, customer owes 0, history kept", fp.status === "cancelled" && fp.refund && fp.refund.amount === 4 && fp.refund.mode === "cash" && sF.balance === 0 && ledF.join() === "6,-6", JSON.stringify([fp.refund, ledF]));
-  const fFull = await makeOrder(cF.id, "33220006", [["abaya_emb", "washiron", qtyFor(4)]]);
+  const fFull = await makeOrder(cF.id, "33220006", [["bedsheet_single", "washiron", qtyFor(4)]]);
   await makeReady(fFull.id, "card", 4);
   const ff = await cancelOrder(fFull.id, "duplicate", "balance");
   sF = await summary(cF.id);
@@ -294,7 +294,7 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
   const plan = [[10, 10], [8, 3], [6, 0], [4, 2]];
   const xs = [];
   for (const [tot, paid] of plan) {
-    const o = await makeOrder(cX.id, "33330001", [["abaya_emb", "washiron", qtyFor(tot)]]);
+    const o = await makeOrder(cX.id, "33330001", [["bedsheet_single", "washiron", qtyFor(tot)]]);
     xs.push(await makeReady(o.id, paid > 0 ? "cash" : "unpaid", paid > 0 ? paid : undefined));
     await wait(30);
   }
@@ -323,7 +323,7 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
   await page.evaluate((id) => window.openCustomerProfile997(id), cX.id);
   const prof = (await page.textContent("#customerProfileContent")).replace(/\s+/g, " ");
   check("customer file: counts by stage (ready 4, delivered 0, cancelled 0)", /جاهز للاستلام ?4/.test(prof) && /مُسلَّم ?0/.test(prof) && /ملغي ?0/.test(prof), prof.match(/(قيد التجهيز|جاهز للاستلام|مُسلَّم|ملغي) ?\d+/g)?.join(" | "));
-  check("customer file: every order lists its items and stage", (prof.match(/عباية مطرزة|عباية/g) || []).length >= 4);
+  check("customer file: every order lists its items and stage", (prof.match(/شرشف/g) || []).length >= 4);
   const payRows = await page.$$eval(".cp-pay-row", (rs) => rs.map((r) => r.textContent.replace(/\s+/g, " ")));
   check("payments history: order payments + allocated + unallocated, each with method and employee", payRows.length === 5 && payRows.every((r) => /بواسطة Owner/.test(r)) && payRows.some((r) => /#\d{5}/.test(r) && /\+5\.000/.test(r)), JSON.stringify(payRows.slice(0, 2)));
   await closeAll();
@@ -346,10 +346,10 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
   check("cancelling a package order returns its pieces", (await db()).packages[0].remainingPieces === 2);
 
   /* ---------------- 8. several open orders, ready + in progress for one customer ---------------- */
-  const oM1 = await makeOrder(cNew.id, "33110001", [["tshirt", "wash", 1]]);
+  const oM1 = await makeOrder(cNew.id, "33110001", [["tshirt", "washiron", 1]]);
   await makeReady(oM1.id, "later");
   const sN = await summary(cNew.id);
-  check("one customer with orders delivered, ready and in progress: counted separately", sN.counts.delivered === 1 && sN.counts.ready === 1 && sN.counts.open === 2 && sN.dueNow === P.tshirt_wash, JSON.stringify(sN.counts));
+  check("one customer with orders delivered, ready and in progress: counted separately", sN.counts.delivered === 1 && sN.counts.ready === 1 && sN.counts.open === 2 && sN.dueNow === P.tshirt_washiron, JSON.stringify(sN.counts));
 
   /* ---------------- 9. edge cases ---------------- */
   // edit after payment is blocked; edit before payment recalculates, zero / negative quantities refused
@@ -368,7 +368,7 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
   check("payment of 0 or a negative amount is refused (form stays open, nothing recorded)", zeroOpen && (await page.isVisible("#quickFormSubmitBtn")) && (await summary(cX.id)).debt === 7);
   await closeAll();
   // paying from balance more than the customer has is refused
-  const oBal = await makeOrder(cF.id, "33220006", [["abaya_emb", "washiron", qtyFor(10)]]);
+  const oBal = await makeOrder(cF.id, "33220006", [["bedsheet_single", "washiron", qtyFor(10)]]);
   await openOrder(oBal.id); await page.click("#advanceStatusBtn"); await page.selectOption("#qf_method", "balance"); await submit();
   check("paying 10 from a 4.000 balance is refused with a clear message", (await orderOf(oBal.id)).status === "received"); await closeAll();
   // payment 'ready' with 0 cash must be refused (choose credit instead)
@@ -376,8 +376,8 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
   check("cash payment of 0 is refused (use 'credit' explicitly)", (await orderOf(oBal.id)).status === "received"); await closeAll();
   // three-decimal BHD amounts
   const cD = await newCustomer("Fils", "33550001");
-  const oD = await makeOrder(cD.id, "33550001", [["socks", "wash", 7], ["cap", "iron", 3]]);
-  const expD = r3(7 * P.socks_wash + 3 * P.cap_iron);
+  const oD = await makeOrder(cD.id, "33550001", [["socks", "washiron", 7], ["cap", "washiron", 3]]);
+  const expD = r3(7 * P.socks_washiron + 3 * P.cap_washiron);
   await makeReady(oD.id, "cash", 0.333);
   const sD = await summary(cD.id);
   check("fils precision: total and remaining exact to 3 decimals", oD.payment.total === expD && sD.debt === r3(expD - 0.333), JSON.stringify([oD.payment.total, expD, sD.debt]));

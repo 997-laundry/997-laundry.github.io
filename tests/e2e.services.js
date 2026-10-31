@@ -22,6 +22,7 @@ function check(name, cond, detail) {
   const waUrls = [];
   await page.exposeFunction("__waOpened", (u) => waUrls.push(u));
   await page.addInitScript(() => { window.open = (u) => { window.__waOpened(String(u)); return { closed: false }; }; window.print = () => {}; });
+  await require("./fixed-prices")(page); // flow test: fixed test prices, independent of the shop's price list
   await page.goto(await serve(file));
   const PW = "Owner#2026pass";
   const submit = async () => { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(250); };

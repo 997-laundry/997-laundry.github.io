@@ -21,6 +21,7 @@ function check(name, cond, detail) {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
   await page.addInitScript(() => { window.open = () => ({ closed: false }); window.print = () => {}; });
+  await require("./fixed-prices")(page); // flow test: fixed test prices, independent of the shop's price list
   await page.goto(await serve(file));
   const OWNER_PW = "Owner#2026pass", WORKER_PW = "Worker#2026pass";
   const submit = async () => { await page.click("#quickFormSubmitBtn"); await page.waitForTimeout(250); };

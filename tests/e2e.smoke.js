@@ -22,6 +22,7 @@ function check(name, cond, detail) {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
   page.on("popup", (p) => p.close().catch(() => {}));
   await page.addInitScript(() => { window.open = () => ({ closed: false }); window.print = () => {}; });
+  await require("./fixed-prices")(page); // flow test: fixed test prices, independent of the shop's price list
   await page.goto(await serve(file));
 
   // 1) First-time owner setup
