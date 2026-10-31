@@ -47,25 +47,23 @@ const html = `<!doctype html><html><head><meta charset="utf-8">
   thead th:first-child { border-radius: 2mm 0 0 0; } thead th:last-child { border-radius: 0 2mm 0 0; }
   thead th small { display: block; font: 700 10px Tajawal, sans-serif; margin-top: 1px; color: #D5E0F3; letter-spacing: 0; }
   thead th.item { text-align: left; } thead th.aritem { text-align: right; font: 800 11.5px Tajawal, sans-serif; }
-  tbody td { padding: 1.05mm 2mm; text-align: center; font-variant-numeric: tabular-nums; border-bottom: 1px solid ${LINE}; }
+  tbody td { padding: 1.4mm 2mm; text-align: center; font-variant-numeric: tabular-nums; border-bottom: 1px solid ${LINE}; }
   tbody tr:nth-child(even) td { background: ${TINT}; }
   td.item { text-align: left; font-weight: 600; } td.aritem { text-align: right; direction: rtl; font: 700 11.5px Tajawal, sans-serif; }
   td.wi { font-weight: 800; color: ${NAVY}; } td.na { color: #A4B3CF; }
   td.urg { font-weight: 700; color: #2F57A0; }
   .notes { margin: auto 10mm 0; display: flex; justify-content: space-between; gap: 8mm; background: ${TINT}; border-inline-start: 2mm solid ${BLUE}; border-radius: 2mm; padding: 2.6mm 5mm; font-size: 9.3px; }
   .notes .r { direction: rtl; text-align: right; font: 500 10.3px Tajawal, sans-serif; }
-  .foot { margin: 2.5mm 10mm 0; display: flex; justify-content: space-between; font-size: 8.5px; color: ${BLUE}; font-weight: 600; }
+  .foot { margin: auto 10mm 0; display: flex; justify-content: space-between; font-size: 8.5px; color: ${BLUE}; font-weight: 600; }
   .foot .r { direction: rtl; font-family: Tajawal, sans-serif; font-size: 9.5px; }
 </style></head><body><div class="page">
 <header>
-  <div class="en"><div class="t">Price List</div><div class="s">All prices in Bahraini Dinar (BD)</div><div class="loc">Riffa · Kingdom of Bahrain</div></div>
+  <div class="en"><div class="t">Price List</div><div class="loc">Riffa · Kingdom of Bahrain</div></div>
   <img src="${LOGO}" alt="997 Laundry">
-  <div class="ar"><div class="t">قائمة الأسعار</div><div class="s">جميع الأسعار بالدينار البحريني</div><div class="loc">مغسلة ٩٩٧ · الرفاع</div></div>
+  <div class="ar"><div class="t">قائمة الأسعار</div><div class="loc">مغسلة ٩٩٧ · الرفاع</div></div>
 </header>
 <table><thead><tr><th class="item">ITEM</th><th>IRON<small>كوي</small></th><th>WASH &amp; IRON<small>غسيل وكوي</small></th><th>DRY CLEAN<small>تنظيف جاف</small></th><th>URGENT<small>مستعجل</small></th><th class="aritem">الصنف</th></tr></thead>
 <tbody>${rows.map((r) => `<tr><td class="item">${r.en}</td><td class="${r.iron ? "" : "na"}">${fmt(r.iron)}</td><td class="wi ${r.wi ? "" : "na"}">${fmt(r.wi)}</td><td class="${r.dc ? "" : "na"}">${fmt(r.dc)}</td><td class="${r.urgent ? "urg" : "na"}">${fmt(r.urgent)}</td><td class="aritem">${r.ar}</td></tr>`).join("")}</tbody></table>
-<div class="notes"><div>Urgent service (wash &amp; iron) is charged as shown — normally double the regular price.<br>— = service not available. Prices per piece · Carpet priced per square metre.</div>
-<div class="r">الخدمة المستعجلة (غسيل وكوي) بالسعر الموضّح — عادةً ضعف السعر العادي.<br>— = الخدمة غير متوفرة · الأسعار للقطعة الواحدة · السجاد بالمتر المربع.</div></div>
 <div class="foot"><span>997 Laundry · Riffa, Kingdom of Bahrain</span><span class="r">مغسلة ٩٩٧ · الرفاع · مملكة البحرين</span></div>
 </div></body></html>`;
 
