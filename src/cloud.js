@@ -68,7 +68,7 @@
     };
   }
   if (typeof document !== "undefined") {
-    ["pointerdown", "keydown", "touchstart", "input"].forEach((ev) => document.addEventListener(ev, () => { lastInput = Date.now(); }, { passive: true, capture: true }));
+    ["pointerdown", "keydown", "touchstart", "input", "wheel", "scroll", "mousemove"].forEach((ev) => document.addEventListener(ev, () => { lastInput = Date.now(); }, { passive: true, capture: true }));
   }
 
   // نص ثابت للمقارنة (ترتيب المفاتيح لا يؤثر — قاعدة البيانات تعيد ترتيبها)
@@ -340,17 +340,28 @@
   const netUp = () => online && (typeof navigator === "undefined" || navigator.onLine !== false);
   function reloadNow() {
     const h = host();
-    try { sessionStorage.setItem("l997_cloud_page", h ? h.page() : ""); } catch (e) { /* ignore */ }
+    try { sessionStorage.setItem("l997_cloud_page", h ? h.page() : ""); sessionStorage.setItem("l997_cloud_scroll", String(Math.round(root.scrollY || 0))); } catch (e) { /* ignore */ }
     applyStaged(false);
     root.location.reload();
   }
   // ما يمكن عرضه فوراً بدون إعادة تحميل الصفحة؛ غيرها (إعدادات، صلاحيات، موظفون…) يحتاج إعادة تهيئة كاملة
   const SOFT = new Set(["orders", "customers", "ledger", "customer_packages", "suspended_orders", "shifts", "attendance", "audit", "expenses"]);
+  // تغيير لا يؤثر على عمل الشاشة (مثل «آخر دخول» لموظف سجّل دخوله على جهاز آخر) — يُطبَّق بهدوء بدون إعادة تحميل الصفحة
+  const VOLATILE = { employees: ["lastLogin"] };
+  function harmless(row) {
+    const c = byName[row.collection], skip = VOLATILE[row.collection];
+    if (!c || !skip || row.deleted || c.type !== "list") return false;
+    const arr = read(c.key, []);
+    const local = Array.isArray(arr) ? arr.find((r) => r && String(r.id) === row.record_id) : null;
+    if (!local) return false;
+    const clean = (d) => { const o = { ...strip(c, d) }; skip.forEach((k) => delete o[k]); return o; };
+    return hashOf(clean(local)) === hashOf(clean(row.data));
+  }
   function maybeApply() {
     const h = host();
     if (localChanged && !staged.size && h && h.refresh && !h.busy()) { localChanged = false; try { h.refresh(); } catch (e) { reloadNow(); } return; }
     if (!staged.size) { showUpdateChip(false); return; }
-    const soft = h && h.refresh && [...staged.values()].every((r) => SOFT.has(r.collection));
+    const soft = h && h.refresh && [...staged.values()].every((r) => SOFT.has(r.collection) || harmless(r));
     if (soft && !(h.softBusy ? h.softBusy() : h.busy()) && Date.now() - lastInput > CFG.softIdleMs) {
       applyStaged(false); localChanged = false;
       try { h.refresh(); } catch (e) { reloadNow(); return; }

@@ -2334,13 +2334,21 @@
       || !!(document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && document.activeElement.id !== "globalSearch"),
     page: () => currentPage,
     // تحديثات الأجهزة الأخرى (طلبات، عملاء، دفعات…) تظهر فوراً بدون إعادة تحميل الصفحة — أسرع بكثير على الجوال
+    // يحافظ على مكان المستخدم: موضع التمرير، نص البحث، تبويب الأصناف — لا يرجعه لأعلى الصفحة أو لأول خطوة
     refresh: () => {
+      const y = window.scrollY, x = window.scrollX, focusId = document.activeElement && document.activeElement.id;
       customers = load(KEYS.customers, []); orders = load(KEYS.orders, []); ledger = load(KEYS.ledger, []);
       customerPackages = load(KEYS.customerPackages, []); suspendedOrders = load("l997_suspended_orders", []); shifts = load(SHIFT_KEY, []);
       if (window.L997Enterprise.reloadData) window.L997Enterprise.reloadData();
       if (reconcileDerived()) persistAll();
       if (me) { const fresh = emps().find((e) => e.id === me.id); if (fresh) me = fresh; }
-      openPage(currentPage);
+      if (currentPage === "new-order") {
+        // شاشة الطلب الجديد: لا يُعاد ضبط البحث والتبويب — فقط تحديث بيانات العميل المختار والملخص
+        if (draftCustomerId) { const cust = customers.find((c) => c.id === draftCustomerId); if (cust) selectCustomerForOrder(cust, true); }
+        renderOrderItemsTable(); updateSummary();
+      } else openPage(currentPage);
+      window.scrollTo(x, y);
+      if (focusId && document.activeElement && document.activeElement.id !== focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
       if (orderDialog.open) renderOrderDialog();
       if (customerProfileDialog.open) renderCustomerProfile();
     },
@@ -2704,6 +2712,7 @@
         // بعد تحديث تلقائي من السحابة نعود لنفس الصفحة
         let back = ""; try { back = sessionStorage.getItem("l997_cloud_page") || ""; sessionStorage.removeItem("l997_cloud_page"); } catch (err) { back = ""; }
         hideAuth(); applyRole(); startIdle(); openPage(back && document.getElementById("page-" + back) ? back : homePage());
+        if (back) { let y = 0; try { y = Number(sessionStorage.getItem("l997_cloud_scroll")) || 0; sessionStorage.removeItem("l997_cloud_scroll"); } catch (err) { y = 0; } if (y) { window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); } }
         if (CLOUD) CLOUD.setUser(cloudOn() ? e : null);
         return;
       }
