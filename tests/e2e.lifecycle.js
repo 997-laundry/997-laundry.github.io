@@ -165,7 +165,7 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
   await addItem("abaya_plain", "washiron", 1);
   await addItem("suit2pcs", "iron", 1);
   await addItem("blanket_single", "washiron", 1);
-  const dressLine = await addItem("dress", "iron", 1);
+  const dressLine = await addItem("dress", "washiron", 1);
   await page.click(`[data-remove="${dressLine}"]`); // removed before saving
   await page.click(`[data-qty-plus="${shirtLine}"]`); // shirts 2 → 3
   await page.click(`[data-qty-minus="${shirtLine}"]`); // back to 2

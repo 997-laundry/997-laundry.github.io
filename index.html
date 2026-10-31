@@ -929,7 +929,7 @@ body.auth-locked .top-logout{display:none!important}
         <div id="settingsTabContent">
           <div class="panel" data-settings-panel="pricing">
             <div class="panel-header"><div><h3 data-i18n="prices_title">قائمة الأسعار والمنتجات</h3><p>سعر الكي، الغسيل، الغسيل والكي، والغسيل الجاف لكل صنف — اترك السعر صفراً لإخفاء الخدمة عن الصنف</p></div><button class="primary-btn" id="addCustomGarmentBtn">＋ إضافة منتج</button></div>
-            <div class="table-wrap"><table><thead><tr><th data-i18n="th_cloth">الصنف</th><th>كي<label class="svc-toggle"><input type="checkbox" data-service-active="iron" /> مفعّلة</label></th><th>غسيل<label class="svc-toggle"><input type="checkbox" data-service-active="wash" /> مفعّلة</label></th><th>غسيل وكي<label class="svc-toggle"><input type="checkbox" data-service-active="washiron" /> مفعّلة</label></th><th>غسيل جاف<label class="svc-toggle"><input type="checkbox" data-service-active="dryclean" /> مفعّلة</label></th><th>نشط</th><th></th></tr></thead><tbody id="pricesBody"></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th data-i18n="th_cloth">الصنف</th><th>كي<label class="svc-toggle"><input type="checkbox" data-service-active="iron" /> مفعّلة</label></th><th>غسيل<label class="svc-toggle"><input type="checkbox" data-service-active="wash" /> مفعّلة</label></th><th>غسيل وكي<label class="svc-toggle"><input type="checkbox" data-service-active="washiron" /> مفعّلة</label></th><th>غسيل جاف<label class="svc-toggle"><input type="checkbox" data-service-active="dryclean" /> مفعّلة</label></th><th>مستعجل<br><small>(غسيل وكي)</small></th><th>نشط</th><th></th></tr></thead><tbody id="pricesBody"></tbody></table></div>
             <h4 style="margin:18px 0 6px">➕ خدمات إضافية على الطلب</h4>
             <p class="muted" style="margin:0 0 8px">تعطير وتغليف — تظهر في شاشة الطلب كخيار فقط إذا كان سعرها أكبر من صفر.</p>
             <div class="table-wrap"><table><thead><tr><th>الخدمة</th><th>السعر (د.ب)</th><th>طريقة الاحتساب</th></tr></thead><tbody id="extrasPricesBody"></tbody></table></div>
@@ -3203,16 +3203,17 @@ body.auth-locked .top-logout{display:none!important}
       status_washing: "قيد الغسيل", status_ironing: "قيد الكي", status_ready: "جاهز للتسليم",
       status_delivered: "تم التسليم", status_cancelled: "ملغي",
       cloth_thob_cotton: "ثوب", cloth_thob_wool: "ثوب صوف", cloth_ghatra: "غترة", cloth_agal: "عقال",
-      cloth_abaya_plain: "عباية", cloth_abaya_emb: "عباية مطرزة", cloth_shirt: "قميص", cloth_tshirt: "تي شيرت",
+      cloth_abaya_plain: "عباية", cloth_abaya_emb: "عباية مطرزة", cloth_shirt: "قميص", cloth_tshirt: "تيشيرت",
       cloth_pants_long: "بنطلون", cloth_pants_short: "بنطلون قصير", cloth_jacket: "جاكيت", cloth_overcoat: "كوت",
       cloth_suit2pcs: "بدلة", cloth_dress: "فستان", cloth_dress_long: "فستان طويل / سهرة", cloth_blouse: "بلوزة",
-      cloth_miniskirt: "تنورة قصيرة", cloth_skirtlong: "تنورة (عادية / بليسيه)", cloth_pullover: "فانلة / سويتر", cloth_necktie: "ربطة عنق",
-      cloth_kurta_pyjama: "كرتة", cloth_undershirt2pcs: "بدلة داخلية (طقم)", cloth_underwear: "ملابس داخلية", cloth_socks: "جوارب",
-      cloth_cap: "طاقية", cloth_bedsheet_single: "شرشف", cloth_bedsheet_double: "شرشف سرير كبير", cloth_bedcover: "غطاء (كفر)",
-      cloth_bedspread: "غطاء سرير كبير (مفرش)", cloth_blanket_single: "بطانية", cloth_blanket_double: "بطانية كبيرة", cloth_duvet: "لحاف",
-      cloth_pillowcase: "كيس مخدة", cloth_bathtowel: "فوطة حمام", cloth_bathrobe: "روب حمام", cloth_curtain_per_m: "ستارة (لكل متر)",
-      cloth_tablecloth: "غطاء طاولة", cloth_tablecloth_large: "غطاء طاولة كبير",
-      cloth_bisht: "بشت", cloth_carpet_m2: "سجاد (للمتر المربع)", cloth_dupatta: "دوبتا (شال)", cloth_gahfiya: "قحفية", cloth_tshirt_half: "تي شيرت نص كم",
+      cloth_miniskirt: "تنورة قصيرة", cloth_skirtlong: "تنورة", cloth_pullover: "فانلة / سويتر", cloth_necktie: "ربطة عنق",
+      cloth_kurta_pyjama: "كورتا", cloth_undershirt2pcs: "بدلة داخلية (طقم)", cloth_underwear: "ملابس داخلية", cloth_socks: "جوارب",
+      cloth_cap: "طاقية", cloth_bedsheet_single: "شرشف", cloth_bedsheet_double: "شرشف دبل", cloth_bedcover: "غطاء (كفر)",
+      cloth_bedspread: "غطاء سرير كبير (مفرش)", cloth_blanket_single: "بطانية", cloth_blanket_double: "بطانية دبل", cloth_duvet: "لحاف",
+      cloth_pillowcase: "كيس مخدة", cloth_bathtowel: "منشفة كبيرة", cloth_bathrobe: "روب حمام", cloth_curtain_per_m: "ستارة (لكل متر)",
+      cloth_tablecloth: "مفرش طاولة", cloth_tablecloth_large: "غطاء طاولة كبير",
+      cloth_bisht: "بشت", cloth_carpet_m2: "سجاد (للمتر)", cloth_dupatta: "دوباتا", cloth_gahfiya: "قحفية", cloth_tshirt_half: "تي شيرت نص كم",
+      cloth_shaila: "شيلة", cloth_jalabiya: "جلابية", cloth_bdf_uniform: "بدلة قوة الدفاع", cloth_hoodie_jacket: "جاكيت هودي", cloth_shoes: "حذاء", cloth_small_towel: "منشفة صغيرة", cloth_overcoat_long: "معطف",
       service_wash: "غسيل", service_iron: "كي", service_washiron: "غسيل وكي",
       service_drycleaning: "غسيل جاف", service_perfume: "تعطير", service_wrap: "تغليف",
       wa_greeting: (name) => `مرحباً ${name} 👋`,
@@ -3375,17 +3376,18 @@ body.auth-locked .top-logout{display:none!important}
       status_new: "New", status_received: "Received", status_sorting: "Sorting",
       status_washing: "Washing", status_ironing: "Ironing", status_ready: "Ready for pickup",
       status_delivered: "Delivered", status_cancelled: "Cancelled",
-      cloth_thob_cotton: "Thobe", cloth_thob_wool: "Thobe Wool", cloth_ghatra: "Ghatra", cloth_agal: "Agal",
+      cloth_thob_cotton: "Thobe", cloth_thob_wool: "Thobe Wool", cloth_ghatra: "Ghutra", cloth_agal: "Agal",
       cloth_abaya_plain: "Abaya", cloth_abaya_emb: "Abaya Embroidered", cloth_shirt: "Shirt", cloth_tshirt: "T-Shirt",
       cloth_pants_long: "Pant", cloth_pants_short: "Half Pant", cloth_jacket: "Jacket", cloth_overcoat: "Coat",
       cloth_suit2pcs: "Suit", cloth_dress: "Dress", cloth_dress_long: "Dress Long / Evening", cloth_blouse: "Blouse",
-      cloth_miniskirt: "Mini Skirt", cloth_skirtlong: "Skirt Flat / Pleated", cloth_pullover: "Pullover / Sweater", cloth_necktie: "Necktie",
-      cloth_kurta_pyjama: "Kurta", cloth_undershirt2pcs: "Under Shirt 2Pcs", cloth_underwear: "Under Wear", cloth_socks: "Socks",
-      cloth_cap: "Cap", cloth_bedsheet_single: "Bedsheet", cloth_bedsheet_double: "Bed Sheet Double", cloth_bedcover: "Cover",
-      cloth_bedspread: "Bed Spread", cloth_blanket_single: "Blanket", cloth_blanket_double: "Blanket Double", cloth_duvet: "Comforter",
-      cloth_pillowcase: "Pillow Case", cloth_bathtowel: "Bath Towel", cloth_bathrobe: "Bath Robe", cloth_curtain_per_m: "Curtain (per m)",
+      cloth_miniskirt: "Mini Skirt", cloth_skirtlong: "Skirt (Flat / Pleated)", cloth_pullover: "Pullover / Sweater", cloth_necktie: "Necktie",
+      cloth_kurta_pyjama: "Kurta", cloth_undershirt2pcs: "Under Shirt 2Pcs", cloth_underwear: "Underwear", cloth_socks: "Socks",
+      cloth_cap: "Cap", cloth_bedsheet_single: "Bedsheet", cloth_bedsheet_double: "Double Bedsheet", cloth_bedcover: "Cover",
+      cloth_bedspread: "Bed Spread", cloth_blanket_single: "Blanket", cloth_blanket_double: "Double Blanket", cloth_duvet: "Comforter",
+      cloth_pillowcase: "Pillow Cover", cloth_bathtowel: "Bath Towel", cloth_bathrobe: "Bath Robe", cloth_curtain_per_m: "Curtain (per m)",
       cloth_tablecloth: "Table Cloth", cloth_tablecloth_large: "Table Cloth Large",
       cloth_bisht: "Bisht", cloth_carpet_m2: "Carpet (per m²)", cloth_dupatta: "Dupatta", cloth_gahfiya: "Gahfiya", cloth_tshirt_half: "Half T-Shirt",
+      cloth_shaila: "Shaila", cloth_jalabiya: "Jalabiya", cloth_bdf_uniform: "BDF Uniform", cloth_hoodie_jacket: "Hoodie Jacket", cloth_shoes: "Shoes", cloth_small_towel: "Small Towel", cloth_overcoat_long: "Overcoat",
       service_wash: "Wash", service_iron: "Iron", service_washiron: "Wash & Iron",
       service_drycleaning: "Dry Clean", service_perfume: "Perfume", service_wrap: "Wrap",
       wa_greeting: (name) => `Hello ${name} 👋`,
@@ -3559,6 +3561,7 @@ body.auth-locked .top-logout{display:none!important}
       cloth_pillowcase: "تکیہ کور", cloth_bathtowel: "باتھ تولیہ", cloth_bathrobe: "باتھ روب", cloth_curtain_per_m: "پردہ (فی میٹر)",
       cloth_tablecloth: "میز پوش", cloth_tablecloth_large: "بڑا میز پوش",
       cloth_bisht: "بشت", cloth_carpet_m2: "قالین (فی مربع میٹر)", cloth_dupatta: "دوپٹہ", cloth_gahfiya: "قحفیہ", cloth_tshirt_half: "ہاف ٹی شرٹ",
+      cloth_shaila: "شیلہ", cloth_jalabiya: "جلابیہ", cloth_bdf_uniform: "بی ڈی ایف یونیفارم", cloth_hoodie_jacket: "ہوڈی جیکٹ", cloth_shoes: "جوتے", cloth_small_towel: "چھوٹا تولیہ", cloth_overcoat_long: "اوور کوٹ",
       service_wash: "دھلائی", service_iron: "استری", service_washiron: "دھلائی اور استری",
       service_drycleaning: "ڈرائی کلین", service_perfume: "خوشبو", service_wrap: "پیکنگ",
       wa_greeting: (name) => `السلام علیکم ${name} 👋`,
@@ -3657,7 +3660,7 @@ body.auth-locked .top-logout{display:none!important}
     return typeof val === "function" ? val(...args) : val;
   }
 
-  const CATALOG_VERSION = 3; // إصدار 3: قائمة أسعار المحل المعلّقة (26 صنف — كي / غسيل وكي)
+  const CATALOG_VERSION = 4; // إصدار 4: قائمة أسعار مغسلة 997 (35 صنف — كي / غسيل وكي / تنظيف جاف / مستعجل)
 
   const CLOTHING_DEFAULT = [
     { id: "thob_cotton", key: "cloth_thob_cotton", cat: "men" }, { id: "thob_wool", key: "cloth_thob_wool", cat: "men" },
@@ -3682,6 +3685,10 @@ body.auth-locked .top-logout{display:none!important}
     { id: "bisht", key: "cloth_bisht", cat: "men" }, { id: "dupatta", key: "cloth_dupatta", cat: "women" },
     { id: "gahfiya", key: "cloth_gahfiya", cat: "men" }, { id: "tshirt_half", key: "cloth_tshirt_half", cat: "men" },
     { id: "carpet_m2", key: "cloth_carpet_m2", cat: "home" },
+    { id: "shaila", key: "cloth_shaila", cat: "women" }, { id: "jalabiya", key: "cloth_jalabiya", cat: "women" },
+    { id: "bdf_uniform", key: "cloth_bdf_uniform", cat: "men" }, { id: "hoodie_jacket", key: "cloth_hoodie_jacket", cat: "men" },
+    { id: "overcoat_long", key: "cloth_overcoat_long", cat: "men" }, { id: "shoes", key: "cloth_shoes", cat: "men" },
+    { id: "small_towel", key: "cloth_small_towel", cat: "home" },
   ];
 
   const SERVICES_DEFAULT = [
@@ -3695,18 +3702,21 @@ body.auth-locked .top-logout{display:none!important}
   function serviceName(id) { const s = SERVICES_DEFAULT.find((c) => c.id === id); return s ? t(s.key) : id; }
 
   // جدول الأسعار الرسمي كما ورد في مغسلة 997 (كوي/غسيل/غسيل+كوي) — بالدينار البحريني
-  // جدول أسعار المحل (الكي / الغسيل والكي) — نفس قائمة الأسعار المعلّقة في المحل. الغسيل فقط غير مقدَّم.
+  // قائمة أسعار مغسلة 997 (كي / غسيل وكي / تنظيف جاف) — نفس القائمة المطبوعة. الغسيل فقط غير مقدَّم.
   const OFFICIAL_PRICES_997 = {
-    abaya_plain: { iron: 0.5, washiron: 1.0 }, bathtowel: { washiron: 0.5 }, bedsheet_single: { iron: 0.3, washiron: 0.5 },
-    blanket_single: { washiron: 1.5 }, bisht: { iron: 1.0, washiron: 2.5 }, carpet_m2: { washiron: 1.5 },
-    cap: { washiron: 0.5 }, overcoat: { iron: 0.8, washiron: 1.2 }, duvet: { washiron: 1.5 },
-    bedcover: { iron: 0.4, washiron: 0.8 }, dress: { iron: 0.3, washiron: 0.6 }, dupatta: { iron: 0.2, washiron: 0.3 },
-    ghatra: { iron: 0.2, washiron: 0.3 }, gahfiya: { washiron: 0.2 }, pants_short: { iron: 0.2, washiron: 0.3 },
-    tshirt_half: { iron: 0.2, washiron: 0.3 }, kurta_pyjama: { iron: 0.2, washiron: 0.5 }, pants_long: { iron: 0.2, washiron: 0.3 },
-    shirt: { iron: 0.2, washiron: 0.3 }, skirtlong: { iron: 0.2, washiron: 0.3 }, suit2pcs: { iron: 1.0, washiron: 1.5 },
-    socks: { washiron: 0.2 }, tablecloth: { iron: 0.3, washiron: 0.5 }, thob_cotton: { iron: 0.2, washiron: 0.5 },
-    tshirt: { iron: 0.2, washiron: 0.3 }, underwear: { iron: 0.1, washiron: 0.2 },
+    abaya_plain: { iron: 0.5, washiron: 1.0 }, bisht: { iron: 1.0, washiron: 2.5 }, thob_cotton: { iron: 0.2, washiron: 0.5 },
+    ghatra: { iron: 0.3, washiron: 0.6 }, gahfiya: { washiron: 0.2 }, shaila: { washiron: 0.2 }, dupatta: { iron: 0.2, washiron: 0.3 },
+    kurta_pyjama: { iron: 0.2, washiron: 0.5 }, jalabiya: { washiron: 1.0 }, dress: { washiron: 1.0 }, bdf_uniform: { iron: 0.4, washiron: 0.8 },
+    skirtlong: { iron: 0.2, washiron: 0.3 }, shirt: { iron: 0.2, washiron: 0.4 }, tshirt: { iron: 0.2, washiron: 0.4 }, pants_long: { iron: 0.2, washiron: 0.4 },
+    suit2pcs: { iron: 1.0, washiron: 1.5 }, overcoat: { iron: 0.8, washiron: 1.2, dryclean: 1.5 }, overcoat_long: { washiron: 1.5, dryclean: 2.0 },
+    jacket: { washiron: 1.0, dryclean: 2.0 }, hoodie_jacket: { washiron: 0.5 }, cap: { washiron: 0.5 }, socks: { washiron: 0.2 },
+    underwear: { iron: 0.1, washiron: 0.2 }, shoes: { washiron: 1.5 }, small_towel: { washiron: 0.3 }, bathtowel: { washiron: 0.5 },
+    bedsheet_single: { iron: 0.3, washiron: 0.5 }, bedsheet_double: { iron: 0.5, washiron: 1.0 }, pillowcase: { iron: 0.4, washiron: 0.8 },
+    tablecloth: { iron: 0.3, washiron: 0.5 }, blanket_single: { washiron: 1.5 }, blanket_double: { washiron: 2.0 }, duvet: { washiron: 1.5 },
+    carpet_m2: { washiron: 1.5 },
   };
+  // سعر الاستعجال للقطعة حيث يختلف عن ضعف السعر (تعديلات القائمة بخط اليد)؛ 0 = لا خدمة مستعجلة
+  const URGENT_PRICES_997 = { abaya_plain: 1.5, ghatra: 1.0, overcoat: 2.0, overcoat_long: 2.0, shoes: 0, blanket_double: 0, carpet_m2: 0 };
 
   function round3(n) { return Math.round((n + Number.EPSILON) * 1000) / 1000; }
   function money(n) { return round3(n || 0).toFixed(3) + " " + t("currency"); }
@@ -3743,7 +3753,7 @@ body.auth-locked .top-logout{display:none!important}
   let customGarments = load("l997_custom_garments", []);
 
   if (!settings) {
-    settings = { urgentPercent: 100, normalHours: 24, urgentHours: 6, prices: buildDefaultPrices(), orderSeq: 1, catalogVersion: CATALOG_VERSION, packageDefs: [],
+    settings = { urgentPercent: 100, normalHours: 24, urgentHours: 6, prices: buildDefaultPrices(), orderSeq: 1, catalogVersion: CATALOG_VERSION, packageDefs: [], urgentPrices: { ...URGENT_PRICES_997 },
       garmentActive: Object.fromEntries(CLOTHING_DEFAULT.map((g) => [g.id, !!OFFICIAL_PRICES_997[g.id]])) };
     save(KEYS.settings, settings);
   }
@@ -3751,7 +3761,9 @@ body.auth-locked .top-logout{display:none!important}
     const old = settings.prices || {};
     const fresh = buildDefaultPrices();
     // تُحفظ أسعار الغسيل الجاف وأسعار المنتجات التي أضافها المحل بنفسه
-    Object.keys(old).forEach((k) => { if ((/_dryclean$/.test(k) || /^custom_/.test(k)) && Number(old[k]) > 0) fresh[k] = old[k]; });
+    // تُحفظ أسعار المنتجات التي أضافها المحل بنفسه (الأصناف الرسمية بالضبط كما في القائمة، ومنها التنظيف الجاف)
+    Object.keys(old).forEach((k) => { if (/^custom_/.test(k) && Number(old[k]) > 0) fresh[k] = old[k]; });
+    settings.urgentPrices = { ...URGENT_PRICES_997 };
     settings.prices = fresh;
     // فقط أصناف القائمة مفعّلة؛ غيرها يُطفأ (لا يُحذف — الطلبات القديمة تحتفظ بأسمائها)
     const active = { ...(settings.garmentActive || {}) };
@@ -5895,6 +5907,7 @@ body.auth-locked .top-logout{display:none!important}
     pillowcase: "🛏️", bathtowel: "🛁", bathrobe: "🥋", curtain_per_m: "🪟",
     tablecloth: "🍽️", tablecloth_large: "🍽️",
     bisht: "🥻", dupatta: "🧣", gahfiya: "🧢", tshirt_half: "👕", carpet_m2: "🟫",
+    shaila: "🧕", jalabiya: "👗", bdf_uniform: "🪖", hoodie_jacket: "🧥", overcoat_long: "🧥", shoes: "👟", small_towel: "🧻",
   };
 
   let quickAddClothingId = null;
@@ -6016,6 +6029,19 @@ body.auth-locked .top-logout{display:none!important}
   }
 
   function priceFor(clothingId, serviceId) { return settings.prices[`${clothingId}_${serviceId}`] || 0; }
+  // سعر الاستعجال للقطعة (غسيل وكي) من قائمة الأسعار: فارغ = ضعف السعر (النسبة في الإعدادات)، 0 = لا خدمة مستعجلة لهذا الصنف
+  function urgentFixed(clothingId) { const v = settings.urgentPrices && settings.urgentPrices[clothingId]; return v === undefined || v === null || v === "" ? null : Number(v); }
+  const urgentBlocked = (it) => urgentFixed(it.clothingId) === 0;
+  // رسوم الاستعجال: سعر الاستعجال المحدد للصنف (غسيل وكي) − السعر العادي، وإلا النسبة من الإعدادات. قطع الباقات بدون رسوم
+  function urgentFeeOf(items) {
+    let pct = 0, fixed = 0;
+    (items || []).forEach((it) => {
+      if (it.fromPackageId || !(Number(it.total) > 0) || urgentBlocked(it)) return;
+      const f = it.serviceId === "washiron" ? urgentFixed(it.clothingId) : null;
+      if (f !== null && f > 0) fixed += Math.max(0, f * it.qty - it.total); else pct += Number(it.total) || 0;
+    });
+    return round3(round3((pct * settings.urgentPercent) / 100) + fixed);
+  }
   // خدمة مفعّلة للطلبات الجديدة؟ (الإعدادات). الغسيل فقط مطفأ افتراضياً — أسعاره تبقى محفوظة
   function svcOn(serviceId) { const m = settings.serviceActive || {}; return m[serviceId] !== undefined ? m[serviceId] !== false : serviceId !== "wash"; }
   // السعر المعروض للطلبات الجديدة: صفر إن كانت الخدمة مطفأة (لا يمس الطلبات المحفوظة ولا الباقات المباعة)
@@ -6232,7 +6258,7 @@ body.auth-locked .top-logout{display:none!important}
     const extras = extrasLines([...draftExtras], draftItems.reduce((n, it) => n + it.qty, 0));
     const extrasTotal = extrasTotalOf(extras);
     const priority = document.getElementById("orderPriority").value;
-    const urgentFee = priority === "urgent" ? round3((itemsTotal * settings.urgentPercent) / 100) : 0;
+    const urgentFee = priority === "urgent" ? urgentFeeOf(draftItems) : 0;
     return { itemsTotal, extras, extrasTotal, subtotal: round3(itemsTotal + extrasTotal), urgentFee };
   }
   function currentTotals() {
@@ -6451,6 +6477,8 @@ body.auth-locked .top-logout{display:none!important}
   function saveCurrentOrder(andPrint) {
     if (!draftCustomerId) { toast(t("toast_pick_customer")); openPosCustomerPicker(); return; }
     if (draftItems.length === 0) { toast(t("toast_add_one_item")); return; }
+    const noUrgent = document.getElementById("orderPriority").value === "urgent" ? draftItems.filter(urgentBlocked) : [];
+    if (noUrgent.length) { toast(`الخدمة المستعجلة غير متوفرة لـ: ${[...new Set(noUrgent.map((it) => clothingName(it.clothingId)))].join("، ")} — اجعل الطلب عادياً أو افصل هذه القطع في طلب عادي`); return; }
     const tt = currentTotals();
     const reason = document.getElementById("discountReason").value.trim();
     const proceed = async (approver, overridden) => {
@@ -7280,7 +7308,7 @@ body.auth-locked .top-logout{display:none!important}
     const itemsTotal = round3(order.items.reduce((a, it) => a + it.total, 0));
     const extrasTotal = extrasTotalOf(order.extras);
     const subtotal = round3(itemsTotal + extrasTotal);
-    const urgentFee = order.priority === "urgent" ? round3((itemsTotal * settings.urgentPercent) / 100) : 0;
+    const urgentFee = order.priority === "urgent" ? urgentFeeOf(order.items) : 0;
     const discount = round3(Math.min(Number(p.discount) || 0, subtotal + urgentFee));
     const preVat = Math.max(0, round3(subtotal + urgentFee - discount));
     const vatPercent = p.vatPercent !== undefined ? Number(p.vatPercent) || 0 : Number(loadProfile().vatPercent) || 0;
@@ -7306,6 +7334,8 @@ body.auth-locked .top-logout{display:none!important}
         if (!v.reason) { toast("اكتب سبب التعديل"); return false; }
         const newQty = order.items.map((it, i) => Math.max(0, Math.floor(Number(v["q" + i]) || 0)));
         if (newQty.every((q) => q === 0)) { toast("لا يمكن حذف كل الأصناف — استخدم إلغاء الطلب بدلاً من ذلك"); return false; }
+        const blockedU = v.priority === "urgent" ? order.items.filter((it, i) => newQty[i] > 0 && urgentBlocked(it)) : [];
+        if (blockedU.length) { toast(`الخدمة المستعجلة غير متوفرة لـ: ${[...new Set(blockedU.map((it) => clothingName(it.clothingId)))].join("، ")}`); return false; }
         // الباقات: الزيادة يجب أن تتوفر بالرصيد المتبقي للباقة
         for (let i = 0; i < order.items.length; i++) {
           const it = order.items[i], diff = newQty[i] - it.qty;
@@ -8334,6 +8364,7 @@ body.auth-locked .top-logout{display:none!important}
       return `<tr style="${isActive ? "" : "opacity:.45"}">
         <td><strong>${name}</strong></td>
         ${SERVICES_DEFAULT.map((s2) => `<td><input type="number" step="0.001" min="0" value="${settings.prices[`${g.id}_${s2.id}`] ?? 0}" data-price="${g.id}_${s2.id}" style="width:80px" /></td>`).join("")}
+        <td><input type="number" step="0.001" min="0" value="${urgentFixed(g.id) ?? ""}" data-urgent-price="${g.id}" placeholder="${priceFor(g.id, "washiron") ? round3(priceFor(g.id, "washiron") * (1 + settings.urgentPercent / 100)).toFixed(3) : "—"}" title="فارغ = تلقائي (ضعف السعر) — 0 = لا خدمة مستعجلة" style="width:80px" /></td>
         <td style="text-align:center"><input type="checkbox" data-garment-active="${g.id}" ${isActive ? "checked" : ""} /></td>
         <td>${isCustom ? `<button class="mini-btn danger-mini" data-del-garment="${g.id}">حذف</button>` : ""}</td>
       </tr>`;
@@ -8420,6 +8451,13 @@ body.auth-locked .top-logout{display:none!important}
       const newVal = round3(Math.max(0, raw)); // لا أسعار سالبة
       if (settings.prices[input.dataset.price] !== newVal) changedCount++;
       settings.prices[input.dataset.price] = newVal;
+    });
+    document.querySelectorAll("[data-urgent-price]").forEach((input) => {
+      const id = input.dataset.urgentPrice, txt = normDigits(String(input.value || "")).trim();
+      const next = txt === "" ? null : round3(Math.max(0, Number(txt) || 0));
+      if ((urgentFixed(id) ?? null) !== next) changedCount++;
+      settings.urgentPrices = settings.urgentPrices || {};
+      if (next === null) delete settings.urgentPrices[id]; else settings.urgentPrices[id] = next;
     });
     document.querySelectorAll("[data-extra-price]").forEach((input) => {
       const id = input.dataset.extraPrice;
