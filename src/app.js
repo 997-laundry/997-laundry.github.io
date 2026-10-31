@@ -63,6 +63,21 @@
       item.qty=newQty;save(EXT_KEYS.inventory,inventory);stockMove(item,'void',-p.qty,{ref:p.id,note:p.supplier})}
     if(p.expenseId)this.deleteExpense(p.expenseId);
     p.voided=true;p.voidedAt=new Date().toISOString();save(EXT_KEYS.purchases,purchases);log('إلغاء شراء مخزون',p.total,{id});return {ok:true}},
+  // تعديل شراء مسجّل بالخطأ (الكمية / سعر الوحدة): يُعدَّل المخزون ومتوسط التكلفة والمصروف المرتبط، ويُحفظ ما قبل التعديل
+  editPurchase(id,x){const p=purchases.find(z=>z.id===id);if(!p||p.voided)return {ok:false,reason:'none'};
+    const qty=r3(x.qty),unit=r3(x.unitCost);if(!(qty>0)||!(unit>0))return {ok:false,reason:'input'};
+    const item=inventory.find(i=>i.id===p.inventoryId),dq=r3(qty-p.qty),newTotal=r3(qty*unit),dTotal=r3(newTotal-p.total);
+    if(item){const newQ=r3(item.qty+dq);if(newQ<0)return {ok:false,reason:'stock',max:r3(p.qty-item.qty)};
+      // قيمة المخزون: الكمية المضافة/المسحوبة بالسعر الجديد + فرق السعر على ما بقي من هذا الشراء فقط (المستهلك سابقاً لا يُعاد تقييمه)
+      const oldVal=item.qty*(item.avgCost||0),dVal=dq*unit+(unit-r3(p.unitCost))*Math.min(r3(p.qty),item.qty);
+      if(newQ>0)item.avgCost=Math.max(0,+((oldVal+dVal)/newQ).toFixed(4));
+      item.qty=newQ;item.lastCost=unit;save(EXT_KEYS.inventory,inventory);if(dq)stockMove(item,'count',dq,{ref:p.id,note:'تعديل شراء'+(x.reason?' — '+x.reason:'')})}
+    const u=window.L997Auth&&window.L997Auth.user?window.L997Auth.user():null;
+    (p.edits=p.edits||[]).push({at:new Date().toISOString(),by:u?u.name:'',reason:x.reason||'',before:{qty:p.qty,unitCost:p.unitCost,total:p.total},after:{qty,unitCost:unit,total:newTotal}});
+    const beforeTxt=`${p.qty} × ${p.unitCost} = ${p.total}`;
+    p.qty=qty;p.unitCost=unit;p.total=newTotal;
+    if(p.expenseId){const ex=expenses.find(e=>e.id===p.expenseId);if(ex){ex.amount=newTotal;save(EXT_KEYS.expenses,expenses)}}
+    save(EXT_KEYS.purchases,purchases);log(`تعديل شراء مخزون «${p.itemName}»: ${beforeTxt} → ${qty} × ${unit} = ${newTotal}${x.reason?' — '+x.reason:''}`,dTotal,{id});return {ok:true}},
   consumeStock(id,qty,reason='usage',note=''){const i=inventory.find(x=>x.id===id);qty=r3(qty);if(!i||!(qty>0)||qty>i.qty)return false;
     i.qty=r3(i.qty-qty);save(EXT_KEYS.inventory,inventory);stockMove(i,'out',-qty,{reason,note});log('صرف مخزون',qty*(i.avgCost||0),{inventoryId:id,qty,reason});return true},
   adjustStock(id,newQty,note=''){const i=inventory.find(x=>x.id===id);if(!i)return null;newQty=r3(newQty);if(!(newQty>=0))return null;const diff=r3(newQty-i.qty);if(diff===0)return null;
@@ -6021,7 +6036,7 @@
    t_material_new:'مادة جديدة',t_material_edit:'تعديل مادة',t_purchase:'تسجيل شراء',t_use:'صرف من المخزون',t_supplier_new:'مورد جديد',t_supplier_edit:'تعديل مورد',t_pay:'تسديد مشترى آجل',t_confirm:'تأكيد',
    p_all:'الكل',p_paid:'المدفوعة',p_unpaid:'الآجلة',p_voided:'الملغاة',
    mv_all:'كل الحركات',
-   e_name:'أدخل اسم المادة',e_dup:'توجد مادة بنفس الاسم',e_qty:'أدخل كمية صحيحة أكبر من صفر',e_cost:'أدخل سعراً صحيحاً أكبر من صفر',e_nostock:'الكمية المطلوبة أكبر من المتوفر',e_noitems:'أضف مادة أولاً',e_sname:'أدخل اسم المورد',e_void_stock:'لا يمكن الإلغاء: الكمية المتوفرة الآن أقل من الكمية المشتراة',e_min:'القيم لا يمكن أن تكون سالبة',
+   e_name:'أدخل اسم المادة',e_dup:'توجد مادة بنفس الاسم',e_qty:'أدخل كمية صحيحة أكبر من صفر',e_cost:'أدخل سعراً صحيحاً أكبر من صفر',e_nostock:'الكمية المطلوبة أكبر من المتوفر',e_noitems:'أضف مادة أولاً',e_sname:'أدخل اسم المورد',e_void_stock:'لا يمكن إلغاء الشراء كاملاً لأن جزءاً منه استُخدم — استخدم «تعديل» لتصحيح الكمية أو السعر',edit_pur:'تعديل',edit_pur_sub:'صحّح الكمية أو سعر الوحدة — يُعدَّل المخزون والمصروف المرتبط تلقائياً',f_edit_reason:'سبب التعديل (إلزامي)',e_reason:'اكتب سبب التعديل',e_edit_stock:n=>`لا يمكن تقليل الكمية بهذا القدر: استُخدم جزء منها — أقل كمية ممكنة الآن ${n}`,ok_edit_pur:'تم تعديل الشراء',e_min:'القيم لا يمكن أن تكون سالبة',
    ok_material:'تم حفظ المادة',ok_purchase:'تم تسجيل الشراء وتحديث المخزون',ok_use:'تم تسجيل الصرف',ok_supplier:'تم حفظ المورد',ok_pay:'تم التسديد وتسجيل المصروف',ok_void:'تم إلغاء الشراء وعكس الكمية',ok_del:'تم الحذف',ok_count:n=>`تمت تسوية ${n} مادة`,no_changes:'لا توجد فروقات للتسوية',
    c_del_material:n=>`حذف المادة «${n}» نهائياً؟ سجل حركاتها السابق يبقى محفوظاً.`,c_void:'إلغاء هذا الشراء؟ ستُخصم الكمية من المخزون ويُحذف المصروف المرتبط به.',c_del_supplier:n=>`حذف المورد «${n}»؟ تبقى مشترياته السابقة في السجل.`,
    count_hint:'اكتب الكمية الفعلية الموجودة على الرف. اترك الخانة فارغة للمواد التي لم تعدّها. ثم اضغط اعتماد الجرد.',apply_count:'اعتماد الجرد',count_note:'جرد فعلي',
@@ -6051,7 +6066,7 @@
    t_material_new:'New material',t_material_edit:'Edit material',t_purchase:'Record purchase',t_use:'Issue from stock',t_supplier_new:'New supplier',t_supplier_edit:'Edit supplier',t_pay:'Pay credit purchase',t_confirm:'Confirm',
    p_all:'All',p_paid:'Paid',p_unpaid:'On credit',p_voided:'Voided',
    mv_all:'All movements',
-   e_name:'Enter the material name',e_dup:'A material with this name already exists',e_qty:'Enter a valid quantity above zero',e_cost:'Enter a valid price above zero',e_nostock:'Requested quantity exceeds stock',e_noitems:'Add a material first',e_sname:'Enter the supplier name',e_void_stock:'Cannot void: current stock is lower than the purchased quantity',e_min:'Values cannot be negative',
+   e_name:'Enter the material name',e_dup:'A material with this name already exists',e_qty:'Enter a valid quantity above zero',e_cost:'Enter a valid price above zero',e_nostock:'Requested quantity exceeds stock',e_noitems:'Add a material first',e_sname:'Enter the supplier name',e_void_stock:'Cannot void the whole purchase because part of it was used — use "Edit" to correct the quantity or price',edit_pur:'Edit',edit_pur_sub:'Correct the quantity or unit price — stock and the linked expense update automatically',f_edit_reason:'Reason for the change (required)',e_reason:'Enter the reason',e_edit_stock:n=>`Cannot reduce that much: part of it was used — lowest possible quantity now ${n}`,ok_edit_pur:'Purchase updated',e_min:'Values cannot be negative',
    ok_material:'Material saved',ok_purchase:'Purchase recorded and stock updated',ok_use:'Issue recorded',ok_supplier:'Supplier saved',ok_pay:'Paid and expense recorded',ok_void:'Purchase voided and quantity reversed',ok_del:'Deleted',ok_count:n=>`${n} material(s) adjusted`,no_changes:'No differences to adjust',
    c_del_material:n=>`Permanently delete "${n}"? Its past movements stay in the log.`,c_void:'Void this purchase? The quantity is deducted from stock and its linked expense is removed.',c_del_supplier:n=>`Delete supplier "${n}"? Past purchases stay in the log.`,
    count_hint:'Enter the actual quantity on the shelf. Leave blank for materials you did not count. Then press Apply count.',apply_count:'Apply count',count_note:'Physical count',
@@ -6150,7 +6165,7 @@
   const list=E().data.purchases.filter(p=>iv.pur==='all'||(iv.pur==='void'?p.voided:(!p.voided&&(iv.pur==='paid'?p.paid!==false:p.paid===false)))).slice(0,300);
   const rows=list.map(p=>{
    const badge=p.voided?`<span class="priority-badge priority-urgent">${IX('st_void')}</span>`:p.paid===false?`<span class="priority-badge priority-high">${IX('st_unpaid')}</span>`:`<span class="status-badge status-ready">${IX('st_paid')}</span>`;
-   const acts=p.voided?'':`<div class="row-actions">${p.paid===false?`<button class="mini-btn" data-act="paypur" data-id="${p.id}">${IX('pay')}</button>`:''}${CAN('delete_records')?`<button class="mini-btn danger-mini" data-act="voidpur" data-id="${p.id}">${IX('void')}</button>`:''}</div>`;
+   const acts=p.voided?'':`<div class="row-actions">${p.paid===false?`<button class="mini-btn" data-act="paypur" data-id="${p.id}">${IX('pay')}</button>`:''}${CAN('delete_records')?`<button class="mini-btn" data-act="editpur" data-id="${p.id}">✏️ ${IX('edit_pur')}</button><button class="mini-btn danger-mini" data-act="voidpur" data-id="${p.id}">${IX('void')}</button>`:''}</div>`;
    return `<tr${p.voided?' style="opacity:.55"':''}><td>${fmtDate(p.date)}</td><td>${esc(p.itemName||'—')}</td><td>${esc(p.supplier||'')}</td><td>${qtyFmt(p.qty)} ${esc(p.unit||'')}</td><td>${money(p.unitCost)}</td><td><b>${money(p.total)}</b></td><td>${esc(p.invoiceNo||'')}</td><td>${badge}</td><td>${acts}</td></tr>`}).join('');
   return `<div class="panel"><div class="panel-header"><div><h3>${IX('tab_purchases')}</h3></div><button class="primary-btn" type="button" data-act="addp">${IX('add_purchase')}</button></div><div class="chip-grid">${chips}</div>${tbl([IX('th_date'),IX('th_material'),IX('th_supplier'),IX('th_qty'),IX('th_unitcost'),IX('th_total'),IX('th_invoice'),IX('th_status'),''],rows,IX('purchases_empty'))}</div>`;
  }
@@ -6225,6 +6240,21 @@
    renderInventory();typeof renderFinance==='function'&&renderFinance();typeof renderClosures==='function'&&renderClosures();window.toast(IX('ok_purchase'));
   }});
  }
+ function editPurchaseForm(p){
+  const item=invs().find(i=>i.id===p.inventoryId);
+  window.openQuickForm({title:`✏️ ${IX('edit_pur')} — ${p.itemName||''}`,sub:`${IX('edit_pur_sub')} ${item?`(${IX('th_stock')}: ${qtyFmt(item.qty)} ${item.unit})`:''}`,submitLabel:IX('edit_pur'),fields:[
+   {id:'qty',label:IX('f_qty'),type:'number',step:'0.001',value:p.qty,min:0},
+   {id:'unitCost',label:IX('f_unitcost'),type:'number',step:'0.001',value:p.unitCost,min:0},
+   {id:'reason',label:IX('f_edit_reason'),type:'text',value:''},
+  ],onSubmit:v=>{
+   if(!(Number(v.qty)>0)){window.toast(IX('e_qty'));return false}
+   if(!(Number(v.unitCost)>0)){window.toast(IX('e_cost'));return false}
+   if(!String(v.reason||'').trim()){window.toast(IX('e_reason'));return false}
+   const r=E().editPurchase(p.id,{qty:Number(v.qty),unitCost:Number(v.unitCost),reason:String(v.reason).trim()});
+   if(!r.ok){window.toast(r.reason==='stock'?IX('e_edit_stock',r.max):IX('e_qty'));return false}
+   renderInventory();typeof renderFinance==='function'&&renderFinance();typeof renderClosures==='function'&&renderClosures();window.toast(IX('ok_edit_pur'));
+  }});
+ }
  function useForm(item){
   window.openQuickForm({title:IX('t_use'),sub:`${item.name} — ${qtyFmt(item.qty)} ${item.unit}`,fields:[
    {id:'qty',label:IX('f_qty'),type:'number',step:'0.001',value:'',min:0},
@@ -6283,9 +6313,10 @@
    else if(act==='use'&&item)useForm(item);
    else if(act==='edit'&&item)materialForm(item);
    else if(act==='hist'&&item){iv.tab='moves';iv.mvType='all';iv.mvSearch=item.name;renderInventory()}
-   else if((act==='delm'||act==='voidpur'||act==='dels')&&!CAN('delete_records'))window.toast('ليست لديك صلاحية لهذا الإجراء');
+   else if((act==='delm'||act==='voidpur'||act==='editpur'||act==='dels')&&!CAN('delete_records'))window.toast('ليست لديك صلاحية لهذا الإجراء');
    else if(act==='delm'&&item)invConfirm(IX('c_del_material',item.name),()=>{E().deleteMaterial(item.id);renderInventory();window.toast(IX('ok_del'))});
    else if(act==='paypur'){const p=E().data.purchases.find(x=>x.id===id);if(p)payForm(p)}
+   else if(act==='editpur'){const p=E().data.purchases.find(x=>x.id===id);if(p)editPurchaseForm(p)}
    else if(act==='voidpur')invConfirm(IX('c_void'),()=>{const r=E().voidPurchase(id);if(!r.ok){window.toast(IX('e_void_stock'));return false}renderInventory();typeof renderFinance==='function'&&renderFinance();typeof renderClosures==='function'&&renderClosures();window.toast(IX('ok_void'))});
    else if(act==='edits'){const s=sups().find(x=>x.id===id);if(s)supplierForm(s)}
    else if(act==='dels'){const s=sups().find(x=>x.id===id);if(s)invConfirm(IX('c_del_supplier',s.name),()=>{E().deleteSupplier(s.id);renderInventory();window.toast(IX('ok_del'))})}
