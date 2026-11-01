@@ -773,7 +773,13 @@
       garmentActive: Object.fromEntries(CLOTHING_DEFAULT.map((g) => [g.id, !!OFFICIAL_PRICES_997[g.id]])) };
     save(KEYS.settings, settings);
   }
-  if (!settings.prices || settings.catalogVersion !== CATALOG_VERSION) {
+  // نسخة أقدم من النظام (مخزّنة في المتصفح) لا تُرجع قائمة الأسعار لإصدار أقدم — وإلا تتسابق الأجهزة وتعيد تحميل بعضها
+  const staleCode = Number(settings.catalogVersion) > CATALOG_VERSION;
+  if (staleCode) {
+    let tried = false; try { tried = sessionStorage.getItem("l997_stale_reload") === "1"; sessionStorage.setItem("l997_stale_reload", "1"); } catch (e) { tried = true; }
+    if (!tried && navigator.onLine !== false) fetch(location.href, { cache: "reload" }).then(() => location.reload(), () => {});
+  } else { try { sessionStorage.removeItem("l997_stale_reload"); } catch (e) { /* ignore */ } }
+  if (!staleCode && (!settings.prices || settings.catalogVersion !== CATALOG_VERSION)) {
     const old = settings.prices || {};
     const fresh = buildDefaultPrices();
     // تُحفظ أسعار الغسيل الجاف وأسعار المنتجات التي أضافها المحل بنفسه

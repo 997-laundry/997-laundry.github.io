@@ -338,6 +338,22 @@
   }
   // إعادة تحميل الصفحة بدون إنترنت قد تُظهر صفحة خطأ المتصفح بدل النظام — لا نعيد التحميل إلا مع اتصال
   const netUp = () => online && (typeof navigator === "undefined" || navigator.onLine !== false);
+  // حماية من التحديث المتكرر: أكثر من 3 إعادات تحميل تلقائية خلال دقيقتين = خلل (مثلاً جهاز بنسخة قديمة) —
+  // نتوقف عن إعادة التحميل التلقائي ونعرض زر «تحديث» بدلاً منه، ونسجّل السبب للتشخيص
+  function reloadStorm() {
+    let a = []; try { a = JSON.parse(sessionStorage.getItem("l997_cloud_reloads") || "[]"); } catch (e) { a = []; }
+    return a.filter((t) => Date.now() - t < 120000).length >= 3;
+  }
+  function autoReload() {
+    if (reloadStorm()) { showUpdateChip(true); return; }
+    try {
+      let a = JSON.parse(sessionStorage.getItem("l997_cloud_reloads") || "[]");
+      a = [...a.filter((t) => Date.now() - t < 120000), Date.now()]; sessionStorage.setItem("l997_cloud_reloads", JSON.stringify(a));
+    } catch (e) { /* ignore */ }
+    const why = [...new Set([...staged.values()].map((r) => r.collection))].join(",");
+    note("reloads", { at: new Date().toISOString(), why });
+    reloadNow();
+  }
   function reloadNow() {
     const h = host();
     try { sessionStorage.setItem("l997_cloud_page", h ? h.page() : ""); sessionStorage.setItem("l997_cloud_scroll", String(Math.round(root.scrollY || 0))); } catch (e) { /* ignore */ }
@@ -369,7 +385,7 @@
       return;
     }
     showUpdateChip(true);
-    if (idle() && netUp()) reloadNow();
+    if (idle() && netUp()) autoReload();
   }
 
   /* ---------- حلقة المزامنة ---------- */

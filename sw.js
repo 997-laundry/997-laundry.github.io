@@ -1,7 +1,7 @@
 /* global caches, fetch */
 // Offline support: the app is one HTML file. Network first (so updates arrive as soon as the phone
 // is online), falling back to the saved copy when there is no connection.
-const CACHE = "l997-v1";
+const CACHE = "l997-v2";
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
@@ -20,7 +20,8 @@ self.addEventListener("fetch", (e) => {
   const isFont = /fonts\.(googleapis|gstatic)\.com$/.test(url.hostname);
   if (!sameOrigin && !isFont) return; // WhatsApp links etc. go straight to the network
   e.respondWith(
-    fetch(req)
+    // صفحة النظام نفسها: تُطلب دائماً من الخادم بدون نسخة المتصفح المؤقتة — حتى يصل التحديث لكل الأجهزة فوراً
+    fetch(req.mode === "navigate" ? new Request(req, { cache: "no-cache" }) : req)
       .then((res) => {
         if (res && (res.ok || res.type === "opaque")) {
           const copy = res.clone();

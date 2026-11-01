@@ -102,6 +102,27 @@ const PW = "Owner#2026pass";
   const fr = await A.evaluate(() => ({ name: JSON.parse(localStorage.getItem("l997_settings")).shopName, dash: document.getElementById("page-dashboard").classList.contains("active"), y: Math.round(window.scrollY) }));
   check("settings change from another device still reaches this screen, same page and scroll", fr.name === "997 Laundry Riffa" && fr.dash && fr.y >= 380, JSON.stringify(fr));
 
+  // a device running an older copy of the system must not push the price list back to an older version (reload ping-pong)
+  const cv = async () => (await cloud.query("select data->>'catalogVersion' v from public.records where collection='settings' and not deleted")).rows[0].v;
+  await B.evaluate(() => { const s = JSON.parse(localStorage.getItem("l997_settings")); s.catalogVersion = 99; localStorage.setItem("l997_settings", JSON.stringify(s)); });
+  await A.waitForTimeout(15000); await A.waitForSelector("body:not(.auth-locked)");
+  const h1 = (await cloud.query("select max(id)::int m from public.record_history where collection='settings'")).rows[0].m;
+  await A.waitForTimeout(12000);
+  const h2 = (await cloud.query("select max(id)::int m from public.record_history where collection='settings'")).rows[0].m;
+  check("older system copy leaves a newer price list alone and the devices settle (no settings ping-pong)", (await cv()) === "99" && h1 === h2, JSON.stringify({ v: await cv(), h1, h2 }));
+  await B.evaluate(() => { const s = JSON.parse(localStorage.getItem("l997_settings")); s.catalogVersion = 4; localStorage.setItem("l997_settings", JSON.stringify(s)); });
+  await A.waitForTimeout(12000); await A.waitForSelector("body:not(.auth-locked)");
+
+  // safety net: if full reloads ever repeat (3 within 2 minutes), stop reloading by itself and show the update button
+  await nav(A, "dashboard"); await A.waitForTimeout(300);
+  await A.evaluate(() => { window.__mark = 1; const n = Date.now(); sessionStorage.setItem("l997_cloud_reloads", JSON.stringify([n - 30000, n - 20000, n - 10000])); });
+  await B.evaluate(() => { const s = JSON.parse(localStorage.getItem("l997_settings")); s.shopName = "997 Laundry"; localStorage.setItem("l997_settings", JSON.stringify(s)); });
+  await A.waitForTimeout(12000);
+  const storm = await A.evaluate(() => ({ mark: window.__mark, chip: !!document.getElementById("cloudUpdateChip") && document.getElementById("cloudUpdateChip").style.display !== "none" }));
+  check("repeated reloads are stopped: no 4th automatic reload, the update button is shown instead", storm.mark === 1 && storm.chip, JSON.stringify(storm));
+  await A.click("#cloudUpdateChip"); await A.waitForSelector("body:not(.auth-locked)"); await A.waitForTimeout(800);
+  check("pressing the update button applies the change", (await A.evaluate(() => JSON.parse(localStorage.getItem("l997_settings")).shopName)) === "997 Laundry");
+
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close(); await cloud.close();
   console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL NO-JUMP CHECKS PASSED");
