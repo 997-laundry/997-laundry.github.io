@@ -1,4 +1,4 @@
-/* global caches, fetch */
+/* global caches, fetch, Request */
 // Offline support: the app is one HTML file. Network first (so updates arrive as soon as the phone
 // is online), falling back to the saved copy when there is no connection.
 const CACHE = "l997-v2";

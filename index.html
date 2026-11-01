@@ -3851,7 +3851,7 @@ body.auth-locked .top-logout{display:none!important}
   const staleCode = Number(settings.catalogVersion) > CATALOG_VERSION;
   if (staleCode) {
     let tried = false; try { tried = sessionStorage.getItem("l997_stale_reload") === "1"; sessionStorage.setItem("l997_stale_reload", "1"); } catch (e) { tried = true; }
-    if (!tried && navigator.onLine !== false) fetch(location.href, { cache: "reload" }).then(() => location.reload(), () => {});
+    if (!tried && navigator.onLine !== false) window.fetch(location.href, { cache: "reload" }).then(() => location.reload(), () => {});
   } else { try { sessionStorage.removeItem("l997_stale_reload"); } catch (e) { /* ignore */ } }
   if (!staleCode && (!settings.prices || settings.catalogVersion !== CATALOG_VERSION)) {
     const old = settings.prices || {};
