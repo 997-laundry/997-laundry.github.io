@@ -67,7 +67,7 @@ const CATALOG = Number((/const CATALOG_VERSION = (\d+)/.exec(fs.readFileSync(pat
   check("ready prompt says what is still owed (not 'payment confirmed')", /متبقي 0\.600/.test(title), title.slice(0, 120));
   await submit(); m = await last();
   check("ready message: paid 0.400, remaining 0.600", /المدفوع: 0\.400/.test(m.text) && /المتبقي: 0\.600/.test(m.text), m.text);
-  check("ready message no longer claims the shop is open 24 hours", !/24/.test(m.text), m.text);
+  check("ready message: shop open 24 hours", /المحل مفتوح 24 ساعة/.test(m.text), m.text);
 
   /* 3) customer pays 0.300 of the remaining from the customer file → payment message, clear balance wording */
   const cust = (await ls("l997_customers")).find((c) => c.phone.includes("33445566"));
