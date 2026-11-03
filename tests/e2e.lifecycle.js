@@ -339,7 +339,7 @@ const r3 = (n) => Math.round((Number(n) + Number.EPSILON) * 1000) / 1000;
   await page.fill("#qf_name", "Iron 3"); await page.selectOption("#qf_serviceType", "iron"); await page.fill("#qf_pieceCount", "3"); await page.fill("#qf_price", "0.9");
   await submit(); await closeAll();
   const cP = await newCustomer("Package Customer", "33440001");
-  await nav("customers"); await page.fill("#customerSearch", "Package"); await page.click("#customersBody tr:first-child [data-sell-package]"); await submit(); await closeAll();
+  await nav("customers"); await page.fill("#customerSearch", "Package"); await page.click("#customersBody tr:first-child [data-sell-package]"); await submit(); await page.waitForTimeout(300); await closeAll();
   const oP1 = await makeOrder(cP.id, "33440001", [["shirt", "iron", 2]]);
   check("active package: 2 shirts ironed from the package, order total 0", oP1.payment.total === 0 && oP1.items.every((i) => i.fromPackageId), JSON.stringify(oP1.items.map((i) => [i.qty, i.fromPackageId ? "pkg" : "paid"])));
   const oP2 = await makeOrder(cP.id, "33440001", [["shirt", "iron", 2]]);

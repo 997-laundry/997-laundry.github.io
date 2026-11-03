@@ -204,6 +204,7 @@ function check(name, cond, detail) {
   await page.fill("#customerSearch", "Sara");
   await page.click("#customersBody tr:first-child [data-sell-package]");
   await quickSubmit();
+  await quickCancelIfOpen(); // "send the package confirmation on WhatsApp?" → later
   await newOrder("Sara", "33445566", ["shirt", "shirt", "shirt"]);
   const pk = await page.evaluate(() => ({ cps: JSON.parse(localStorage.getItem("l997_customer_packages")), orders: JSON.parse(localStorage.getItem("l997_orders")), ledger: JSON.parse(localStorage.getItem("l997_ledger")) }));
   const sOrder = pk.orders[0];
@@ -236,6 +237,7 @@ function check(name, cond, detail) {
   await page.click("#customersBody tr:first-child [data-sell-package]");
   await page.selectOption("#qf_defId", await page.$eval("#qf_defId", (sel) => [...sel.options].find((o) => o.text.includes("Thobes 10")).value));
   await quickSubmit();
+  await quickCancelIfOpen();
   await newOrder("Huda", "33778899", ["thob_cotton", "shirt"]);
   const hz = await page.evaluate(() => ({ cps: JSON.parse(localStorage.getItem("l997_customer_packages")), o: JSON.parse(localStorage.getItem("l997_orders"))[0] }));
   const thob = hz.o.items.find((i) => i.clothingId === "thob_cotton"), shirt = hz.o.items.find((i) => i.clothingId === "shirt");
