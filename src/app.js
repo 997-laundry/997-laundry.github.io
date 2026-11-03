@@ -3932,6 +3932,7 @@
      يُرسم الإيصال على canvas (المتصفح يشكّل الحروف العربية تلقائياً)، ثم يُغلَّف بصفحة PDF واحدة.
      المشاركة عبر قائمة «مشاركة» في الجهاز (واتساب يرفق الملف)؛ وإن لم يدعمها الجهاز يُنزَّل الملف ويُفتح واتساب. */
   function receiptCanvas(order, cust) {
+    const iso = (x) => "\u2066" + x + "\u2069"; // رقم أو نص إنجليزي داخل سطر عربي يبقى بترتيبه الصحيح
     const en = lang === "en" || lang === "ur", L = (ar, eng) => (en ? eng : ar);
     const p = order.payment, profile = loadProfile();
     const S = 2, W = 380 * S, pad = 22 * S;
@@ -3940,20 +3941,21 @@
     // المحتوى أولاً لحساب الطول
     const rows = order.items.map((it) => ({ a: `${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}`, q: it.qty, v: it.fromPackageId ? L("من الباقة", "Package") : money(it.total) }));
     (order.extras || []).forEach((l) => rows.push({ a: `+ ${extraName(l.id)}`, q: l.per === "piece" ? l.qty : "", v: money(l.total) }));
-    const totals = [[L("المجموع الأساسي", "Subtotal"), money(p.subtotal)]];
+    const totals = [[L("المجموع الأساسي", "Subtotal"), money(p.subtotal)]], paidRows = [];
     if (p.urgentFee > 0) totals.push([L("رسوم الاستعجال", "Urgent fee"), money(p.urgentFee)]);
-    if (p.discount > 0) totals.push([L("الخصم", "Discount"), "-" + money(p.discount)]);
+    if (p.discount > 0) totals.push([L("الخصم", "Discount") + (order.discountCode ? " · " + iso(order.discountCode) : ""), en ? "−" + money(p.discount) : money(p.discount)]);
     if (p.vat > 0) totals.push([`${L("ضريبة القيمة المضافة", "VAT")} ${p.vatPercent}%`, money(p.vat)]);
     let status;
     if (order.status === "cancelled") status = [L("الطلب ملغي", "Order cancelled"), C.bad, C.badBg];
     else if (!order.paymentConfirmed) status = [`${L("المستحق عند الاستلام", "Due on pickup")}: ${money(p.total)}`, C.warn, C.warnBg];
     else {
       const owed = order.debtRecorded && cust ? FIN.allocateDebts([cust], orders, ledger)[order.id] || 0 : 0;
+      if (owed > 0 && owed < p.total - 0.0005) paidRows.push([L("المدفوع", "Paid") + ` (${orderPayLabel(order)})`, money(round3(p.total - owed))]);
       status = owed > 0 ? [`${L("المتبقي عليكم", "Balance due")}: ${money(owed)}`, C.bad, C.badBg] : [`✓ ${L("مدفوع بالكامل", "Fully paid")} — ${orderPayLabel(order)}`, C.good, C.goodBg];
     }
     const pkgs = orderPackageLines(order);
     const footer = [profile.cr ? `${L("س.ت", "CR")}: \u2066${profile.cr}\u2069` : "", profile.vat ? `${L("الرقم الضريبي", "VAT No.")}: \u2066${profile.vat}\u2069` : ""].filter(Boolean).join("   ·   ");
-    const rowH = 30 * S, H = Math.round(150 * S + 110 * S + rows.length * rowH + 20 * S + totals.length * 26 * S + 60 * S + 70 * S + pkgs.length * 24 * S + 90 * S + (footer ? 20 * S : 0));
+    const rowH = 30 * S, H = Math.round(150 * S + 110 * S + rows.length * rowH + 20 * S + totals.length * 26 * S + 60 * S + 70 * S + pkgs.length * 24 * S + paidRows.length * 30 * S + 90 * S + (footer ? 20 * S : 0));
     const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
     const g = cv.getContext("2d");
     g.direction = en ? "ltr" : "rtl";
@@ -3962,7 +3964,6 @@
     const fit = (s0, font, max) => { g.font = font; let x = String(s0); while (x.length > 3 && g.measureText(x).width > max) x = x.slice(0, -2); return x === String(s0) ? x : x + "…"; };
     const rrect = (x, y, w, h, r, color) => { g.fillStyle = color; g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); g.fill(); };
     const startAlign = en ? "left" : "right", endAlign = en ? "right" : "left";
-    const iso = (x) => "\u2066" + x + "\u2069"; // رقم أو نص إنجليزي داخل سطر عربي يبقى بترتيبه الصحيح
     g.fillStyle = "#ffffff"; g.fillRect(0, 0, W, H);
     // الترويسة
     g.fillStyle = C.brand; g.fillRect(0, 0, W, 130 * S);
@@ -3972,10 +3973,13 @@
     else txt("997", bx + 29 * S, 72 * S, FONT(800, 20), "#0C1E42", "center");
     const nx = en ? pad + 72 * S : W - pad - 72 * S;
     txt(iso(fit((en ? profile.nameEn : profile.nameAr) || "997 Laundry", FONT(800, 22), W - 150 * S)), nx, 62 * S, FONT(800, 22), "#ffffff", startAlign);
-    txt(fit([profile.phone ? iso(profile.phone) : "", profile.address].filter(Boolean).join(" · ") || iso("997 Laundry"), FONT(500, 13), W - 150 * S), nx, 88 * S, FONT(500, 13), "#e3f1f7", startAlign);
+    const sub = [profile.phone ? iso(profile.phone) : "", profile.address].filter(Boolean).join(" · ") || L("الرفاع · مملكة البحرين · مفتوح 24 ساعة", "Riffa · Bahrain · Open 24 hours");
+    txt(fit(sub, FONT(500, 13), W - 150 * S), nx, 88 * S, FONT(500, 13), "#e3f1f7", startAlign);
     let y = 166 * S;
-    txt(`${L("إيصال طلب", "Receipt — Order")} #${order.number}`, start, y, FONT(800, 18), C.ink, startAlign);
-    txt(fmtDT(order.createdAt), end, y, FONT(500, 13), C.muted, endAlign);
+    // رقم الطلب يبقى «#00005» بالترتيب الصحيح داخل السطر العربي، والعنوان لا يتداخل مع التاريخ
+    const dt = fmtDT(order.createdAt); g.font = FONT(500, 13); const dtW = g.measureText(dt).width;
+    txt(fit(`${L("إيصال طلب", "Receipt")} ${iso("#" + order.number)}`, FONT(800, 18), W - 2 * pad - dtW - 16 * S), start, y, FONT(800, 18), C.ink, startAlign);
+    txt(dt, end, y, FONT(500, 13), C.muted, endAlign);
     y += 28 * S;
     if (cust) { txt(fit(cust.name, FONT(700, 15), W * 0.55), start, y, FONT(700, 15), C.ink, startAlign); txt(iso(cust.phone || ""), end, y, FONT(500, 13), C.muted, endAlign); }
     y += 22 * S;
@@ -4002,6 +4006,7 @@
     txt(L("الإجمالي", "Total"), start, y, FONT(800, 20), C.ink, startAlign);
     txt(money(p.total), end, y, FONT(800, 22), C.brand, endAlign);
     y += 24 * S;
+    paidRows.forEach(([k, v]) => { y += 6 * S; txt(k, start, y, FONT(600, 14), C.good, startAlign); txt(v, end, y, FONT(700, 14), C.good, endAlign); y += 22 * S; });
     rrect(pad, y, W - 2 * pad, 44 * S, 12 * S, status[2]);
     txt(fit(status[0], FONT(800, 15), W - 4 * pad), W / 2, y + 28 * S, FONT(800, 15), status[1], "center");
     y += 66 * S;
@@ -4038,25 +4043,72 @@
     add(`xref\n0 6\n0000000000 65535 f \n${[1, 2, 3, 4, 5].map((n) => String(offsets[n]).padStart(10, "0") + " 00000 n \n").join("")}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
     return new Blob(parts, { type: "application/pdf" });
   }
-  async function shareReceiptFile(order, cust, kind) {
+  /* مشاركة الإيصال (صورة / PDF) — تعمل على أندرويد وآيفون وآيباد والكمبيوتر:
+     • الملف يُجهَّز مسبقاً عند فتح الطلب، فتُفتح قائمة المشاركة فوراً عند الضغط (آيفون يرفضها إن تأخرت بعد اللمس)
+     • على أجهزة أبل يُشارك الملف وحده (مع نص مرافق يرسل واتساب النص فقط أحياناً ويُسقط الصورة)
+     • إن لم يدعم الجهاز المشاركة: نافذة معاينة بالإيصال — ضغطة مطوّلة للحفظ/المشاركة، زر تنزيل، وفتح محادثة العميل */
+  const receiptCache = new Map();
+  const isApple = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  const isTouch = () => (navigator.maxTouchPoints || 0) > 0 || "ontouchstart" in window;
+  function receiptKey(order, kind) {
+    const cust = customers.find((c) => c.id === order.customerId);
+    return [kind, order.id, order.status, JSON.stringify(order.payment), order.paymentConfirmed, cust ? cust.balance : "", ledger.filter((tx) => tx.orderId === order.id).length, lang].join("|");
+  }
+  async function buildReceiptFile(order, cust, kind) {
+    const key = receiptKey(order, kind), hit = receiptCache.get(order.id + kind);
+    if (hit && hit.key === key) return hit;
     try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) { /* تجاهل */ }
     const cv = receiptCanvas(order, cust);
     const blob = kind === "image" ? await new Promise((r) => cv.toBlob(r, "image/png")) : pdfFromCanvas(cv);
     const name = `997-laundry-receipt-${order.number}.${kind === "image" ? "png" : "pdf"}`;
-    const caption = lang === "en" ? `Receipt for order #${order.number} — 997 Laundry` : `إيصال طلبك رقم #${order.number} — 997 Laundry`;
     let file = null; try { file = new File([blob], name, { type: blob.type }); } catch (e) { file = null; }
+    const r = { key, blob, file, name, preview: kind === "image" ? null : cv.toDataURL("image/png") };
+    receiptCache.set(order.id + kind, r);
+    return r;
+  }
+  function prepareReceiptFiles(order, cust) {
+    setTimeout(() => { ["image", "pdf"].forEach((k) => { buildReceiptFile(order, cust, k).catch(() => {}); }); }, 250);
+  }
+  async function shareReceiptFile(order, cust, kind) {
+    const r = await buildReceiptFile(order, cust, kind);
+    const caption = lang === "en" ? `Receipt for order #${order.number} — 997 Laundry` : `إيصال طلبك رقم #${order.number} — 997 Laundry`;
     logActivity(`مشاركة إيصال ${kind === "image" ? "صورة" : "PDF"} للطلب #${order.number} بواسطة ${me ? me.name : ""}`);
-    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: caption, text: caption }); return "shared"; }
-      catch (e) { if (e && e.name === "AbortError") return "cancelled"; }
+    const data = r.file ? (isApple() ? { files: [r.file] } : { files: [r.file], title: caption, text: caption }) : null;
+    if (data && navigator.canShare && navigator.share) {
+      let ok = false; try { ok = navigator.canShare(data); } catch (e) { ok = false; }
+      if (ok) {
+        try { await navigator.share(data); return "shared"; }
+        catch (e) { if (e && e.name === "AbortError") return "cancelled"; /* NotAllowedError وغيره → المعاينة */ }
+      }
     }
-    // الجهاز لا يدعم مشاركة الملفات: تنزيل الملف + فتح محادثة العميل لإرفاقه
+    // الكمبيوتر: تنزيل الملف مباشرة (يُسحب إلى واتساب ويب) + المعاينة؛ الجوال: المعاينة فقط (التنزيل غير موثوق داخل تطبيق الشاشة الرئيسية في آيفون)
+    if (!isTouch()) downloadBlob(r.blob, r.name);
+    showReceiptPreview(order, cust, kind, r, caption);
+    return isTouch() ? "preview" : "downloaded";
+  }
+  function downloadBlob(blob, name) {
     const url = URL.createObjectURL(blob), a = document.createElement("a");
     a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    toast(lang === "en" ? "Receipt downloaded — attach it in the customer's WhatsApp chat" : "تم تنزيل الإيصال — أرفقه في محادثة العميل على واتساب (📎)");
-    if (cust) setTimeout(() => openWhatsApp(cust.phone, caption), 600);
-    return "downloaded";
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+  function showReceiptPreview(order, cust, kind, r, caption) {
+    let dlg = document.getElementById("receiptPreviewDialog");
+    if (!dlg) { dlg = document.createElement("dialog"); dlg.id = "receiptPreviewDialog"; dlg.className = "modal"; document.body.appendChild(dlg); }
+    const en = lang === "en";
+    const src = kind === "image" ? URL.createObjectURL(r.blob) : r.preview;
+    dlg.innerHTML = `<div style="padding:16px;max-width:420px;margin:auto;text-align:center">
+      <h3 style="margin:0 0 6px">${en ? "Receipt" : "الإيصال"} #${esc(order.number)}</h3>
+      <p class="section-note" style="margin:0 0 10px">${isTouch() ? (en ? "Press and hold the receipt → Save / Share, then send it in the customer's WhatsApp chat." : "اضغط مطوّلاً على الإيصال ← «حفظ» أو «مشاركة»، ثم أرسله في محادثة العميل على واتساب.") : (en ? "The file was downloaded — drag it into the customer's WhatsApp chat (📎)." : "تم تنزيل الملف — اسحبه إلى محادثة العميل على واتساب (📎).")}</p>
+      <img id="rpImg" src="${src}" alt="receipt" style="width:100%;max-height:60vh;object-fit:contain;border:1px solid var(--border);border-radius:12px;background:#fff;-webkit-touch-callout:default;user-select:auto">
+      <div class="row-actions" style="justify-content:center;margin-top:12px;flex-wrap:wrap">
+        <button class="primary-btn" type="button" id="rpDownload">⬇ ${en ? "Download" : "تنزيل"} ${kind === "image" ? (en ? "image" : "الصورة") : "PDF"}</button>
+        ${cust ? `<button class="whatsapp-btn" type="button" id="rpWa">📲 ${en ? "Open customer's chat" : "فتح محادثة العميل"}</button>` : ""}
+        <button class="ghost-btn" type="button" id="rpClose">${en ? "Close" : "إغلاق"}</button>
+      </div></div>`;
+    dlg.querySelector("#rpDownload").onclick = () => downloadBlob(r.blob, r.name);
+    if (cust) dlg.querySelector("#rpWa").onclick = () => openWhatsApp(cust.phone, caption);
+    dlg.querySelector("#rpClose").onclick = () => { dlg.close(); if (kind === "image") setTimeout(() => URL.revokeObjectURL(src), 1000); };
+    if (!dlg.open) dlg.showModal();
   }
   window.receiptFile997 = async (id, kind) => { const o = orders.find((x) => x.id === id); if (!o) return null; const cv = receiptCanvas(o, customers.find((c) => c.id === o.customerId)); return kind === "image" ? cv.toDataURL("image/png") : pdfFromCanvas(cv); };
 
@@ -4690,6 +4742,7 @@
     document.getElementById("renumberOrderBtn")?.addEventListener("click", () => renumberOrder(order));
     document.getElementById("dialogReceiptPdfBtn")?.addEventListener("click", () => shareReceiptFile(order, cust, "pdf"));
     document.getElementById("dialogReceiptImgBtn")?.addEventListener("click", () => shareReceiptFile(order, cust, "image"));
+    if (document.getElementById("dialogReceiptImgBtn") || document.getElementById("dialogReceiptPdfBtn")) prepareReceiptFiles(order, cust);
     document.getElementById("dialogReceiptWaBtn")?.addEventListener("click", () => {
       logActivity(`إرسال إيصال الطلب #${order.number} على واتساب بواسطة ${me ? me.name : ""}`);
       openWhatsApp(cust.phone, receiptText(order, cust));
