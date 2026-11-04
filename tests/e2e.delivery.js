@@ -100,7 +100,7 @@ function check(name, cond, detail) {
   check("ready WhatsApp says the order will be delivered home (not 'come by')", /بنوصله لبيتك/.test(m) && !/نتشرف بزيارتك/.test(m), m);
   await closeAll(); await nav("delivery"); await wait(250);
   let board = await page.textContent("#deliveryRoot");
-  check("delivery page: the ready order is in «جاهزة للتوصيل» with its address", /جاهزة للتوصيل/.test(board) && /Pkg Lady/.test(board) && await page.isVisible(`[data-drop-onway="${o1.id}"]`), board.replace(/\s+/g, " ").slice(0, 200));
+  check("delivery page: the ready order is in «للتوصيل للبيوت» with its address", /للتوصيل للبيوت/.test(board) && /Pkg Lady/.test(board) && await page.isVisible(`[data-drop-onway="${o1.id}"]`), board.replace(/\s+/g, " ").slice(0, 200));
   const badge = await page.textContent('.nav-item[data-page="delivery"] .nav-count');
   check("menu badge counts work waiting (1 ready)", badge.trim() === "1", badge);
   const n0 = await waCount();
@@ -115,8 +115,13 @@ function check(name, cond, detail) {
 
   /* pickup booking from the delivery page → driver on the way → clothes arrive → order */
   await closeAll(); await nav("delivery"); await wait(200);
-  await page.click("#newPickupBtn"); await page.fill("#qf_phone", "3322 0002"); await page.fill("#qf_address", "سند، مجمع 743"); await page.selectOption("#qf_slot", "morning");
-  await submit(); await wait(200);
+  await page.click("#newPickupBtn"); await page.fill("#qf_cust", "Regular"); await wait(150);
+  check("pickup form finds the customer by name as you type", await page.isVisible('.dlv-suggest [data-cid="c_reg"]'));
+  if (process.env.SHOTS) await (await page.$("#quickFormDialog")).screenshot({ path: process.env.SHOTS + "/dlv-form.png" });
+  await page.click('.dlv-suggest [data-cid="c_reg"]'); await wait(100);
+  check("…picking shows the customer confirmed", /Regular Guy/.test(await page.textContent(".dlv-picked")));
+  await page.fill("#qf_address", "سند، مجمع 743"); await page.selectOption("#qf_slot", "morning");
+  await submit(); await wait(250);
   if (await page.isVisible("#quickFormSubmitBtn")) await submit();
   m = await lastWa();
   check("pickup booking saved and the customer gets a confirmation with the fee 0.500", /تم تأكيد موعد استلام/.test(m) && /0\.500/.test(m) && /سند/.test(m), m);
@@ -132,6 +137,18 @@ function check(name, cond, detail) {
   await page.click('#posProductGrid [data-cloth="shirt"]'); await page.click('#posProductGrid [data-cloth="shirt"]');
   const o5 = await saveOrder();
   check("order from the pickup: 2 trips × 0.500 + 0.800 = 1.800, booking cleared", Math.abs(o5.payment.total - 1.8) < 0.001 && (await ls("l997_suspended_orders")).filter((x) => x.kind === "pickup").length === 0, o5.payment.total);
+
+  /* a brand-new customer can be booked straight from the pickup form (number + name) */
+  await closeAll(); await nav("delivery"); await wait(200);
+  await page.click("#newPickupBtn"); await page.fill("#qf_cust", "33229999"); await wait(150);
+  check("new number → the form asks for the name (no need to leave the screen)", await page.isVisible("#qf_newname") && /رقم جديد/.test(await page.textContent(".dlv-suggest")));
+  await page.fill("#qf_newname", "New Neighbour"); await page.fill("#qf_address", "عسكر"); await submit(); await wait(250);
+  if (await page.isVisible("#quickFormSubmitBtn")) await later();
+  const nc = (await ls("l997_customers")).find((c) => c.name === "New Neighbour");
+  check("…the customer is created and the booking saved", !!nc && (await ls("l997_suspended_orders")).some((x) => x.kind === "pickup" && x.customerId === nc.id));
+  await page.evaluate(() => { const a = JSON.parse(localStorage.getItem("l997_suspended_orders")).filter((x) => x.kind !== "pickup"); localStorage.setItem("l997_suspended_orders", JSON.stringify(a)); });
+  await page.reload(); await page.waitForSelector("#au_user, body:not(.auth-locked)");
+  if (await page.isVisible("#au_user")) { await page.fill("#au_user", "owner"); await page.fill("#au_pass", PW); await page.click("#au_form button[type=submit]"); await page.waitForSelector("body:not(.auth-locked)"); }
 
   /* owner sets "free delivery over 1.000" → a regular order of 1.200 gets free delivery */
   await closeAll(); await nav("settings"); await page.evaluate(() => document.querySelector('[data-settings-tab="operating"]').click()); await wait(200);
@@ -160,6 +177,29 @@ function check(name, cond, detail) {
   const ov = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check("delivery page at phone width: no sideways scrolling", ov <= 1, ov);
   if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + "/dlv-phone.png", fullPage: true });
+
+  /* English interface: the delivery page, the pickup form and the order box have no Arabic */
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await closeAll(); await page.evaluate(() => { const s = document.getElementById("langSelect") || document.querySelector("select[data-lang], #languageSelect"); if (s) { s.value = "en"; s.dispatchEvent(new Event("change", { bubbles: true })); } });
+  await wait(600); await page.waitForSelector("body:not(.auth-locked)").catch(() => {});
+  if (await page.isVisible("#au_user").catch(() => false)) { await page.fill("#au_user", "owner"); await page.fill("#au_pass", PW); await page.click("#au_form button[type=submit]"); await page.waitForSelector("body:not(.auth-locked)"); }
+  const isEn = await page.evaluate(() => document.documentElement.lang === "en" || document.documentElement.dir === "ltr");
+  await nav("delivery"); await wait(300);
+  const arab = (t) => (t.match(/[\u0600-\u06FF]{3,}(?:\s+[\u0600-\u06FF]{2,})*/g) || []).filter((x) => !/الرفاع|مجمع|طريق|منزل|سند|عسكر|باقة 50/.test(x));
+  const enPage = await page.textContent("#deliveryRoot");
+  check("English: delivery page has no Arabic labels (customer addresses aside)", isEn && arab(enPage).length === 0, JSON.stringify(arab(enPage).slice(0, 8)));
+  await page.click("#newPickupBtn"); await wait(150);
+  const enForm = await page.textContent("#quickFormDialog");
+  check("English: pickup form is in English", /Book a home pickup/.test(enForm) && arab(enForm).length === 0, JSON.stringify(arab(enForm).slice(0, 8)));
+  await page.click("#quickFormCancelBtn");
+  if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS + "/dlv-en.png", fullPage: true });
+  /* iPad and iPhone: no sideways scrolling, buttons big enough to tap */
+  for (const [nm, w, h] of [["iPad", 820, 1180], ["iPhone", 390, 844]]) {
+    await page.setViewportSize({ width: w, height: h }); await nav("delivery"); await wait(300);
+    const r = await page.evaluate(() => ({ ov: document.documentElement.scrollWidth - window.innerWidth, small: [...document.querySelectorAll("#deliveryRoot .dlv-main, #deliveryRoot .dlv-ic, #newPickupBtn")].filter((b) => b.offsetParent && b.getBoundingClientRect().height < 44).length }));
+    check(`${nm}: delivery page fits the screen and every button is ≥ 44px tall`, r.ov <= 1 && r.small === 0, JSON.stringify(r));
+    if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/dlv-${nm}.png`, fullPage: true });
+  }
 
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();

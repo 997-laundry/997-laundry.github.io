@@ -509,14 +509,14 @@
               <label><span data-i18n="lbl_urgent_hours">مدة الطلب المستعجل بالساعات</span><input id="urgentHoursSetting" type="number" min="1" /></label>
               <label class="check-line"><input id="shiftsRequiredSetting" type="checkbox" /> <span>إلزام الموظفين ببدء وردية (عهدة صندوق) قبل استلام المبالغ</span></label>
               <div class="dlv-settings-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft)">
-                <strong>🚚 الاستلام والتوصيل</strong>
-                <p class="section-note" style="margin:6px 0 8px">كل مشوار (استلام من البيت أو توصيل للبيت) يُحسب رحلة. عملاء الباقات يحصلون على مشاوير مجانية كل شهر، وغيرهم برسوم رمزية.</p>
-                <label class="check-line"><input id="dlvOnSetting" type="checkbox" /> <span>تفعيل خدمة الاستلام والتوصيل</span></label>
+                <strong data-en="🚚 Home pickup & delivery">🚚 الاستلام والتوصيل</strong>
+                <p class="section-note" style="margin:6px 0 8px" data-en="Each trip (home pickup or home delivery) counts once. Package customers get free trips every month; others pay a small fee.">كل مشوار (استلام من البيت أو توصيل للبيت) يُحسب رحلة. عملاء الباقات يحصلون على مشاوير مجانية كل شهر، وغيرهم برسوم رمزية.</p>
+                <label class="check-line"><input id="dlvOnSetting" type="checkbox" /> <span data-en="Turn on home pickup & delivery">تفعيل خدمة الاستلام والتوصيل</span></label>
                 <div class="dlv-settings-grid">
-                  <label><span>رسوم المشوار — عميل بدون باقة (د.ب)</span><input id="dlvFeeSetting" type="text" inputmode="decimal" /></label>
-                  <label><span>مشاوير مجانية شهرياً — عميل الباقة</span><input id="dlvPkgFreeSetting" type="text" inputmode="numeric" /></label>
-                  <label><span>رسوم المشوار للباقة بعد المجاني (د.ب)</span><input id="dlvPkgFeeSetting" type="text" inputmode="decimal" /></label>
-                  <label><span>توصيل مجاني للطلب من (د.ب) — 0 = لا يوجد</span><input id="dlvFreeOverSetting" type="text" inputmode="decimal" /></label>
+                  <label><span data-en="Trip fee — customer without a package (BD)">رسوم المشوار — عميل بدون باقة (د.ب)</span><input id="dlvFeeSetting" type="text" inputmode="decimal" /></label>
+                  <label><span data-en="Free trips a month — package customer">مشاوير مجانية شهرياً — عميل الباقة</span><input id="dlvPkgFreeSetting" type="text" inputmode="numeric" /></label>
+                  <label><span data-en="Package trip fee after the free ones (BD)">رسوم المشوار للباقة بعد المجاني (د.ب)</span><input id="dlvPkgFeeSetting" type="text" inputmode="decimal" /></label>
+                  <label><span data-en="Free delivery for orders from (BD) — 0 = off">توصيل مجاني للطلب من (د.ب) — 0 = لا يوجد</span><input id="dlvFreeOverSetting" type="text" inputmode="decimal" /></label>
                 </div>
               </div>
               <div class="wa-api-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft)">
