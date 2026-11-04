@@ -212,7 +212,7 @@
       toast_valid_amount: "أدخل مبلغاً صحيحاً", toast_tx_recorded: "تم تسجيل العملية",
       toast_status_updated: "تم تحديث الحالة", toast_order_cancelled: "تم إلغاء الطلب",
       toast_settings_saved: "تم حفظ الإعدادات", toast_role: (r) => `تم الدخول كـ ${r}`,
-      cust_search_ph: "ابحث بالاسم أو رقم الجوال", dlg_order_title: (n) => `طلب \u2066#${n}\u2069`, dlg_items: "القطع", dlg_payment: "الدفع", dlg_status: "الحالة", dlg_notes: "ملاحظات",
+      cust_search_ph: "ابحث بالاسم أو رقم الجوال", pos_search_ph: "ابحث عن صنف...", dlg_order_title: (n) => `طلب \u2066#${n}\u2069`, dlg_items: "القطع", dlg_payment: "الدفع", dlg_status: "الحالة", dlg_notes: "ملاحظات",
       dlg_payment_method: "طريقة الدفع", dlg_total: "الإجمالي", dlg_paid: "المدفوع", dlg_remaining: "المتبقي",
       dlg_advance_to: (s) => `الانتقال إلى «${s}»`, dlg_cancel_order: "إلغاء الطلب",
       dlg_send_whatsapp: "إرسال واتساب", dlg_print: "طباعة الإيصال", dlg_close: "إغلاق",
@@ -386,7 +386,7 @@
       toast_valid_amount: "Enter a valid amount", toast_tx_recorded: "Transaction recorded",
       toast_status_updated: "Status updated", toast_order_cancelled: "Order cancelled",
       toast_settings_saved: "Settings saved", toast_role: (r) => `Signed in as ${r}`,
-      cust_search_ph: "Search by name or phone", dlg_order_title: (n) => `Order #${n}`, dlg_items: "Items", dlg_payment: "Payment", dlg_status: "Status", dlg_notes: "Notes",
+      cust_search_ph: "Search by name or phone", pos_search_ph: "Search items...", dlg_order_title: (n) => `Order #${n}`, dlg_items: "Items", dlg_payment: "Payment", dlg_status: "Status", dlg_notes: "Notes",
       dlg_payment_method: "Payment method", dlg_total: "Total", dlg_paid: "Paid", dlg_remaining: "Remaining",
       dlg_advance_to: (s) => `Move to "${s}"`, dlg_cancel_order: "Cancel order",
       dlg_send_whatsapp: "Send WhatsApp", dlg_print: "Print receipt", dlg_close: "Close",
@@ -560,7 +560,7 @@
       toast_valid_amount: "درست رقم درج کریں", toast_tx_recorded: "لین دین ریکارڈ ہو گیا",
       toast_status_updated: "حالت اپ ڈیٹ ہو گئی", toast_order_cancelled: "آرڈر منسوخ ہو گیا",
       toast_settings_saved: "ترتیبات محفوظ ہو گئیں", toast_role: (r) => `${r} کے طور پر داخل ہوئے`,
-      cust_search_ph: "نام یا فون نمبر سے تلاش کریں", dlg_order_title: (n) => `آرڈر \u2066#${n}\u2069`, dlg_items: "آئٹمز", dlg_payment: "ادائیگی", dlg_status: "حالت", dlg_notes: "نوٹس",
+      cust_search_ph: "نام یا فون نمبر سے تلاش کریں", pos_search_ph: "آئٹم تلاش کریں...", dlg_order_title: (n) => `آرڈر \u2066#${n}\u2069`, dlg_items: "آئٹمز", dlg_payment: "ادائیگی", dlg_status: "حالت", dlg_notes: "نوٹس",
       dlg_payment_method: "ادائیگی کا طریقہ", dlg_total: "کل", dlg_paid: "ادا شدہ", dlg_remaining: "باقی",
       dlg_advance_to: (s) => `"${s}" پر منتقل کریں`, dlg_cancel_order: "آرڈر منسوخ کریں",
       dlg_send_whatsapp: "واٹس ایپ بھیجیں", dlg_print: "رسید پرنٹ کریں", dlg_close: "بند کریں",
@@ -3836,8 +3836,30 @@
     return { subtotal, extrasTotal, urgentFee, discount, vatPercent, vat, total, paid, balanceUse, outstanding };
   }
 
+  // شريط ثابت أسفل شاشة الطلب على الجوال والتابلت: عدد القطع + الإجمالي + حفظ — بدون نزول للسلة
+  function updatePosBar(t2) {
+    let bar = document.getElementById("posStickyBar");
+    const page = document.getElementById("page-new-order");
+    if (!page) return;
+    if (!bar) {
+      bar = document.createElement("div"); bar.id = "posStickyBar"; bar.className = "pos-sticky-bar";
+      bar.innerHTML = `<button type="button" class="pos-bar-cart" id="posBarCart"><span id="posBarPieces">0</span><small id="posBarLbl"></small></button><div class="pos-bar-total"><small id="posBarTotalLbl"></small><b id="posBarTotal"></b></div><button type="button" class="primary-btn" id="posBarSave"></button>`;
+      page.appendChild(bar);
+      bar.querySelector("#posBarCart").addEventListener("click", () => document.querySelector("#page-new-order .pos-cart")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      bar.querySelector("#posBarSave").addEventListener("click", () => document.getElementById("posSaveOrderMainBtn").click());
+    }
+    const pieces = draftItems.reduce((n, it) => n + it.qty, 0), en = lang === "en";
+    bar.hidden = pieces === 0;
+    document.body.classList.toggle("pos-bar-on", pieces > 0);
+    bar.querySelector("#posBarPieces").textContent = pieces;
+    bar.querySelector("#posBarLbl").textContent = en ? "pcs · cart ↓" : "قطعة · السلة ↓";
+    bar.querySelector("#posBarTotalLbl").textContent = en ? "Total" : "الإجمالي";
+    bar.querySelector("#posBarTotal").textContent = money(t2.total);
+    bar.querySelector("#posBarSave").textContent = en ? "✓ Save order" : "✓ حفظ الطلب";
+  }
   function updateSummary() {
     const t2 = currentTotals();
+    try { updatePosBar(t2); } catch (e) { /* ignore */ }
     document.getElementById("summaryPieces").textContent = draftItems.reduce((s, it) => s + it.qty, 0);
     document.getElementById("summarySubtotal").textContent = money(t2.subtotal);
     document.getElementById("summaryUrgent").textContent = money(t2.urgentFee);

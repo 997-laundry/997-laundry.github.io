@@ -556,6 +556,42 @@ body.auth-locked .top-logout{display:none!important}
 /* شارة تنبيهات الأمان في القائمة */
 .nav-item .sec-badge{margin-inline-start:auto;background:#d92d20;color:#fff;border-radius:999px;font-size:11px;font-weight:800;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}
 
+/* ---------- شاشة الطلب الجديد على التابلت والجوال: أصناف أصغر وأوضح + شريط حفظ ثابت ---------- */
+@media (max-width:1100px){
+  .pos-product-grid{grid-template-columns:repeat(auto-fill,minmax(98px,1fr));gap:8px}
+  .pos-tile{padding:9px 5px 8px;gap:3px;border-radius:14px;box-shadow:0 1px 2px rgba(15,30,50,.05)}
+  .pos-tile .pos-tile-icon{width:40px;height:40px;border-radius:12px;font-size:21px}
+  .pos-tile .pos-tile-icon img,.pos-tile .pos-tile-icon svg{width:30px;height:30px}
+  .pos-tile .pos-tile-name{font-size:12.5px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .pos-tile .pos-tile-price{font-size:11.5px;font-weight:700;color:#3b5566}
+  .pos-tile-other-service{font-size:10.5px;padding:2px 0}
+  .pos-tile-qty-badge{top:4px;right:4px;min-width:22px;height:22px;font-size:12px}
+  .pos-sticky-bar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;align-items:center;gap:10px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid var(--border);box-shadow:0 -6px 18px rgba(15,30,50,.10)}
+  .pos-sticky-bar[hidden]{display:none}
+  .pos-bar-cart{display:flex;flex-direction:column;align-items:center;border:1px solid var(--border);background:var(--primary-soft);border-radius:12px;padding:4px 12px;min-width:74px;cursor:pointer}
+  .pos-bar-cart span{font-size:20px;font-weight:900;line-height:1.1;color:var(--primary-dark,#1b5e7a)}
+  .pos-bar-cart small{font-size:10.5px;color:var(--muted);font-weight:700}
+  .pos-bar-total{flex:1;display:flex;flex-direction:column;min-width:0}
+  .pos-bar-total small{font-size:11px;color:var(--muted);font-weight:700}
+  .pos-bar-total b{font-size:20px;font-weight:900;white-space:nowrap}
+  .pos-sticky-bar .primary-btn{min-height:48px;padding:0 18px;font-size:16px;white-space:nowrap}
+  body.pos-bar-on #page-new-order{padding-bottom:90px}
+}
+@media (min-width:1101px){.pos-sticky-bar{display:none !important}}
+@media (min-width:821px) and (max-width:1100px){.pos-sticky-bar{inset-inline-start:210px}}
+@media (max-width:380px){.pos-product-grid{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:1100px){body.pos-bar-on #cloudChip,body.pos-bar-on #cloudUpdateChip{bottom:calc(84px + env(safe-area-inset-bottom)) !important}}
+
+/* الرسائل فوق شريط الحفظ */
+@media (max-width:1100px){body.pos-bar-on .toast[popover],body.pos-bar-on #toast{bottom:calc(92px + env(safe-area-inset-bottom)) !important}}
+/* تابلت أفقي (ارتفاع قصير): القائمة الجانبية مضغوطة لتظهر كل الصفحات */
+@media (min-width:821px) and (max-height:760px){
+  .brand{padding:2px 4px 10px;gap:8px}.brand-mark{width:40px;height:40px}.brand h1{font-size:15px}.brand p{display:none}
+  .nav-list{gap:3px}.nav-item{padding:7px 10px;font-size:13.5px;min-height:34px;height:auto;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px}
+  .sidebar-footer{padding-top:6px}.user-card{padding:6px 8px;margin-bottom:4px}
+  .sidebar-footer .primary-btn,.sidebar-footer .ghost-btn,.sidebar-footer .secondary-btn{min-height:34px;padding:6px 10px;font-size:12.5px}
+}
+
 </style>
 </head>
 <body class="auth-locked">
@@ -738,7 +774,7 @@ body.auth-locked .top-logout{display:none!important}
                   <button type="button" class="pos-cat-tab" data-cat="women">نسائي</button>
                   <button type="button" class="pos-cat-tab" data-cat="home">مفروشات ومنزلي</button>
                 </div>
-                <input type="text" id="posProductSearch" class="pos-search-input" placeholder="ابحث عن صنف..." />
+                <input type="text" id="posProductSearch" class="pos-search-input" data-i18n-placeholder="pos_search_ph" placeholder="ابحث عن صنف..." />
               </div>
               <div class="pos-product-grid" id="posProductGrid"></div>
             </div>
@@ -3572,7 +3608,7 @@ body.auth-locked .top-logout{display:none!important}
       toast_valid_amount: "أدخل مبلغاً صحيحاً", toast_tx_recorded: "تم تسجيل العملية",
       toast_status_updated: "تم تحديث الحالة", toast_order_cancelled: "تم إلغاء الطلب",
       toast_settings_saved: "تم حفظ الإعدادات", toast_role: (r) => `تم الدخول كـ ${r}`,
-      cust_search_ph: "ابحث بالاسم أو رقم الجوال", dlg_order_title: (n) => `طلب \u2066#${n}\u2069`, dlg_items: "القطع", dlg_payment: "الدفع", dlg_status: "الحالة", dlg_notes: "ملاحظات",
+      cust_search_ph: "ابحث بالاسم أو رقم الجوال", pos_search_ph: "ابحث عن صنف...", dlg_order_title: (n) => `طلب \u2066#${n}\u2069`, dlg_items: "القطع", dlg_payment: "الدفع", dlg_status: "الحالة", dlg_notes: "ملاحظات",
       dlg_payment_method: "طريقة الدفع", dlg_total: "الإجمالي", dlg_paid: "المدفوع", dlg_remaining: "المتبقي",
       dlg_advance_to: (s) => `الانتقال إلى «${s}»`, dlg_cancel_order: "إلغاء الطلب",
       dlg_send_whatsapp: "إرسال واتساب", dlg_print: "طباعة الإيصال", dlg_close: "إغلاق",
@@ -3746,7 +3782,7 @@ body.auth-locked .top-logout{display:none!important}
       toast_valid_amount: "Enter a valid amount", toast_tx_recorded: "Transaction recorded",
       toast_status_updated: "Status updated", toast_order_cancelled: "Order cancelled",
       toast_settings_saved: "Settings saved", toast_role: (r) => `Signed in as ${r}`,
-      cust_search_ph: "Search by name or phone", dlg_order_title: (n) => `Order #${n}`, dlg_items: "Items", dlg_payment: "Payment", dlg_status: "Status", dlg_notes: "Notes",
+      cust_search_ph: "Search by name or phone", pos_search_ph: "Search items...", dlg_order_title: (n) => `Order #${n}`, dlg_items: "Items", dlg_payment: "Payment", dlg_status: "Status", dlg_notes: "Notes",
       dlg_payment_method: "Payment method", dlg_total: "Total", dlg_paid: "Paid", dlg_remaining: "Remaining",
       dlg_advance_to: (s) => `Move to "${s}"`, dlg_cancel_order: "Cancel order",
       dlg_send_whatsapp: "Send WhatsApp", dlg_print: "Print receipt", dlg_close: "Close",
@@ -3920,7 +3956,7 @@ body.auth-locked .top-logout{display:none!important}
       toast_valid_amount: "درست رقم درج کریں", toast_tx_recorded: "لین دین ریکارڈ ہو گیا",
       toast_status_updated: "حالت اپ ڈیٹ ہو گئی", toast_order_cancelled: "آرڈر منسوخ ہو گیا",
       toast_settings_saved: "ترتیبات محفوظ ہو گئیں", toast_role: (r) => `${r} کے طور پر داخل ہوئے`,
-      cust_search_ph: "نام یا فون نمبر سے تلاش کریں", dlg_order_title: (n) => `آرڈر \u2066#${n}\u2069`, dlg_items: "آئٹمز", dlg_payment: "ادائیگی", dlg_status: "حالت", dlg_notes: "نوٹس",
+      cust_search_ph: "نام یا فون نمبر سے تلاش کریں", pos_search_ph: "آئٹم تلاش کریں...", dlg_order_title: (n) => `آرڈر \u2066#${n}\u2069`, dlg_items: "آئٹمز", dlg_payment: "ادائیگی", dlg_status: "حالت", dlg_notes: "نوٹس",
       dlg_payment_method: "ادائیگی کا طریقہ", dlg_total: "کل", dlg_paid: "ادا شدہ", dlg_remaining: "باقی",
       dlg_advance_to: (s) => `"${s}" پر منتقل کریں`, dlg_cancel_order: "آرڈر منسوخ کریں",
       dlg_send_whatsapp: "واٹس ایپ بھیجیں", dlg_print: "رسید پرنٹ کریں", dlg_close: "بند کریں",
@@ -7196,8 +7232,30 @@ body.auth-locked .top-logout{display:none!important}
     return { subtotal, extrasTotal, urgentFee, discount, vatPercent, vat, total, paid, balanceUse, outstanding };
   }
 
+  // شريط ثابت أسفل شاشة الطلب على الجوال والتابلت: عدد القطع + الإجمالي + حفظ — بدون نزول للسلة
+  function updatePosBar(t2) {
+    let bar = document.getElementById("posStickyBar");
+    const page = document.getElementById("page-new-order");
+    if (!page) return;
+    if (!bar) {
+      bar = document.createElement("div"); bar.id = "posStickyBar"; bar.className = "pos-sticky-bar";
+      bar.innerHTML = `<button type="button" class="pos-bar-cart" id="posBarCart"><span id="posBarPieces">0</span><small id="posBarLbl"></small></button><div class="pos-bar-total"><small id="posBarTotalLbl"></small><b id="posBarTotal"></b></div><button type="button" class="primary-btn" id="posBarSave"></button>`;
+      page.appendChild(bar);
+      bar.querySelector("#posBarCart").addEventListener("click", () => document.querySelector("#page-new-order .pos-cart")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      bar.querySelector("#posBarSave").addEventListener("click", () => document.getElementById("posSaveOrderMainBtn").click());
+    }
+    const pieces = draftItems.reduce((n, it) => n + it.qty, 0), en = lang === "en";
+    bar.hidden = pieces === 0;
+    document.body.classList.toggle("pos-bar-on", pieces > 0);
+    bar.querySelector("#posBarPieces").textContent = pieces;
+    bar.querySelector("#posBarLbl").textContent = en ? "pcs · cart ↓" : "قطعة · السلة ↓";
+    bar.querySelector("#posBarTotalLbl").textContent = en ? "Total" : "الإجمالي";
+    bar.querySelector("#posBarTotal").textContent = money(t2.total);
+    bar.querySelector("#posBarSave").textContent = en ? "✓ Save order" : "✓ حفظ الطلب";
+  }
   function updateSummary() {
     const t2 = currentTotals();
+    try { updatePosBar(t2); } catch (e) { /* ignore */ }
     document.getElementById("summaryPieces").textContent = draftItems.reduce((s, it) => s + it.qty, 0);
     document.getElementById("summarySubtotal").textContent = money(t2.subtotal);
     document.getElementById("summaryUrgent").textContent = money(t2.urgentFee);
