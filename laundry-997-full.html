@@ -1098,6 +1098,12 @@ body.auth-locked .top-logout{display:none!important}
           </div>
 
           <div class="panel" data-settings-panel="packages" style="display:none">
+            <div class="panel-header"><div><h3>⚖️ أوزان القطع في الباقات</h3><p>كم قطعة تُخصم من رصيد الباقة لكل قطعة من الصنف — مثال: عباية = 2، لحاف = 5. الرقم 0 = الصنف خارج نظام الباقات (يُحسب بالسعر العادي). الأصناف غير المذكورة = 1</p></div>
+              <div class="row-actions"><button class="secondary-btn" type="button" id="resetPackageWeightsBtn">↺ الافتراضي</button><button class="primary-btn" type="button" id="savePackageWeightsBtn">حفظ الأوزان</button></div></div>
+            <div class="table-wrap"><table><thead><tr><th>الصنف</th><th>غسيل وكوي</th><th>كوي فقط</th></tr></thead><tbody id="packageWeightsBody"></tbody></table></div>
+          </div>
+
+          <div class="panel" data-settings-panel="packages" style="display:none">
             <div class="panel-header"><div><h3>🏷 أكواد الخصم</h3><p>كود من حروف إنجليزية وأرقام أو أرقام فقط، بنسبة خصم تحددها — يكتبه الموظف عند إنشاء الطلب فيُخصم تلقائياً</p></div><button class="primary-btn" id="addDiscountCodeBtn">＋ كود جديد</button></div>
             <div class="table-wrap"><table><thead><tr><th>الكود</th><th>نسبة الخصم</th><th>مرات الاستخدام</th><th>مفعّل</th><th></th></tr></thead><tbody id="discountCodesBody"></tbody></table></div>
           </div>
@@ -1455,7 +1461,7 @@ body.auth-locked .top-logout{display:none!important}
         const uses = [];
         (orders || []).forEach((o) => {
           if (o.status === "cancelled") return;
-          const qty = (o.items || []).filter((it) => it.fromPackageId === cp.id).reduce((a, it) => a + (Number(it.qty) || 0), 0);
+          const qty = (o.items || []).filter((it) => it.fromPackageId === cp.id).reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.pkgW) > 0 ? Number(it.pkgW) : 1), 0);
           if (qty > 0) uses.push({ orderId: o.id, number: o.number, at: o.createdAt, qty });
         });
         uses.sort((a, b) => String(b.at).localeCompare(String(a.at)));
@@ -4200,6 +4206,13 @@ body.auth-locked .top-logout{display:none!important}
     save(KEYS.settings, settings);
   }
   if (!settings.packageDefs) { settings.packageDefs = []; save(KEYS.settings, settings); }
+  // وزن القطعة في الباقات: كم قطعة تُخصم من رصيد الباقة لكل قطعة من هذا الصنف (0 = خارج نظام الباقات)
+  const PACKAGE_WEIGHTS_997 = {
+    abaya_plain: { washiron: 2, iron: 2 }, abaya_emb: { washiron: 2, iron: 2 },
+    duvet: { washiron: 5, iron: 2 }, bedsheet_double: { washiron: 4, iron: 2 },
+    jalabiya: { washiron: 2, iron: 2 }, curtain_per_m: { washiron: 0, iron: 0 }, shoes: { washiron: 0, iron: 0 },
+  };
+  if (!settings.packageWeights) { settings.packageWeights = JSON.parse(JSON.stringify(PACKAGE_WEIGHTS_997)); save(KEYS.settings, settings); }
   if (!settings.garmentActive) { settings.garmentActive = {}; save(KEYS.settings, settings); }
   // خدمات إضافية على مستوى الطلب (تعطير، تغليف): السعر صفر = غير مفعّلة ولا تظهر في شاشة الطلب
   const EXTRAS_DEFAULT = [{ id: "perfume", key: "service_perfume", icon: "🌸" }, { id: "wrap", key: "service_wrap", icon: "🎁" }];
@@ -7004,22 +7017,50 @@ body.auth-locked .top-logout{display:none!important}
   function updateQuickAddPackageNotice() {
     const notice = document.getElementById("quickAddPackageNotice");
     if (!draftCustomerId || !quickAddServiceId) { notice.innerHTML = ""; quickAddUsePackage = false; return; }
-    const match = activePackagesForCustomer(draftCustomerId).find((cp) => pkgCovers(cp, quickAddClothingId, quickAddServiceId) && pkgLeftInDraft(cp) > 0);
+    const match = activePackagesForCustomer(draftCustomerId).find((cp) => pkgFits(cp, quickAddClothingId, quickAddServiceId));
     if (!match) { notice.innerHTML = ""; quickAddUsePackage = false; return; }
     quickAddUsePackage = true;
     notice.innerHTML = `<label class="package-notice"><input type="checkbox" id="quickAddPackageCheckbox" checked />
-      خصم من باقة «${esc(match.name)}» — متبقي ${Math.max(0, pkgLeftInDraft(match))} من ${match.totalPieces} قطعة</label>`;
+      خصم من باقة «${esc(match.name)}»${pkgWLabel(pkgWeight(quickAddClothingId, quickAddServiceId))} — متبقي ${Math.max(0, pkgLeftInDraft(match))} من ${match.totalPieces} قطعة</label>`;
     document.getElementById("quickAddPackageCheckbox").addEventListener("change", (e) => { quickAddUsePackage = e.target.checked; });
   }
 
   // القطع المتبقية بالباقة بعد احتساب ما في السلة الحالية
   function pkgLeftInDraft(cp) {
-    return cp.remainingPieces - draftItems.filter((it) => it.fromPackageId === cp.id).reduce((s, it) => s + it.qty, 0);
+    return cp.remainingPieces - draftItems.filter((it) => it.fromPackageId === cp.id).reduce((s, it) => s + pkgUnits(it), 0);
+  }
+  // كم قطعة من رصيد الباقة تساوي قطعة واحدة من هذا الصنف بهذه الخدمة (عباية = 2، لحاف = 5 …؛ 0 = خارج الباقات)
+  function pkgWeight(clothingId, serviceId) {
+    const w = (settings.packageWeights || PACKAGE_WEIGHTS_997)[clothingId];
+    if (w === undefined || w === null) return pkgWeightByName(clothingId, serviceId);
+    if (typeof w === "number") return Math.max(0, Math.floor(w));
+    const v = w[serviceId] !== undefined ? w[serviceId] : w.washiron;
+    return v === undefined || v === null || v === "" ? 1 : Math.max(0, Math.floor(Number(v) || 0));
+  }
+  // أصناف أضافها المالك بنفسه (معرّف عشوائي): تُعرف من الاسم — ستارة/أحذية خارج الباقات، عباية/جلابية 2، لحاف 5، شرشف دبل 4
+  function pkgWeightByName(clothingId, serviceId) {
+    const g = customGarments.find((x) => x.id === clothingId);
+    if (!g) return 1;
+    const n = String(g.name || "") + " " + String(g.nameEn || "");
+    if (/ستار|ستائر|برادي|curtain|حذا|احذي|أحذي|جوت|shoe|sneaker|boot/i.test(n)) return 0;
+    const iron = serviceId === "iron";
+    if (/لحاف|comforter|duvet|quilt/i.test(n)) return iron ? 2 : 5;
+    if (/شرشف\s*(دبل|مزدوج)|double\s*(bed)?\s*sheet/i.test(n)) return iron ? 2 : 4;
+    if (/عباي|عباء|abaya|جلابي|jalab/i.test(n)) return 2;
+    return 1;
+  }
+  // القطع المستهلكة من الباقة لبند في الطلب (الوزن محفوظ بالبند وقت الإضافة — تغيير الأوزان لاحقاً لا يمس الطلبات القديمة)
+  function pkgUnits(it) { return (Number(it.qty) || 0) * (it.pkgW > 0 ? it.pkgW : 1); }
+  const pkgWLabel = (w) => (w > 1 ? (lang === "en" ? ` (each = ${w} pcs)` : ` (القطعة = ${w})`) : "");
+  // الباقة تغطي الصنف والخدمة، وفيها رصيد كافٍ لقطعة واحدة على الأقل بوزنها
+  function pkgFits(cp, clothingId, serviceId) {
+    const w = pkgWeight(clothingId, serviceId);
+    return w > 0 && pkgCovers(cp, clothingId, serviceId) && pkgLeftInDraft(cp) >= w;
   }
   // باقة العميل المناسبة لهذا الصنف: خدمة الباقة متاحة له ولا تزال فيها قطع
   function packageForGarment(clothingId) {
     if (!draftCustomerId) return null;
-    return activePackagesForCustomer(draftCustomerId).find((cp) => priceFor(clothingId, cp.serviceType) > 0 && pkgCovers(cp, clothingId, cp.serviceType) && pkgLeftInDraft(cp) > 0) || null;
+    return activePackagesForCustomer(draftCustomerId).find((cp) => priceFor(clothingId, cp.serviceType) > 0 && pkgFits(cp, clothingId, cp.serviceType)) || null;
   }
   // هل تغطي الباقة هذا الصنف وهذه الخدمة؟ (قائمة ملابس فارغة = كل الأصناف)
   function pkgCovers(cp, clothingId, serviceId) {
@@ -7041,17 +7082,23 @@ body.auth-locked .top-logout{display:none!important}
     const svc = pkgFirst ? pkgFirst.serviceType : defaultServiceFor(clothingId);
     if (!svc) { toast("لا توجد خدمة متاحة لهذا الصنف"); return; }
     // تحقق أولاً من وجود باقة نشطة للعميل تغطي هذه الخدمة تحديداً — قبل تحصيل السعر الكامل
-    const activePkg = draftCustomerId ? activePackagesForCustomer(draftCustomerId).find((cp) => pkgCovers(cp, clothingId, svc) && pkgLeftInDraft(cp) > 0) : null;
-    if (activePkg && pkgLeftInDraft(activePkg) > 0) {
-      const existingPkgItem = draftItems.find((it) => it.clothingId === clothingId && it.serviceId === svc && it.fromPackageId === activePkg.id);
+    const activePkg = draftCustomerId ? activePackagesForCustomer(draftCustomerId).find((cp) => pkgFits(cp, clothingId, svc)) : null;
+    if (activePkg) {
+      const w = pkgWeight(clothingId, svc);
+      const existingPkgItem = draftItems.find((it) => it.clothingId === clothingId && it.serviceId === svc && it.fromPackageId === activePkg.id && (it.pkgW || 1) === w);
       if (existingPkgItem) existingPkgItem.qty += 1;
-      else draftItems.push({ id: uid(), clothingId, serviceId: svc, qty: 1, unit: 0, total: 0, note: "", fromPackageId: activePkg.id, packageName: activePkg.name });
+      else draftItems.push({ id: uid(), clothingId, serviceId: svc, qty: 1, unit: 0, total: 0, note: "", fromPackageId: activePkg.id, packageName: activePkg.name, pkgW: w });
       const left = pkgLeftInDraft(activePkg);
-      toast(left > 0 ? `من باقة «${activePkg.name}» — متبقي ${left} قطعة` : `آخر قطعة في باقة «${activePkg.name}» — القطع التالية بالسعر العادي`);
+      toast(left > 0 ? `من باقة «${activePkg.name}»${pkgWLabel(w)} — متبقي ${left} قطعة` : `آخر قطعة في باقة «${activePkg.name}» — القطع التالية بالسعر العادي`);
       renderOrderItemsTable();
       updateSummary();
       renderProductGrid();
       return;
+    }
+    if (draftCustomerId) {
+      const w0 = pkgWeight(clothingId, svc), cov = activePackagesForCustomer(draftCustomerId).find((cp) => pkgCovers(cp, clothingId, svc));
+      if (cov && w0 === 0) toast(`«${clothingName(clothingId)}» خارج نظام الباقات — يُحسب بالسعر العادي`);
+      else if (cov && pkgLeftInDraft(cov) < w0) toast(`رصيد باقة «${cov.name}» (${Math.max(0, pkgLeftInDraft(cov))}) لا يكفي لـ«${clothingName(clothingId)}» (= ${w0} قطع) — بالسعر العادي`);
     }
     const existing = draftItems.find((it) => it.clothingId === clothingId && it.serviceId === svc && !it.fromPackageId && !it.note);
     if (existing) {
@@ -7106,11 +7153,12 @@ body.auth-locked .top-logout{display:none!important}
     const note = document.getElementById("quickAddNote").value.trim();
     let usedPackage = null;
     if (quickAddUsePackage) {
-      usedPackage = activePackagesForCustomer(draftCustomerId).find((cp) => pkgCovers(cp, quickAddClothingId, quickAddServiceId) && pkgLeftInDraft(cp) > 0);
+      usedPackage = activePackagesForCustomer(draftCustomerId).find((cp) => pkgFits(cp, quickAddClothingId, quickAddServiceId));
     }
+    const qw = pkgWeight(quickAddClothingId, quickAddServiceId) || 1;
     const left = usedPackage ? Math.max(0, pkgLeftInDraft(usedPackage)) : 0;
-    const fromPkg = Math.min(left, quickQty), paidQty = quickQty - fromPkg;
-    if (fromPkg > 0) draftItems.push({ id: uid(), clothingId: quickAddClothingId, serviceId: quickAddServiceId, qty: fromPkg, unit: 0, total: 0, note, fromPackageId: usedPackage.id, packageName: usedPackage.name });
+    const fromPkg = Math.min(Math.floor(left / qw), quickQty), paidQty = quickQty - fromPkg;
+    if (fromPkg > 0) draftItems.push({ id: uid(), clothingId: quickAddClothingId, serviceId: quickAddServiceId, qty: fromPkg, unit: 0, total: 0, note, fromPackageId: usedPackage.id, packageName: usedPackage.name, pkgW: qw });
     if (paidQty > 0) {
       const unit = priceFor(quickAddClothingId, quickAddServiceId);
       draftItems.push({ id: uid(), clothingId: quickAddClothingId, serviceId: quickAddServiceId, qty: paidQty, unit, total: round3(unit * paidQty), note });
@@ -7140,7 +7188,7 @@ body.auth-locked .top-logout{display:none!important}
           <div class="pos-cart-row-title">${clothingName(it.clothingId)}</div>
           <div class="pos-cart-row-sub">
             ${it.fromPackageId
-              ? `<span style="color:var(--success);font-weight:800">🎟 من الباقة (${esc(it.packageName)})${(() => { const cp = customerPackages.find((p) => p.id === it.fromPackageId); return cp ? ` — متبقي ${Math.max(0, pkgLeftInDraft(cp))}` : ""; })()}</span>`
+              ? `<span style="color:var(--success);font-weight:800">🎟 من الباقة (${esc(it.packageName)})${pkgWLabel(it.pkgW || 1)}${(() => { const cp = customerPackages.find((p) => p.id === it.fromPackageId); return cp ? ` — متبقي ${Math.max(0, pkgLeftInDraft(cp))}` : ""; })()}</span>`
               : `<select class="pos-cart-row-service-select" data-service-change="${it.id}">
                   ${SERVICES_DEFAULT.filter((s) => offerPrice(it.clothingId, s.id) > 0 || s.id === it.serviceId).map((s) => `<option value="${s.id}" ${s.id === it.serviceId ? "selected" : ""}>${t(s.key)}</option>`).join("")}
                 </select> · ${money(it.unit)} × ${it.qty}`}
@@ -7180,8 +7228,8 @@ body.auth-locked .top-logout{display:none!important}
         if (!it) return;
         if (it.fromPackageId) {
           const cp = customerPackages.find((p) => p.id === it.fromPackageId);
-          const usedInCart = draftItems.filter((x) => x.fromPackageId === it.fromPackageId).reduce((s, x) => s + x.qty, 0);
-          if (cp && usedInCart >= cp.remainingPieces) {
+          const usedInCart = draftItems.filter((x) => x.fromPackageId === it.fromPackageId).reduce((s, x) => s + pkgUnits(x), 0);
+          if (cp && usedInCart + (it.pkgW || 1) > cp.remainingPieces) {
             toast(`لا يمكن تجاوز القطع المتبقية بالباقة «${cp.name}» (${cp.remainingPieces} قطعة)`);
             return;
           }
@@ -7419,8 +7467,8 @@ body.auth-locked .top-logout{display:none!important}
     if (draftItems.length === 0) { toast(t("toast_add_one_item")); return null; }
     // حماية الباقات: لا يُسمح باستهلاك أكثر من المتبقي، ولا باستخدام باقة عميل آخر (مثلاً طلب معلّق قديم)
     const pkgUse = {};
-    draftItems.forEach((it) => { if (it.fromPackageId) pkgUse[it.fromPackageId] = (pkgUse[it.fromPackageId] || 0) + it.qty; });
-    const uncovered = draftItems.find((it) => { if (!it.fromPackageId) return false; const cp = customerPackages.find((p) => p.id === it.fromPackageId); return cp && !pkgCovers(cp, it.clothingId, it.serviceId); });
+    draftItems.forEach((it) => { if (it.fromPackageId) pkgUse[it.fromPackageId] = (pkgUse[it.fromPackageId] || 0) + pkgUnits(it); });
+    const uncovered = draftItems.find((it) => { if (!it.fromPackageId) return false; const cp = customerPackages.find((p) => p.id === it.fromPackageId); return cp && (!pkgCovers(cp, it.clothingId, it.serviceId) || pkgWeight(it.clothingId, it.serviceId) === 0); });
     if (uncovered) { toast(`«${clothingName(uncovered.clothingId)}» غير مشمول بباقة «${uncovered.packageName || ""}» — احذفه من السلة وأضفه بالسعر العادي`); return null; }
     for (const [pid, qty] of Object.entries(pkgUse)) {
       const cp = customerPackages.find((p) => p.id === pid);
@@ -7467,8 +7515,8 @@ body.auth-locked .top-logout{display:none!important}
       if (!it.fromPackageId) return;
       const cp = customerPackages.find((p) => p.id === it.fromPackageId);
       if (cp) {
-        cp.remainingPieces = Math.max(0, cp.remainingPieces - it.qty);
-        logActivity(`خصم ${it.qty} قطعة من باقة «${cp.name}» — متبقي ${cp.remainingPieces}`);
+        cp.remainingPieces = Math.max(0, cp.remainingPieces - pkgUnits(it));
+        logActivity(`خصم ${pkgUnits(it)} قطعة من باقة «${cp.name}»${(it.pkgW || 1) > 1 ? ` (${it.qty} ${clothingName(it.clothingId)} × ${it.pkgW})` : ""} — متبقي ${cp.remainingPieces}`);
       }
     });
 
@@ -7555,9 +7603,9 @@ body.auth-locked .top-logout{display:none!important}
         ur: () => `السلام علیکم ${n} 🌸\nآپ کے آرڈر #${d.number} کی رسید:\n🧾 ${d.link}\n\nکسی بھی وقت کھول کر محفوظ کریں 😊\n${SIGN.ur}`,
       },
       package: {
-        ar: () => `هلا والله ${n} 🎟\nتم تفعيل باقتك «${d.pkg}» بنجاح ✅\n\n👕 عدد القطع: ${d.pieces}\n🧺 تشمل: ${d.garments}\n💰 قيمة الباقة: ${d.price} (${d.method})${d.bonus ? `\n🎁 هدية الباقة: ${d.bonus}` : ""}\n\nتُخصم القطع تلقائياً من باقتك مع كل طلب، وبنبلغك بالمتبقي في كل مرة 😊\n${SIGN.ar}`,
-        en: () => `Hi ${n} 🎟\nYour package «${d.pkg}» is now active ✅\n\n👕 Pieces: ${d.pieces}\n🧺 Covers: ${d.garments}\n💰 Package price: ${d.price} (${d.method})${d.bonus ? `\n🎁 Bonus: ${d.bonus}` : ""}\n\nPieces are deducted automatically with each order, and we'll tell you what's left every time 😊\n${SIGN.en}`,
-        ur: () => `السلام علیکم ${n} 🎟\nآپ کا پیکیج «${d.pkg}» فعال ہو گیا ✅\n\n👕 قطعات: ${d.pieces}\n🧺 شامل: ${d.garments}\n💰 پیکیج کی قیمت: ${d.price} (${d.method})${d.bonus ? `\n🎁 تحفہ: ${d.bonus}` : ""}\n\nہر آرڈر کے ساتھ قطعات خودبخود کم ہوں گی اور ہم ہر بار باقی تعداد بتائیں گے 😊\n${SIGN.ur}`,
+        ar: () => `هلا والله ${n} 🎟\nتم تفعيل باقتك «${d.pkg}» بنجاح ✅\n\n👕 عدد القطع: ${d.pieces}\n🧺 تشمل: ${d.garments}\n💰 قيمة الباقة: ${d.price} (${d.method})${d.bonus ? `\n🎁 هدية الباقة: ${d.bonus}` : ""}${d.rules ? `\n📌 ${d.rules}` : ""}\n\nتُخصم القطع تلقائياً من باقتك مع كل طلب، وبنبلغك بالمتبقي في كل مرة 😊\n${SIGN.ar}`,
+        en: () => `Hi ${n} 🎟\nYour package «${d.pkg}» is now active ✅\n\n👕 Pieces: ${d.pieces}\n🧺 Covers: ${d.garments}\n💰 Package price: ${d.price} (${d.method})${d.bonus ? `\n🎁 Bonus: ${d.bonus}` : ""}${d.rules ? `\n📌 ${d.rules}` : ""}\n\nPieces are deducted automatically with each order, and we'll tell you what's left every time 😊\n${SIGN.en}`,
+        ur: () => `السلام علیکم ${n} 🎟\nآپ کا پیکیج «${d.pkg}» فعال ہو گیا ✅\n\n👕 قطعات: ${d.pieces}\n🧺 شامل: ${d.garments}\n💰 پیکیج کی قیمت: ${d.price} (${d.method})${d.bonus ? `\n🎁 تحفہ: ${d.bonus}` : ""}${d.rules ? `\n📌 ${d.rules}` : ""}\n\nہر آرڈر کے ساتھ قطعات خودبخود کم ہوں گی اور ہم ہر بار باقی تعداد بتائیں گے 😊\n${SIGN.ur}`,
       },
       due: {
         ar: () => `هلا والله ${n} 🌸\nحبينا نذكّرك بلطف إن المتبقي على حسابك لدينا ${d.amount}${d.lines ? `:\n${d.lines}` : "."}\n\nتقدر تسدده بأي وقت يناسبك عند زيارتك الجاية أو عن طريق Benefit Pay 🙏\nشكراً لتعاونك ودايماً بخدمتك 💐\n${SIGN.ar}`,
@@ -7750,7 +7798,7 @@ body.auth-locked .top-logout{display:none!important}
     return ids.map((id) => {
       const cp = customerPackages.find((p) => p.id === id);
       if (!cp) return "";
-      const usedHere = order.items.filter((it) => it.fromPackageId === id).reduce((s, it) => s + it.qty, 0);
+      const usedHere = order.items.filter((it) => it.fromPackageId === id).reduce((s, it) => s + pkgUnits(it), 0);
       return lang === "en" ? `Package «${cp.name}»: ${usedHere} used — ${cp.remainingPieces} of ${cp.totalPieces} left`
         : `باقة «${cp.name}»: استُخدم ${arPcs(usedHere)} — متبقي ${cp.remainingPieces} من ${cp.totalPieces}`;
     }).filter(Boolean);
@@ -8495,7 +8543,7 @@ body.auth-locked .top-logout{display:none!important}
           const it = order.items[i], diff = newQty[i] - it.qty;
           if (it.fromPackageId && diff > 0) {
             const cp = customerPackages.find((x) => x.id === it.fromPackageId);
-            if (!cp || cp.remainingPieces < diff) { toast(`لا توجد قطع كافية بالباقة «${it.packageName || ""}»`); return false; }
+            if (!cp || cp.remainingPieces < diff * (it.pkgW || 1)) { toast(`لا توجد قطع كافية بالباقة «${it.packageName || ""}»`); return false; }
           }
         }
         const before = { pieces: order.items.reduce((a, it) => a + it.qty, 0), total: order.payment.total, priority: order.priority };
@@ -8506,7 +8554,7 @@ body.auth-locked .top-logout{display:none!important}
             const diff = newQty[i] - it.qty;
             if (it.fromPackageId && diff !== 0) {
               const cp = customerPackages.find((x) => x.id === it.fromPackageId);
-              if (cp) cp.remainingPieces = Math.min(cp.totalPieces, Math.max(0, cp.remainingPieces - diff));
+              if (cp) cp.remainingPieces = Math.min(cp.totalPieces, Math.max(0, cp.remainingPieces - diff * (it.pkgW || 1)));
             }
             it.qty = newQty[i];
             it.total = round3(it.unit * it.qty);
@@ -8676,7 +8724,7 @@ body.auth-locked .top-logout{display:none!important}
           order.items.forEach((it) => {
             if (!it.fromPackageId) return;
             const cp = customerPackages.find((p) => p.id === it.fromPackageId);
-            if (cp) { cp.remainingPieces = Math.min(cp.totalPieces, cp.remainingPieces + it.qty); restoredPieces += it.qty; }
+            if (cp) { cp.remainingPieces = Math.min(cp.totalPieces, cp.remainingPieces + pkgUnits(it)); restoredPieces += pkgUnits(it); }
           });
           if (restoredPieces > 0) refundNote += ` — تم استرجاع ${restoredPieces} قطعة لباقة العميل`;
           order.status = "cancelled";
@@ -9642,6 +9690,8 @@ body.auth-locked .top-logout{display:none!important}
     }).join("");
     if (!can("edit_pricing")) document.querySelectorAll("#extrasPricesBody input, #extrasPricesBody select").forEach((el) => (el.disabled = true));
     renderPackageDefs();
+    renderPackageWeights();
+    if (!can("edit_pricing")) document.querySelectorAll("#packageWeightsBody input, #savePackageWeightsBtn, #resetPackageWeightsBtn").forEach((el) => (el.disabled = true));
     renderDiscountCodes();
   }
   function renderDiscountCodes() {
@@ -9885,6 +9935,59 @@ body.auth-locked .top-logout{display:none!important}
   }
   document.getElementById("addPackageDefBtn").addEventListener("click", () => openPackageDefForm(null));
 
+  // سطر توضيحي للعميل: «العباية = 2 قطع · اللحاف = 5 قطع … · خارج الباقة: الستارة، الحذاء» (للأصناف المشمولة بخدمة الباقة فقط)
+  function pkgRulesText(def) {
+    const ids = (Array.isArray(def.garments) && def.garments.length ? def.garments : activeGarments().map((g) => g.id)).filter((id) => priceFor(id, def.serviceType) > 0);
+    const heavy = {}, out = [];
+    ids.forEach((id) => { const w = pkgWeight(id, def.serviceType); if (w > 1) (heavy[w] = heavy[w] || []).push(clothingName(id)); });
+    // الأصناف المستثناة تُذكر دائماً (ستارة، أحذية…) حتى لو لم يكن لها سعر بخدمة هذه الباقة — لتفادي أي سوء فهم
+    activeGarments().forEach((g) => { if (pkgWeight(g.id, def.serviceType) === 0 && SERVICES_DEFAULT.some((x) => priceFor(g.id, x.id) > 0)) out.push(clothingName(g.id)); });
+    const en = lang === "en";
+    const pcs = (w) => (en ? `${w} pcs` : w === 2 ? "قطعتين" : `${w} قطع`);
+    const parts = Object.keys(heavy).sort((a, b) => a - b).map((w) => `${heavy[w].join(en ? " / " : " و")} = ${pcs(Number(w))}`);
+    if (out.length) parts.push(`${en ? "Not included" : "خارج الباقة"}: ${out.join(en ? ", " : "، ")}`);
+    return parts.join(" · ");
+  }
+  // أوزان القطع في الباقات: لكل صنف كم قطعة يُخصم من رصيد الباقة (غسيل وكوي / كوي فقط) — 0 = خارج نظام الباقات
+  function renderPackageWeights() {
+    const body = document.getElementById("packageWeightsBody");
+    if (!body) return;
+    const list = activeGarments().filter((g) => priceFor(g.id, "washiron") > 0 || priceFor(g.id, "iron") > 0);
+    const cell = (g, svc) => priceFor(g.id, svc) > 0 || ((settings.packageWeights || {})[g.id] || {})[svc] !== undefined
+      ? `<input type="number" min="0" max="50" step="1" inputmode="numeric" class="pkgw-input" data-pkgw="${g.id}" data-svc="${svc}" value="${pkgWeight(g.id, svc)}" style="width:72px" />`
+      : `<span class="section-note">—</span>`;
+    const sorted = list.slice().sort((a, b) => {
+      const wa = Math.max(pkgWeight(a.id, "washiron"), pkgWeight(a.id, "iron")), wb = Math.max(pkgWeight(b.id, "washiron"), pkgWeight(b.id, "iron"));
+      const ka = wa === 1 ? 1 : 0, kb = wb === 1 ? 1 : 0; return ka - kb;
+    });
+    body.innerHTML = sorted.map((g) => {
+      const off = pkgWeight(g.id, "washiron") === 0 && pkgWeight(g.id, "iron") === 0;
+      return `<tr><td>${CLOTHING_ICONS[g.id] || g.icon || ""} <strong>${esc(clothingName(g.id))}</strong>${off ? ` <span class="status-badge status-cancelled">خارج الباقات</span>` : ""}</td><td>${cell(g, "washiron")}</td><td>${cell(g, "iron")}</td></tr>`;
+    }).join("");
+  }
+  document.getElementById("savePackageWeightsBtn")?.addEventListener("click", () => {
+    const next = {};
+    document.querySelectorAll("#packageWeightsBody [data-pkgw]").forEach((inp) => {
+      const n = Math.floor(Number(inp.value));
+      const v = Number.isFinite(n) && n >= 0 ? Math.min(50, n) : 1;
+      if (v === 1) return;
+      (next[inp.dataset.pkgw] = next[inp.dataset.pkgw] || {})[inp.dataset.svc] = v;
+    });
+    Object.values(next).forEach((o) => { if (o.washiron === undefined) o.washiron = 1; if (o.iron === undefined) o.iron = 1; });
+    const desc = Object.entries(next).map(([id, o]) => `${clothingName(id)} ${o.washiron}/${o.iron}`).join("، ") || "كل الأصناف = 1";
+    settings.packageWeights = next;
+    persistAll();
+    logActivity(`تعديل أوزان القطع في الباقات (غسيل وكوي/كوي): ${desc}`);
+    renderPackageWeights();
+    toast("تم حفظ أوزان الباقات — تُطبّق على الطلبات الجديدة");
+  });
+  document.getElementById("resetPackageWeightsBtn")?.addEventListener("click", () => {
+    confirmAction("إرجاع أوزان الباقات للوضع الافتراضي؟ (عباية 2، لحاف 5، شرشف دبل 4، جلابية 2، الكوي فقط 2، الستارة والأحذية خارج الباقات)", () => {
+      settings.packageWeights = JSON.parse(JSON.stringify(PACKAGE_WEIGHTS_997));
+      persistAll(); logActivity("إرجاع أوزان الباقات للوضع الافتراضي"); renderPackageWeights(); toast("تم");
+    });
+  });
+
   /* --------------------------- باقات العملاء (شراء واستخدام) --------------------------- */
   function activePackagesForCustomer(customerId) {
     return customerPackages.filter((cp) => cp.customerId === customerId && cp.remainingPieces > 0);
@@ -9915,7 +10018,7 @@ body.auth-locked .top-logout{display:none!important}
         logActivity(`${cust.name} اشترى باقة «${def.name}» (${def.pieceCount} قطعة، ${money(def.price)})`, def.price);
         toast(`تم تفعيل باقة «${def.name}» للعميل — ${def.pieceCount} قطعة متاحة`);
         waPrompt(`✓ تم تفعيل باقة «${def.name}»`, `هل ترسل تأكيد الباقة للعميل على واتساب؟`, "📲 إرسال تأكيد الباقة", () => {
-          openWhatsApp(cust.phone, waMsg("package", { name: cust.name, pkg: def.name, pieces: def.pieceCount, garments: garmentsLabel(def.garments, 6), price: money(def.price), method: paymentLabel(v.method), bonus: def.bonus || "" }));
+          openWhatsApp(cust.phone, waMsg("package", { name: cust.name, pkg: def.name, pieces: def.pieceCount, garments: garmentsLabel(def.garments, 6), price: money(def.price), method: paymentLabel(v.method), bonus: def.bonus || "", rules: pkgRulesText(def) }));
           logActivity(`إرسال تأكيد باقة واتساب — ${cust.name} — ${def.name}`);
         });
         renderCustomersPage();
