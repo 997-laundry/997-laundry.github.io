@@ -997,7 +997,7 @@ body.auth-locked .top-logout{display:none!important}
       <div class="modal-header"><div><h3 data-i18n="cust_dialog_title">إضافة عميل جديد</h3><p data-i18n="cust_dialog_sub">أدخل بيانات العميل الأساسية</p></div><button class="icon-btn" value="cancel">✕</button></div>
       <div class="form-grid">
         <label><span data-i18n="lbl_customer_name">اسم العميل</span><input id="customerName" required /></label>
-        <label><span data-i18n="lbl_phone">رقم الجوال</span><input id="customerPhone" required inputmode="tel" /></label>
+        <label><span data-i18n="lbl_phone">رقم الجوال</span><input id="customerPhone" required inputmode="tel" placeholder="33445566 أو ‎+966 5XXXXXXXX" /></label>
         <label><span data-i18n="lbl_area">المنطقة</span><input id="customerArea" /></label>
         <label><span data-i18n="lbl_address">العنوان</span><input id="customerAddress" /></label>
         <label class="full-span"><span data-i18n="lbl_notes">ملاحظات</span><textarea id="customerNotes" rows="3"></textarea></label>
@@ -4220,16 +4220,44 @@ body.auth-locked .top-logout{display:none!important}
     const d = new Date(iso);
     return d.toLocaleString(DATE_LOCALES[lang] || "en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bahrain" });
   }
-  function phoneKey(p) { const d = toLatinDigits(p).replace(/\D/g, ""); return d.length > 8 ? d.slice(-8) : d; }
-  function samePhone(a, b) { const x = phoneKey(a), y = phoneKey(b); return !!x && x === y; }
-  function validLocalPhone(p) { return /^\d{8}$/.test(toLatinDigits(p).replace(/\D/g, "").replace(/^973/, "")); }
-  function cleanPhone(phone) {
-    let digits = toLatinDigits(phone || "").replace(/[^0-9]/g, "");
-    if (!digits.startsWith("973")) digits = "973" + digits.replace(/^0+/, "");
-    return digits;
+  /* أرقام الجوال: البحرين افتراضياً (8 أرقام)، دول الخليج برمزها (يُتحقق من الطول)، وأي رقم دولي يبدأ بـ + أو 00.
+     يُحفظ الرقم دائماً بصيغة دولية كاملة بدون + (مثل 97333445566 / 966501234567) — وهي نفسها صيغة واتساب. */
+  const PHONE_LEN = { "973": [8], "966": [9], "971": [8, 9], "965": [8], "974": [8], "968": [8] };
+  // دول يُكتب فيها صفر محلي بعد رمز الدولة (+966 05… ← 9665…) فيُحذف تلقائياً
+  const TRUNK0 = ["966", "971", "20", "44", "91", "92", "63", "62", "880", "94", "977", "90", "33", "49", "962", "961", "964", "212", "216", "213", "249"];
+  function normPhone(p) {
+    const raw = toLatinDigits(p || "").trim(), intl = /^\s*(\+|00)/.test(raw);
+    let d = raw.replace(/\D/g, "");
+    if (intl && d.startsWith("00")) d = d.slice(2);
+    if (!d) return { digits: "", ok: false, cc: "" };
+    if (intl) {
+      for (const c of TRUNK0) if (d.startsWith(c + "0")) { d = c + d.slice(c.length + 1); break; }
+      const cc = Object.keys(PHONE_LEN).find((c) => d.startsWith(c));
+      if (cc) return { digits: d, ok: PHONE_LEN[cc].includes(d.length - cc.length), cc };
+      return { digits: d, ok: d.length >= 8 && d.length <= 15 && !d.startsWith("0"), cc: "" };
+    }
+    if (d.length === 8) return { digits: "973" + d, ok: true, cc: "973" }; // رقم بحريني محلي
+    const cc = Object.keys(PHONE_LEN).find((c) => d.startsWith(c));
+    if (cc) return { digits: d, ok: PHONE_LEN[cc].includes(d.length - cc.length), cc };
+    // بدون + : رقم دولي كامل من 10 إلى 15 رقماً (لا يبدأ بصفر — 05… بدون رمز الدولة غير واضح)
+    return { digits: d, ok: d.length >= 10 && d.length <= 15 && !d.startsWith("0"), cc: "" };
   }
+  function phoneKey(p) { const n = normPhone(p); return n.digits; }
+  function samePhone(a, b) { const x = phoneKey(a), y = phoneKey(b); return !!x && x === y; }
+  function validPhone(p) { return normPhone(p).ok; }
+  const validLocalPhone = validPhone; // الاسم القديم
+  function cleanPhone(phone) { return normPhone(phone).digits; }
+  function fmtPhone(p) {
+    const n = normPhone(p), d = n.digits;
+    if (!n.ok) return String(p || "");
+    if (n.cc === "973" || (n.cc && d.length - n.cc.length === 8)) { const r = d.slice(n.cc.length); return `+${n.cc} ${r.slice(0, 4)} ${r.slice(4)}`; }
+    if (n.cc) return `+${n.cc} ${d.slice(n.cc.length)}`;
+    return "+" + d;
+  }
+  const PHONE_HINT = () => (lang === "en" ? "Enter an 8-digit Bahrain number, or an international number starting with + and the country code (e.g. +966 5XXXXXXXX)" : "اكتب رقماً بحرينياً من 8 أرقام، أو رقماً دولياً يبدأ بـ + ورمز الدولة (مثال: ‎+966 5XXXXXXXX)");
+  window.normPhone997 = normPhone; window.fmtPhone997 = fmtPhone;
   function openWhatsApp(phone, text) {
-    if (toLatinDigits(phone || "").replace(/\D/g, "").replace(/^973/, "").length < 8) { toast(lang === "en" ? "This customer has no valid phone number — add it in the customer file first" : "لا يوجد رقم هاتف صحيح لهذا العميل — أضفه في ملف العميل أولاً"); return; }
+    if (!validPhone(phone)) { toast(lang === "en" ? "This customer has no valid phone number — add it in the customer file first" : "لا يوجد رقم هاتف صحيح لهذا العميل — أضفه في ملف العميل أولاً"); return; }
     // api.whatsapp.com/send (وليس wa.me): رابط wa.me يحوّل الرموز التعبيرية إلى «�» على بعض أجهزة أندرويد
     const url = `https://api.whatsapp.com/send?phone=${cleanPhone(phone)}&text=${encodeURIComponent(text)}`;
     let newWin = null;
@@ -6592,10 +6620,10 @@ body.auth-locked .top-logout{display:none!important}
     card.classList.remove("empty-state", "compact");
     card.innerHTML = `
       <div class="details-line"><span>${t("lbl_customer_name")}</span><strong>${esc(cust.name)}</strong></div>
-      <div class="details-line"><span>${t("lbl_phone")}</span><strong>${esc(cust.phone)}</strong></div>
+      <div class="details-line"><span>${t("lbl_phone")}</span><strong><span dir="ltr">${esc(fmtPhone(cust.phone))}</span></strong></div>
       <div class="details-line"><span>${t("sum_balance")}</span><strong>${money(cust.balance)}</strong></div>`;
     const barText = document.getElementById("posCustomerBarText");
-    barText.innerHTML = `${esc(cust.name)}<small>${esc(cust.phone)} · الرصيد: ${money(cust.balance)}</small>`;
+    barText.innerHTML = `${esc(cust.name)}<small><span dir="ltr">${esc(fmtPhone(cust.phone))}</span> · الرصيد: ${money(cust.balance)}</small>`;
     document.getElementById("posCustomerBarBtn").classList.add("has-customer");
     updateSummary();
     if (!silent) {
@@ -6618,12 +6646,9 @@ body.auth-locked .top-logout{display:none!important}
       list = customers.slice().sort((x, y) => ((lastOrder[y.id] || {}).createdAt || y.createdAt || "").localeCompare((lastOrder[x.id] || {}).createdAt || x.createdAt || "")).slice(0, 8);
     } else {
       const ql = q.toLowerCase();
-      list = customers.filter((c) => {
-        const cd = toLatinDigits(c.phone).replace(/\D/g, "").replace(/^973/, "");
-        return c.name.toLowerCase().includes(ql) || (digits.length >= 2 && cd.includes(digits));
-      }).slice(0, 8);
+      list = customers.filter((c) => c.name.toLowerCase().includes(ql) || phoneMatches(c.phone, q)).slice(0, 8);
     }
-    const fmtPh = (p) => { const k = phoneKey(p); return k.length === 8 ? `+973 ${k.slice(0, 4)} ${k.slice(4)}` : esc(p); };
+    const fmtPh = (p) => esc(fmtPhone(p));
     box.innerHTML = (!q && list.length ? `<div class="cust-results-title">${customers.length ? "آخر العملاء" : ""}</div>` : "") + list.map((c) => {
       const cnt = orders.filter((o) => o.customerId === c.id).length;
       const bal = Number(c.balance) || 0;
@@ -7375,7 +7400,7 @@ body.auth-locked .top-logout{display:none!important}
         </div>
         <div class="receipt-divider"></div>
         <p class="receipt-meta"><span>${t("receipt_order", order.number)}</span><span>${fmtDT(order.createdAt)}</span></p>
-        ${cust ? `<p class="receipt-meta"><span>${esc(cust.name)}</span><span>${esc(cust.phone)}</span></p>` : ""}
+        ${cust ? `<p class="receipt-meta"><span>${esc(cust.name)}</span><span><span dir="ltr">${esc(fmtPhone(cust.phone))}</span></span></p>` : ""}
         <div class="receipt-divider"></div>
 
         <table>
@@ -7816,7 +7841,7 @@ body.auth-locked .top-logout{display:none!important}
 
     document.getElementById("orderDialogContent").innerHTML = `
       <div class="modal-header">
-        <div><h3>${t("dlg_order_title", order.number)}</h3><p>${cust ? `<button type="button" class="link-btn cust-open" id="orderDlgCustomer">📋 ${esc(cust.name)}</button> — <span dir="ltr">${esc(cust.phone)}</span>` : ""}</p></div>
+        <div><h3>${t("dlg_order_title", order.number)}</h3><p>${cust ? `<button type="button" class="link-btn cust-open" id="orderDlgCustomer">📋 ${esc(cust.name)}</button> — <span dir="ltr"><span dir="ltr">${esc(fmtPhone(cust.phone))}</span></span>` : ""}</p></div>
         <button class="icon-btn" id="closeOrderDialog">✕</button>
       </div>
       ${flowStepsHtml(order)}
@@ -8033,7 +8058,7 @@ body.auth-locked .top-logout{display:none!important}
       submitLabel: "حفظ التعديلات",
       onSubmit: (v) => {
         if (!v.name || !v.phone) { toast(t("toast_name_phone_required")); return false; }
-        if (!validLocalPhone(v.phone)) { toast("رقم الجوال البحريني يتكون من 8 أرقام"); return false; }
+        if (!validPhone(v.phone)) { toast(PHONE_HINT()); return false; }
         const normalizedPhone = cleanPhone(v.phone);
         const duplicate = customers.find((c) => c.id !== customerId && samePhone(c.phone, normalizedPhone));
         if (duplicate) { toast(`رقم الجوال مسجّل مسبقاً للعميل: ${duplicate.name}`); return false; }
@@ -8094,7 +8119,7 @@ body.auth-locked .top-logout{display:none!important}
       const activePkgs = activePackagesForCustomer(c.id);
       const pkgNote = activePkgs.length ? `<div class="pos-cart-row-sub">${activePkgs.map((p) => `${esc(p.name)}: ${p.remainingPieces}/${p.totalPieces}`).join(" · ")}</div>` : "";
       return `<tr>
-        <td><button type="button" class="link-btn cust-open" data-profile="${c.id}"><strong>${esc(c.name)}</strong></button>${pkgNote}</td><td dir="ltr">${esc(c.phone)}</td><td>${esc(c.area) || "—"}</td>
+        <td><button type="button" class="link-btn cust-open" data-profile="${c.id}"><strong>${esc(c.name)}</strong></button>${pkgNote}</td><td dir="ltr">${esc(fmtPhone(c.phone))}</td><td>${esc(c.area) || "—"}</td>
         <td>${cs.totalOwed > 0 ? `<span class="cust-chip debt">${lang === "en" ? "Owes" : "عليه"} ${money(cs.totalOwed)}</span>` : cs.prepaid > 0 ? `<span class="cust-chip credit">${lang === "en" ? "Credit" : "رصيد"} ${money(cs.prepaid)}</span>` : money(0)}</td><td>${lastPayCell}</td><td>${sinceCell}</td><td>${custOrders.length}</td><td>${last ? fmtDT(last.createdAt) : "—"}</td>
         <td class="row-actions">
           <button class="mini-btn" data-profile="${c.id}">📋 ${lang === "en" ? "File" : "ملف العميل"}</button>
@@ -8125,10 +8150,21 @@ body.auth-locked .top-logout{display:none!important}
     });
   }
 
+  // بحث الرقم: جزء من الرقم، أو الرقم كاملاً بأي صيغة (+966 05… / 00966… / 0501… / 33445566)
+  function phoneMatches(stored, q) {
+    const full = toLatinDigits(stored || "").replace(/\D/g, "");
+    const digits = toLatinDigits(q || "").replace(/\D/g, "");
+    if (digits.length < 2 || !full) return false;
+    const n = normPhone(q);
+    if (n.ok && n.digits === full) return true;
+    const local = digits.replace(/^00/, "").replace(/^973/, ""), noZero = local.replace(/^0+/, "");
+    return full.includes(local) || (noZero.length >= 4 && full.includes(noZero));
+  }
+  window.phoneMatches997 = phoneMatches;
   function custMatchesQuery(c, q) {
     if (!q) return true;
-    const s = toLatinDigits(q).toLowerCase(), digits = s.replace(/\D/g, "").replace(/^973/, "");
-    return String(c.name || "").toLowerCase().includes(s) || (digits.length >= 2 && toLatinDigits(c.phone || "").replace(/\D/g, "").includes(digits));
+    const s = toLatinDigits(q).toLowerCase();
+    return String(c.name || "").toLowerCase().includes(s) || phoneMatches(c.phone, q);
   }
   document.getElementById("customerSearch")?.addEventListener("input", () => renderCustomersPage());
 
@@ -8192,7 +8228,7 @@ body.auth-locked .top-logout{display:none!important}
         </div><div class="inv-muted" style="font-size:12px">${r.order.items.map((it) => `${esc(clothingName(it.clothingId))} × ${it.qty}`).join(" · ")} — ${statusLabel(r.order.status)}</div></div>`).join("");
     document.getElementById("customerProfileContent").innerHTML = `
       <div class="modal-header">
-        <div><h3>📋 ${esc(c.name)}</h3><p><span dir="ltr">${esc(c.phone || "")}</span>${c.area ? " · " + esc(c.area) : ""}${c.address ? " · " + esc(c.address) : ""}${c.createdAt ? ` · ${L.since} ${fmtDT(c.createdAt)}` : ""}</p>${c.notes ? `<p class="inv-muted">📝 ${esc(c.notes)}</p>` : ""}</div>
+        <div><h3>📋 ${esc(c.name)}</h3><p><span dir="ltr">${esc(fmtPhone(c.phone))}</span>${c.area ? " · " + esc(c.area) : ""}${c.address ? " · " + esc(c.address) : ""}${c.createdAt ? ` · ${L.since} ${fmtDT(c.createdAt)}` : ""}</p>${c.notes ? `<p class="inv-muted">📝 ${esc(c.notes)}</p>` : ""}</div>
         <button class="icon-btn" type="button" id="closeCustomerProfile">✕</button>
       </div>
       <div style="padding:0 20px 20px">
@@ -8263,7 +8299,7 @@ body.auth-locked .top-logout{display:none!important}
     const name = document.getElementById("customerName").value.trim();
     const phoneRaw = document.getElementById("customerPhone").value.trim();
     if (!name || !phoneRaw) { toast(t("toast_name_phone_required")); return; }
-    if (!validLocalPhone(phoneRaw)) { toast("رقم الجوال البحريني يتكون من 8 أرقام"); return; }
+    if (!validPhone(phoneRaw)) { toast(PHONE_HINT()); return; }
     const normalizedPhone = cleanPhone(phoneRaw);
     const duplicate = customers.find((c) => samePhone(c.phone, normalizedPhone));
     if (duplicate) { toast(`رقم الجوال مسجّل مسبقاً للعميل: ${duplicate.name}`); return; }
@@ -8402,7 +8438,7 @@ body.auth-locked .top-logout{display:none!important}
     const last = lastTxMap();
     const list = customers.filter((c) => custMatches(c, bv.q) && (bv.filter === "all" || (bv.filter === "credit" && c.balance > 0) || (bv.filter === "debt" && c.balance < 0) || (bv.filter === "zero" && c.balance === 0)))
       .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance) || a.name.localeCompare(b.name));
-    return list.map((c) => `<tr><td><b>${esc(c.name)}</b><br><span class="inv-muted" dir="ltr">${esc(c.phone || "")}</span></td><td>${balSign(c.balance)}</td><td>${last[c.id] ? fmtDT(last[c.id]) : BX("none_yet")}</td><td><div class="row-actions"><button class="mini-btn" data-bact="dep" data-id="${c.id}">${BX("b_deposit")}</button><button class="mini-btn" data-bact="op" data-id="${c.id}">${BX("b_op")}</button><button class="mini-btn" data-bact="stmt" data-id="${c.id}">${BX("b_stmt")}</button><button class="mini-btn" data-bact="wa" data-id="${c.id}">${BX("b_wa")}</button></div></td></tr>`).join("")
+    return list.map((c) => `<tr><td><b>${esc(c.name)}</b><br><span class="inv-muted" dir="ltr">${esc(fmtPhone(c.phone))}</span></td><td>${balSign(c.balance)}</td><td>${last[c.id] ? fmtDT(last[c.id]) : BX("none_yet")}</td><td><div class="row-actions"><button class="mini-btn" data-bact="dep" data-id="${c.id}">${BX("b_deposit")}</button><button class="mini-btn" data-bact="op" data-id="${c.id}">${BX("b_op")}</button><button class="mini-btn" data-bact="stmt" data-id="${c.id}">${BX("b_stmt")}</button><button class="mini-btn" data-bact="wa" data-id="${c.id}">${BX("b_wa")}</button></div></td></tr>`).join("")
       || `<tr><td colspan="4" class="empty-state compact">${BX("empty_customers")}</td></tr>`;
   }
   function balCustomersHtml() {
@@ -8443,7 +8479,7 @@ body.auth-locked .top-logout{display:none!important}
   function balDebtorsHtml() {
     const last = lastTxMap();
     const list = customers.filter((c) => c.balance < 0).sort((a, b) => a.balance - b.balance);
-    const rows = list.map((c) => `<tr><td><b>${esc(c.name)}</b><br><span class="inv-muted" dir="ltr">${esc(c.phone || "")}</span></td><td><b style="color:var(--danger)">${money(-c.balance)}</b></td><td>${last[c.id] ? fmtDT(last[c.id]) : BX("none_yet")}</td><td><div class="row-actions"><button class="mini-btn" data-bact="settle" data-id="${c.id}">${BX("b_settle")}</button><button class="mini-btn" data-bact="remind" data-id="${c.id}">${BX("b_remind")}</button><button class="mini-btn" data-bact="stmt" data-id="${c.id}">${BX("b_stmt")}</button></div></td></tr>`).join("");
+    const rows = list.map((c) => `<tr><td><b>${esc(c.name)}</b><br><span class="inv-muted" dir="ltr">${esc(fmtPhone(c.phone))}</span></td><td><b style="color:var(--danger)">${money(-c.balance)}</b></td><td>${last[c.id] ? fmtDT(last[c.id]) : BX("none_yet")}</td><td><div class="row-actions"><button class="mini-btn" data-bact="settle" data-id="${c.id}">${BX("b_settle")}</button><button class="mini-btn" data-bact="remind" data-id="${c.id}">${BX("b_remind")}</button><button class="mini-btn" data-bact="stmt" data-id="${c.id}">${BX("b_stmt")}</button></div></td></tr>`).join("");
     return `<div class="panel"><div class="panel-header"><div><h3>${BX("tab_debtors")}</h3></div></div><div class="table-wrap"><table><thead><tr><th>${BX("th_customer")}</th><th>${BX("th_debt")}</th><th>${BX("th_last")}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="empty-state compact">${BX("empty_debtors")}</td></tr>`}</tbody></table></div></div>`;
   }
   function ledgerSum(custId) { return round3(ledger.filter((tx) => tx.customerId === custId).reduce((s, tx) => s + Number(tx.amount || 0), 0)); }
@@ -8451,7 +8487,7 @@ body.auth-locked .top-logout{display:none!important}
     const list = ledger.filter((tx) => tx.customerId === c.id);
     const diff = round3(c.balance - ledgerSum(c.id));
     const check = Math.abs(diff) < 0.0005 ? `<span class="inv-muted">${BX("st_check_ok")}</span>` : `<span style="color:var(--warning);font-weight:700">${BX("st_check_bad", money(diff))}</span>`;
-    return `<div class="panel"><div class="panel-header"><div><h3>${BX("st_title")} — ${esc(c.name)}</h3><p>${BX("st_phone")}: <span dir="ltr">${esc(c.phone || "")}</span></p></div><div class="row-actions"><button class="primary-btn" type="button" data-bact="dep" data-id="${c.id}">${BX("b_deposit")}</button><button class="secondary-btn" type="button" data-bact="op" data-id="${c.id}">${BX("b_op")}</button><button class="whatsapp-btn" type="button" data-bact="stmtwa" data-id="${c.id}">${BX("b_wa")}</button><button class="ghost-btn" type="button" data-bact="print" data-id="${c.id}">${BX("b_print")}</button><button class="ghost-btn" type="button" data-bact="back">${BX("b_back")}</button></div></div><div class="inv-group"><div class="inv-group-head"><span>${BX("current_balance")}:</span><span style="font-size:20px">${balSign(c.balance)}</span>${check}</div></div><div class="table-wrap"><table><thead><tr>${["th_date", "th_type", "th_note", "th_method", "th_amount", "th_after"].map((k) => `<th>${BX(k)}</th>`).join("")}<th></th></tr></thead><tbody>${ledgerRowsHtml(list.slice(0, 300), false) || `<tr><td colspan="7" class="empty-state compact">${BX("empty_ledger")}</td></tr>`}</tbody></table></div></div>`;
+    return `<div class="panel"><div class="panel-header"><div><h3>${BX("st_title")} — ${esc(c.name)}</h3><p>${BX("st_phone")}: <span dir="ltr">${esc(fmtPhone(c.phone))}</span></p></div><div class="row-actions"><button class="primary-btn" type="button" data-bact="dep" data-id="${c.id}">${BX("b_deposit")}</button><button class="secondary-btn" type="button" data-bact="op" data-id="${c.id}">${BX("b_op")}</button><button class="whatsapp-btn" type="button" data-bact="stmtwa" data-id="${c.id}">${BX("b_wa")}</button><button class="ghost-btn" type="button" data-bact="print" data-id="${c.id}">${BX("b_print")}</button><button class="ghost-btn" type="button" data-bact="back">${BX("b_back")}</button></div></div><div class="inv-group"><div class="inv-group-head"><span>${BX("current_balance")}:</span><span style="font-size:20px">${balSign(c.balance)}</span>${check}</div></div><div class="table-wrap"><table><thead><tr>${["th_date", "th_type", "th_note", "th_method", "th_amount", "th_after"].map((k) => `<th>${BX(k)}</th>`).join("")}<th></th></tr></thead><tbody>${ledgerRowsHtml(list.slice(0, 300), false) || `<tr><td colspan="7" class="empty-state compact">${BX("empty_ledger")}</td></tr>`}</tbody></table></div></div>`;
   }
   function renderBalancesPage() {
     const root = document.getElementById("balRoot"); if (!root) return;
@@ -9041,10 +9077,10 @@ body.auth-locked .top-logout{display:none!important}
     if (!o) { waStatus("⚠ لا يوجد طلب لإرسال إيصاله كتجربة — أنشئ طلباً أولاً."); return; }
     openQuickForm({
       title: "📤 إرسال إيصال تجريبي", sub: `يُرسل إيصال الطلب #${o.number} عبر WhatsApp Business API إلى الرقم الذي تكتبه (رقمك مثلاً).`,
-      fields: [{ id: "phone", label: "رقم الواتساب (8 أرقام)", type: "text", value: (loadProfile().whatsapp || "") }],
+      fields: [{ id: "phone", label: "رقم الواتساب (بحريني 8 أرقام أو دولي يبدأ بـ +)", type: "text", value: (loadProfile().whatsapp || "") }],
       submitLabel: "إرسال",
       onSubmit: (v) => {
-        if (!validLocalPhone(v.phone)) { toast("اكتب رقماً صحيحاً من 8 أرقام"); return false; }
+        if (!validPhone(v.phone)) { toast(PHONE_HINT()); return false; }
         const cust = customers.find((c) => c.id === o.customerId) || { name: "Test", phone: v.phone, balance: 0 };
         waStatus("… جارٍ الإرسال");
         CLOUD.waSend({ to: cleanPhone(v.phone), name: cust.name, orderNo: String(o.number), line: receiptPayLine(o), image: receiptPngNow(o, cust).b64 })
@@ -9527,7 +9563,7 @@ body.auth-locked .top-logout{display:none!important}
  const stBadge=s=>s==='out'?`<span class="priority-badge priority-urgent">${IX('st_out')}</span>`:s==='low'?`<span class="priority-badge priority-high">${IX('st_low')}</span>`:`<span class="status-badge status-ready">${IX('st_ok')}</span>`;
  const catName=c=>IX('cat_'+(CATS.includes(c)?c:'other'));
  const supName=id=>{const s=sups().find(x=>x.id===id);return s?s.name:''};
- const waNum=p=>{let d=String(p||'').replace(/\D/g,'');if(d.startsWith('00'))d=d.slice(2);if(d.length===8)d='973'+d;return d};
+ const waNum=p=>{if(window.normPhone997){const n=window.normPhone997(p);return n.ok?n.digits:''}let d=String(p||'').replace(/\D/g,'');if(d.startsWith('00'))d=d.slice(2);if(d.length===8)d='973'+d;return d};
  const fmtDate=iso=>{try{return new Date(iso).toLocaleString(IL(),{timeZone:'Asia/Bahrain'})}catch{return iso||''}};
  const activePurchases=()=>E().data.purchases.filter(p=>!p.voided);
  const supplierOptions=sel=>[{value:'',label:IX('f_none')},...sups().map(s=>({value:s.id,label:s.name}))].map(o=>({...o,sel}));
