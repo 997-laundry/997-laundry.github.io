@@ -1411,7 +1411,7 @@
         const ovCount = e.permOverrides ? Object.keys(e.permOverrides).length : 0;
         return `<tr>
           <td>${esc(e.employeeNumber) || "—"}</td>
-          <td>${esc(e.name)}${self ? ' <span class="status-badge status-ready">أنت</span>' : ""}${e.passHash ? "" : ' <span class="nopw-tag">بدون حساب دخول</span>'}${e.mustChange ? ' <span class="nopw-tag">كلمة مؤقتة</span>' : ""}</td>
+          <td>${esc(e.name)}${self ? ' <span class="status-badge status-ready">أنت</span>' : ""}${hasLoginAccount(e) ? "" : ' <span class="nopw-tag">بدون حساب دخول</span>'}${e.mustChange ? ' <span class="nopw-tag">كلمة مؤقتة</span>' : ""}</td>
           <td dir="ltr" style="text-align:start">${esc(e.username) || "—"}</td>
           <td>${ACCESS_ROLE_AR[e.role] || esc(e.role)}${ovCount ? ` <span class="inv-muted" title="صلاحيات خاصة">✱${ovCount}</span>` : ""}</td>
           <td>${e.lastLogin ? fmtDT(e.lastLogin) : "—"}</td>
@@ -1790,6 +1790,9 @@
   let pendingUser = null; // حساب صحيح كلمة مروره لكنه ينتظر تغيير كلمة المرور المؤقتة
 
   function emps() { return window.L997Enterprise ? window.L997Enterprise.data.employees : []; }
+  // له حساب دخول: كلمة المرور محفوظة على هذا الجهاز، أو له حساب في السحابة، أو دخل من قبل (كلمات المرور لا تُرفع للسحابة —
+  // فعلى جهاز المالك لا تظهر كلمة مرور موظف دخل من جهاز آخر)
+  function hasLoginAccount(e) { return !!(e && (e.passHash || e.cloudUserId || (e.username && e.lastLogin))); }
   function persistEmps() { save("l997_employees", emps()); }
 
   /* ---------- تجزئة SHA-256 (بدون اعتماد على مكتبات أو https) ---------- */
@@ -1973,6 +1976,7 @@
     return emps().find((e) => {
       if (e.username && String(e.username).toLowerCase() === n) return true;
       if (e.email && String(e.email).toLowerCase() === n) return true;
+      if (e.cloudEmail && String(e.cloudEmail).toLowerCase() === n) return true;
       if (e.employeeNumber) {
         const en = String(e.employeeNumber).toLowerCase();
         if (en === n) return true;
@@ -2300,6 +2304,18 @@
         <div class="auth-hint" style="margin:-6px 0 8px">${esc(AX("pw_rules", sec.minLen))}</div>
         <div class="auth-err" id="au_err" role="alert"></div><button type="submit" class="primary-btn full">${esc(AX("btn_reset"))}</button></form>
         <p class="auth-hint">${esc(AX("forgot_note"))}</p>
+        ${cloudOn() || CLOUD ? `<div class="auth-mail-box" style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+          <p class="auth-sub" style="margin:0 0 8px">📧 ${lang === "en" ? "Owner: get a reset link by email" : "المالك: أرسل رابط استرداد إلى بريدي"}</p>
+          ${txtField("au_email", lang === "en" ? "Owner's email" : "بريد المالك", "email", 'inputmode="email" dir="ltr"')}
+          <button type="button" class="secondary-btn full" id="au_email_send">📧 ${lang === "en" ? "Send link to my email" : "إرسال رابط إلى بريدي"}</button>
+          <p class="auth-hint" id="au_email_ok" hidden>✓ ${lang === "en" ? "If this email is registered, a link is on its way. Open it on this device to set a new password." : "إذا كان البريد مسجّلاً ستصلك رسالة خلال دقائق. افتح الرابط على هذا الجهاز لتعيين كلمة مرور جديدة."}</p>
+        </div>` : ""}
+        <div class="auth-links"><button type="button" class="link-btn" id="au_back">${esc(AX("back_login"))}</button></div>`;
+    } else if (authView === "emailReset") {
+      html += `<h2>${lang === "en" ? "Set a new password" : "تعيين كلمة مرور جديدة"}</h2><p class="auth-sub">${lang === "en" ? "You opened the link from your email. Choose a new password." : "فتحت الرابط من بريدك. اختر كلمة مرور جديدة."}</p>
+        <form id="au_form" novalidate>${pwField("au_pw", AX("cp_new"), "new-password")}${pwField("au_pw2", AX("cp_new2"), "new-password")}
+        <div class="auth-hint" style="margin:-6px 0 8px">${esc(AX("pw_rules", sec.minLen))}</div>
+        <div class="auth-err" id="au_err" role="alert"></div><button type="submit" class="primary-btn full">${esc(AX("btn_save_continue"))}</button></form>
         <div class="auth-links"><button type="button" class="link-btn" id="au_back">${esc(AX("back_login"))}</button></div>`;
     } else if (authView === "mustChange") {
       html += `<h2>${esc(AX("mc_title"))}</h2><p class="auth-sub">${esc(AX("mc_sub"))}</p>
@@ -2338,6 +2354,8 @@
     if (authView === "login") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitLogin(); });
     if (authView === "setup") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitSetup(); });
     if (authView === "forgot") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitForgot(); });
+    if (authView === "emailReset") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitEmailReset(); });
+    $a("au_email_send")?.addEventListener("click", sendRecoveryEmail);
     if (authView === "mustChange") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitMustChange(); });
     if (authView === "cloudJoin") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitCloudJoin(); });
     $a("au_cloud_join")?.addEventListener("click", () => showAuth("cloudJoin"));
@@ -2593,6 +2611,78 @@
     window.location.reload();
   }
 
+  // بريد استرداد كلمة المرور للمالك: يصبح بريد دخوله في السحابة (اسم المستخدم يبقى كما هو للدخول)
+  function openRecoveryEmailForm() {
+    if (role !== "owner" || !me) { denied(); return; }
+    openQuickForm({
+      title: "📧 بريد استرداد كلمة المرور", sub: "اكتب بريدك الشخصي. يصله رابط تعيين كلمة مرور جديدة إذا نسيتها. للتأكيد اكتب كلمة المرور الحالية.",
+      fields: [
+        { id: "email", label: "البريد الإلكتروني", type: "text", value: me.cloudEmail || "" },
+        { id: "pw", label: "كلمة المرور الحالية", type: "password", value: "" },
+      ],
+      submitLabel: "حفظ البريد",
+      onSubmit: (v) => {
+        const email = String(v.email || "").trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { toast("اكتب بريداً صحيحاً (مثال: name@gmail.com)"); return false; }
+        if (!me.salt || hashPw(v.pw || "", me.salt) !== me.passHash) { toast(AX("e_bad")); return false; }
+        return cloudStep(() => CLOUD.setRecoveryEmail(email, me.cloudUserId), (c) => {
+          me.cloudEmail = email; persistEmps();
+          logActivity(`إضافة/تغيير بريد استرداد كلمة المرور للمالك — ${me.name}`);
+          toast(c.pending ? "تم — افتح بريدك واضغط رابط التأكيد ليُفعَّل" : "✓ تم حفظ البريد — رابط الاسترداد يصل إليه");
+          renderCloudPanel();
+        });
+      },
+    });
+  }
+  function recoveryLanding() {
+    const base = /^https?:$/.test(location.protocol) ? location.origin + location.pathname : "https://997-laundry.github.io/";
+    return base;
+  }
+  async function sendRecoveryEmail() {
+    const email = ($a("au_email") && $a("au_email").value || "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return setErr(lang === "en" ? "Enter the owner's email" : "اكتب بريد المالك");
+    const left = lockLeftMs("mail");
+    if (left > 0) return setErr(AX("e_locked", Math.ceil(left / 60000)));
+    attFail("mail");
+    const btn = $a("au_email_send"); if (btn) btn.disabled = true;
+    setErr(lang === "en" ? "📧 Sending…" : "📧 جاري الإرسال…");
+    const r = await CLOUD.sendRecovery(email, recoveryLanding());
+    if (btn) btn.disabled = false;
+    if (r.error) return setErr(r.error === "rate-limit" ? (lang === "en" ? "Too many emails — try again in an hour" : "طلبات كثيرة — حاول بعد ساعة") : cloudErr(r.error));
+    setErr("");
+    const ok = $a("au_email_ok"); if (ok) ok.hidden = false;
+  }
+  // فتح رابط الاسترداد من البريد: النظام يُفتح على «كلمة مرور جديدة»
+  function recoveryFromUrl() {
+    const h = String(location.hash || "").replace(/^#/, "");
+    if (!/(^|&)type=recovery(&|$)/.test(h)) return null;
+    const p = new window.URLSearchParams(h);
+    const token = p.get("access_token");
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* ignore */ }
+    return token || null;
+  }
+  async function submitEmailReset() {
+    const p1 = $a("au_pw").value, p2 = $a("au_pw2").value;
+    const prob = pwProblem(p1, null);
+    if (prob) return setErr(prob);
+    if (p1 !== p2) return setErr(AX("e_pw_match"));
+    const btn = $a("au_form").querySelector("button[type=submit]"); btn.disabled = true; setErr("☁ …");
+    const r = await CLOUD.completeRecovery(authCtx.token, p1);
+    btn.disabled = false;
+    if (r.error) return setErr(r.error === "link-expired" ? (lang === "en" ? "This link has expired — request a new one" : "انتهت صلاحية الرابط — اطلب رابطاً جديداً") : cloudErr(r.error));
+    const e = emps().find((x) => x.cloudUserId && x.cloudUserId === r.uid);
+    if (e) {
+      setPassword(e, p1, false); attClear("u:" + e.id);
+      logActivity(`استعادة كلمة المرور عبر البريد — ${e.name}`);
+      save("l997_user", e.name); save("l997_role", "—");
+      showAuth("login", "pwchanged");
+    } else {
+      // جهاز غير مربوط بعد: الدخول من السحابة بالبريد وكلمة المرور الجديدة
+      showAuth("cloudJoin", "", { email: r.email || "" });
+      setTimeout(() => { if ($a("au_user") && r.email) $a("au_user").value = r.email; }, 50);
+    }
+  }
+
   /* ---------- لوحة السحابة (ملف المنشأة — للمالك) ---------- */
   function renderCloudPanel() {
     const el = document.getElementById("cloudPanel");
@@ -2628,8 +2718,14 @@
       ${s.conflicts ? `<details class="cloud-warn"><summary>⚠ ${s.conflicts} تعديل تعارض مع جهاز آخر (اعتُمدت نسخة السحابة) — اضغط للتفاصيل</summary>${s.conflictList.map((c) => `<div class="cloud-row">${fmtDT(c.at)} · ${esc(c.collection)} · ${esc(c.id)}</div>`).join("")}</details>` : ""}
       ${s.rejected ? `<details class="cloud-warn"><summary>⚠ ${s.rejected} تعديل رفضته السحابة (صلاحيات) — اضغط للتفاصيل</summary>${s.rejectedList.map((c) => `<div class="cloud-row">${fmtDT(c.at)} · ${esc(c.collection)} · ${esc(c.why)}</div>`).join("")}</details>` : ""}
       ${s.conflicts || s.rejected ? `<button class="ghost-btn" id="cloudClearNotesBtn" type="button">✓ تمت المراجعة — مسح التنبيهات</button>` : ""}
+      ${role === "owner" && me ? `<div class="wa-api-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft);margin:10px 0">
+        <strong>📧 بريد استرداد كلمة المرور (المالك)</strong>
+        <p class="section-note" style="margin:6px 0 8px">إذا نسيت كلمة المرور: شاشة الدخول ← «نسيت كلمة المرور» ← «إرسال رابط إلى بريدي» — يصلك رابط لتعيين كلمة مرور جديدة. ${me.cloudEmail ? `البريد الحالي: <b dir="ltr">${esc(me.cloudEmail)}</b>` : "لم يُضف بريد بعد."}</p>
+        <button class="secondary-btn" id="cloudEmailBtn" type="button">${me.cloudEmail ? "✏️ تغيير البريد" : "＋ إضافة بريدي"}</button>
+      </div>` : ""}
       <p class="section-note">لإضافة جهاز: افتح الرابط على الجهاز الجديد ← «لدي حساب في السحابة».</p>
       <button class="ghost-btn" id="cloudUnlinkBtn" type="button">فك ربط هذا الجهاز فقط</button>`;
+    document.getElementById("cloudEmailBtn")?.addEventListener("click", openRecoveryEmailForm);
     document.getElementById("cloudStaffBtn")?.addEventListener("click", () => openCloudStaffForm(noCloud));
     document.getElementById("cloudClearNotesBtn")?.addEventListener("click", () => { CLOUD.clearNotes(); renderCloudPanel(); toast("تم مسح التنبيهات"); });
     document.getElementById("cloudSyncNowBtn").addEventListener("click", () => { CLOUD.syncNow().then(() => { renderCloudPanel(); toast("تمت المزامنة"); }); });
@@ -2768,7 +2864,14 @@
   // زر خروج إضافي في الشريط العلوي (للجوال) — يبقى ظاهراً دائماً حتى لو غطّى شريط المتصفح أسفل القائمة
   document.getElementById("topLogoutBtn")?.addEventListener("click", () => logoutClicked());
 
+  // رابط الاسترداد فُتح والنظام مفتوح أصلاً في نفس التبويب (لا تُعاد الصفحة) — نلتقطه أيضاً
+  window.addEventListener("hashchange", () => {
+    const t0 = recoveryFromUrl();
+    if (t0) { me = null; showAuth("emailReset", "", { token: t0 }); }
+  });
   function initAuth() {
+    const recToken = recoveryFromUrl();
+    if (recToken) { migrateAccounts(); showAuth("emailReset", "", { token: recToken }); return; }
     migrateAccounts();
     if (reconcileDerived()) persistAll();
     me = null;
@@ -6640,7 +6743,7 @@
   const P=window.L997People||{};const mb=FIN.monthBounds(FIN.todayStr());
   const inMonth=d=>FIN.inRange(d,mb.from,mb.to);
   q('employeeMetrics').innerHTML=[[t('emp_count'),es.length],[t('emp_base_salaries'),money(es.reduce((s,e)=>s+Number(e.salary||0),0))],[t('emp_today_attendance'),att.filter(a=>FIN.localDay(a.date)===FIN.todayStr()).length],[t('emp_commissions'),money(es.reduce((s,e)=>s+Number(e.commission||0),0))]].map(a=>`<div class="metric-card"><div class="metric-top">${a[0]}</div><div class="metric-value">${a[1]}</div></div>`).join('');
-  const acct=e=>e.active===false?'<span class="status-badge status-cancelled">معطّل</span>':e.passHash?'<span class="status-badge status-ready">🔑 له حساب دخول</span>':'<span class="nopw-tag">بدون دخول</span>';
+  const acct=e=>e.active===false?'<span class="status-badge status-cancelled">معطّل</span>':(e.passHash||e.cloudUserId||(e.username&&e.lastLogin))?'<span class="status-badge status-ready">🔑 له حساب دخول</span>':'<span class="nopw-tag">بدون دخول</span>';
   const rows=[...es,...all.filter(e=>e.active===false)];
   q('employeesBody').innerHTML=rows.length?rows.map(e=>{let mine=os.filter(o=>o.employeeId===e.id&&o.status!=='cancelled'),sales=mine.reduce((s,o)=>s+Number(pay(o).total||0),0);return `<tr${e.active===false?' style="opacity:.55"':''}><td><b>${esc(e.name)}</b><br><small class="inv-muted">#${esc(e.employeeNumber||'—')}</small> ${acct(e)}</td><td>${roleLabel997(e.role)||esc(e.role)}</td><td>${money(e.salary)}</td><td>${money(e.commission)}</td><td>${mine.length}</td><td>${money(sales)}</td><td>${P.canEdit&&P.canEdit(e.id)?`<button class="mini-btn" type="button" data-emp-edit="${e.id}">تعديل</button>`:''}</td></tr>`}).join(''):`<tr><td colspan="7" class="empty-state compact">${t('no_employees')}</td></tr>`;
   q('employeesBody').querySelectorAll('[data-emp-edit]').forEach(b=>b.addEventListener('click',()=>P.edit(b.dataset.empEdit)));

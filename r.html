@@ -143,7 +143,8 @@
   async function api(path, opt) {
     opt = opt || {};
     const h = { apikey: CFG.key, "Content-Type": "application/json", ...(opt.headers || {}) };
-    if (opt.auth !== false) { const t = await accessToken(opt.as); if (!t) throw Object.assign(new Error("no-session"), { noSession: true }); h.Authorization = "Bearer " + t; }
+    if (opt.bearer) h.Authorization = "Bearer " + opt.bearer;
+    else if (opt.auth !== false) { const t = await accessToken(opt.as); if (!t) throw Object.assign(new Error("no-session"), { noSession: true }); h.Authorization = "Bearer " + t; }
     const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
     const to = ctl ? setTimeout(() => ctl.abort(), 15000) : null;
     let r;
@@ -506,11 +507,30 @@
     const rows = await api(`/rest/v1/shop_members?select=shop_id,role,active,employee_id,display_name&user_id=eq.${uid}`);
     return rows && rows[0] ? rows[0] : null;
   }
-  async function signInRaw(username, password) {
+  // بريد الدخول في السحابة: اسم المستخدم@الدومين، أو بريد المالك الشخصي إن أضافه (للاسترداد) — أو بريد مكتوب مباشرة
+  function emailsFor(username) {
+    const u = String(username || "").trim().toLowerCase();
+    if (u.includes("@")) return [u];
+    const out = [];
     try {
-      const s = await api("/auth/v1/token?grant_type=password", { method: "POST", auth: false, body: { email: emailOf(username), password } });
-      return { uid: keepSession(s) };
-    } catch (e) { return { error: msgOf(e) }; }
+      const list = JSON.parse(ls.getItem("l997_employees") || "[]");
+      const e = Array.isArray(list) ? list.find((x) => x && String(x.username || "").toLowerCase() === u) : null;
+      if (e && e.cloudEmail) out.push(String(e.cloudEmail).toLowerCase());
+    } catch (e) { /* ignore */ }
+    out.push(emailOf(u));
+    return [...new Set(out)];
+  }
+  async function passwordToken(username, password) {
+    let last = null;
+    for (const email of emailsFor(username)) {
+      try { return await api("/auth/v1/token?grant_type=password", { method: "POST", auth: false, body: { email, password } }); }
+      catch (e) { last = e; if (e.status !== 400) throw e; }
+    }
+    throw last;
+  }
+  async function signInRaw(username, password) {
+    try { return { uid: keepSession(await passwordToken(username, password)) }; }
+    catch (e) { return { error: msgOf(e) }; }
   }
   function storeDirtyAll() { COLLECTIONS.forEach((c) => { if (ls.getItem(c.key) !== null) dirty.add(c.key); }); }
 
@@ -523,7 +543,7 @@
     // تحقق فقط من كلمة مرور شخص آخر (موافقة مشرف على جهاز موظف): لا تُحفظ جلسته، وتُنهى فوراً
     async verifyPassword(username, password) {
       try {
-        const s = await api("/auth/v1/token?grant_type=password", { method: "POST", auth: false, body: { email: emailOf(username), password } });
+        const s = await passwordToken(username, password);
         if (s && s.access_token) root.fetch(CFG.url + "/auth/v1/logout", { method: "POST", headers: { apikey: CFG.key, Authorization: "Bearer " + s.access_token } }).catch(() => {});
         return { ok: !!(s && s.user), uid: s && s.user ? s.user.id : null };
       } catch (e) { return { error: msgOf(e) }; }
@@ -634,6 +654,27 @@
     async resetPassword(uid, password) {
       try { await api("/rest/v1/rpc/set_member_password", { method: "POST", body: { p_user: uid, p_password: password } }); return { ok: true }; }
       catch (e) { return { error: msgOf(e) }; }
+    },
+    // بريد استرداد كلمة المرور (للمالك): يصبح بريد الدخول في السحابة، فيصل إليه رابط «نسيت كلمة المرور»
+    async setRecoveryEmail(email, uid) {
+      try {
+        const u = await api("/auth/v1/user", { method: "PUT", body: { email: String(email).trim().toLowerCase() }, as: uid });
+        const applied = u && String(u.email || "").toLowerCase() === String(email).trim().toLowerCase();
+        return { ok: true, pending: !applied };
+      } catch (e) { return { error: e.status === 422 ? "email-taken" : msgOf(e) }; }
+    },
+    // يرسل رابط استرداد إلى البريد (من شاشة الدخول — بدون حساب). الرابط يعود إلى النظام لتعيين كلمة مرور جديدة
+    async sendRecovery(email, redirectTo) {
+      try { await api("/auth/v1/recover" + (redirectTo ? "?redirect_to=" + encodeURIComponent(redirectTo) : ""), { method: "POST", auth: false, body: { email: String(email).trim().toLowerCase() } }); return { ok: true }; }
+      catch (e) { return { error: e.status === 429 ? "rate-limit" : msgOf(e) }; }
+    },
+    // بعد فتح رابط الاسترداد: كلمة المرور الجديدة بالرمز الذي في الرابط
+    async completeRecovery(token, password) {
+      try {
+        await api("/auth/v1/user", { method: "PUT", body: { password }, bearer: token });
+        const u = await api("/auth/v1/user", { bearer: token });
+        return { ok: true, uid: u && u.id, email: u && u.email };
+      } catch (e) { return { error: e.status === 401 || e.status === 403 ? "link-expired" : msgOf(e) }; }
     },
     async changeOwnPassword(password, uid) {
       try { await api("/auth/v1/user", { method: "PUT", body: { password }, as: uid }); return { ok: true }; }

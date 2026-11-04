@@ -29,7 +29,7 @@ async function startStandin(opts = {}) {
   if (opts.owner !== false) pgAdmin(`psql -X -q -d ${db} -c "insert into public.shop_setup (id, owner_email) values (1, '${opts.owner || "owner"}@997laundry.app')"`);
   pgAdmin(`psql -X -q -d ${db} -c "do \\$\\$ begin if not exists (select 1 from pg_roles where rolname='l997_standin') then create role l997_standin login password 'standin' in role authenticated, anon; end if; end \\$\\$; grant authenticated, anon to l997_standin; alter role l997_standin bypassrls; grant select, insert, update on auth.users to l997_standin; grant usage on schema extensions to l997_standin;"`);
   const pool = new Pool({ host: "127.0.0.1", user: "l997_standin", password: "standin", database: db, max: 8 });
-  const sessions = new Map(); // token -> user id
+  const outbox = []; const sessions = new Map(); // token -> user id
   const refresh = new Map();  // refresh token -> user id
   let requests = 0, offline = false, loseNextWrite = false;
 
@@ -118,8 +118,31 @@ async function startStandin(opts = {}) {
       }
       if (u.pathname === "/auth/v1/user" && req.method === "PUT") {
         if (!uid) return send(401, { code: 401, msg: "invalid JWT" });
-        await pool.query("update auth.users set encrypted_password = extensions.crypt($2, extensions.gen_salt('bf')) where id = $1", [uid, body.password]);
-        return send(200, { id: uid });
+        if (body.password) await pool.query("update auth.users set encrypted_password = extensions.crypt($2, extensions.gen_salt('bf')) where id = $1", [uid, body.password]);
+        if (body.email) {
+          // like Supabase with "confirm email" off: the new email applies at once
+          const em = String(body.email).toLowerCase();
+          const taken = await pool.query("select 1 from auth.users where email = $1 and id <> $2", [em, uid]);
+          if (taken.rowCount) return send(422, { code: 422, error_code: "email_exists", msg: "A user with this email address has already been registered" });
+          await pool.query("update auth.users set email = $2 where id = $1", [uid, em]);
+        }
+        const r = await pool.query("select id, email from auth.users where id = $1", [uid]);
+        return send(200, r.rows[0]);
+      }
+      if (u.pathname === "/auth/v1/user" && req.method === "GET") {
+        if (!uid) return send(401, { code: 401, msg: "invalid JWT" });
+        const r = await pool.query("select id, email from auth.users where id = $1", [uid]);
+        return send(200, r.rows[0]);
+      }
+      if (u.pathname === "/auth/v1/recover" && req.method === "POST") {
+        // like Supabase: always 200; if the email exists, an email with a one-time link is "sent" (kept in outbox)
+        const r = await pool.query("select id, email from auth.users where email = $1", [String(body.email || "").toLowerCase()]);
+        if (r.rowCount) {
+          const s = issue(r.rows[0]);
+          const to = u.searchParams.get("redirect_to") || "http://localhost:3000";
+          outbox.push({ to: r.rows[0].email, link: `${to}#access_token=${s.access_token}&expires_in=3600&refresh_token=${s.refresh_token}&token_type=bearer&type=recovery` });
+        }
+        return send(200, {});
       }
       // ---------- rest ----------
       const m = /^\/rest\/v1\/(rpc\/)?([a-z_]+)$/.exec(u.pathname);
@@ -167,6 +190,7 @@ async function startStandin(opts = {}) {
     url: `http://127.0.0.1:${server.address().port}`,
     db,
     get requests() { return requests; },
+    get outbox() { return outbox; },
     setOffline(v) { offline = !!v; },
     loseNextWriteResponse() { loseNextWrite = true; },
     // test inspection only: runs as the stand-in's own login (bypasses RLS); app requests always switch to "authenticated"
