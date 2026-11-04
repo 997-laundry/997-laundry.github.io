@@ -2956,15 +2956,20 @@
     openQuickForm({
       title: "📧 بريد استرداد كلمة المرور", sub: "اكتب بريدك الشخصي. يصله رابط تعيين كلمة مرور جديدة إذا نسيتها. للتأكيد اكتب كلمة المرور الحالية.",
       fields: [
-        { id: "email", label: "البريد الإلكتروني", type: "text", value: me.cloudEmail || "" },
+        { id: "email", label: "البريد الإلكتروني", type: "text", value: me.cloudEmail || "", autocomplete: "email" },
         { id: "pw", label: "كلمة المرور الحالية", type: "password", value: "" },
       ],
       submitLabel: "حفظ البريد",
       onSubmit: (v) => {
         const email = String(v.email || "").trim().toLowerCase();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { toast("اكتب بريداً صحيحاً (مثال: name@gmail.com)"); return false; }
-        if (!me.salt || hashPw(v.pw || "", me.salt) !== me.passHash) { toast(AX("e_bad")); return false; }
-        return cloudStep(() => CLOUD.setRecoveryEmail(email, me.cloudUserId), (c) => {
+        if (!v.pw) { toast("اكتب كلمة المرور الحالية"); return false; }
+        const localOk = !!me.salt && hashPw(v.pw, me.salt) === me.passHash;
+        return cloudStep(async () => {
+          // كلمة المرور على هذا الجهاز قد تكون قديمة (تغيّرت من جهاز آخر) — التحقق من السحابة هو المرجع
+          if (!localOk) { const vr = await CLOUD.verifyPassword(me.username, v.pw); if (!vr.ok) return { error: "bad-credentials" }; cacheLocalPassword(me, v.pw); }
+          return CLOUD.setRecoveryEmail(email, me.cloudUserId);
+        }, (c) => {
           me.cloudEmail = email; persistEmps();
           logActivity(`إضافة/تغيير بريد استرداد كلمة المرور للمالك — ${me.name}`);
           toast(c.pending ? "تم — افتح بريدك واضغط رابط التأكيد ليُفعَّل" : "✓ تم حفظ البريد — رابط الاسترداد يصل إليه");
@@ -4402,7 +4407,7 @@
       if (f.type === "textarea") {
         return `<label><span>${esc(f.label)}</span><textarea id="${id}" rows="2" placeholder="${esc(f.placeholder)}">${esc(f.value)}</textarea></label>`;
       }
-      return `<label><span>${esc(f.label)}</span><input id="${id}" type="${f.type === "number" ? "text" : (f.type || "text")}" ${f.type === "number" ? 'inputmode="decimal" autocomplete="off"' : ""} ${f.step ? `step="${esc(f.step)}"` : ""} ${f.min !== undefined ? `min="${esc(f.min)}"` : ""} value="${esc(f.value ?? "")}" placeholder="${esc(f.placeholder)}" /></label>`;
+      return `<label><span>${esc(f.label)}</span><input id="${id}" type="${f.type === "number" ? "text" : (f.type || "text")}" ${f.type === "number" ? 'inputmode="decimal" autocomplete="off"' : f.type === "password" ? `autocomplete="${f.autocomplete || "current-password"}"` : f.autocomplete ? `autocomplete="${f.autocomplete}"` : ""} ${f.step ? `step="${esc(f.step)}"` : ""} ${f.min !== undefined ? `min="${esc(f.min)}"` : ""} value="${esc(f.value ?? "")}" placeholder="${esc(f.placeholder)}" /></label>`;
     }).join("");
     wrap.querySelectorAll("[data-qf-group]").forEach((b) => b.addEventListener("click", () => {
       const g = b.dataset.qfGroup, boxes = b.closest(".qf-checks").querySelectorAll("input[type=checkbox]");
@@ -4563,7 +4568,7 @@
     let file = null; try { file = new File([img.blob], name, { type: "image/png" }); } catch (e) { file = null; }
     // النسخ غير متاح لكن المشاركة متاحة: قائمة المشاركة بالصورة (للعملاء المحفوظين)، والمعاينة تبقى خلفها لفتح المحادثة
     showReceiptPreview(order, cust, "image", { blob: img.blob, file, name }, text);
-    if (file && imageSendSupport().files) { try { await navigator.share(isApple() ? { files: [file] } : { files: [file], text }); return "shared"; } catch (e) { /* أُلغيت — المعاينة مفتوحة */ } }
+    if (file && imageSendSupport().files) { try { await navigator.share({ files: [file] }); return "shared"; } catch (e) { /* أُلغيت — المعاينة مفتوحة */ } }
     return "preview";
   }
   function publishReceipt(order, cust) {
@@ -4642,7 +4647,8 @@
     const r = await buildReceiptFile(order, cust, kind);
     const caption = lang === "en" ? `Receipt for order #${order.number} — 997 Laundry` : `إيصال طلبك رقم #${order.number} — 997 Laundry`;
     logActivity(`مشاركة إيصال ${kind === "image" ? "صورة" : "PDF"} للطلب #${order.number} بواسطة ${me ? me.name : ""}`);
-    const data = r.file ? (isApple() ? { files: [r.file] } : { files: [r.file], title: caption, text: caption }) : null;
+    // الملف وحده على كل الأجهزة: مع نص مرافق يرسل واتساب الملف مرتين (أندرويد) أو النص فقط (آيفون)
+    const data = r.file ? { files: [r.file] } : null;
     if (data && navigator.canShare && navigator.share) {
       let ok = false; try { ok = navigator.canShare(data); } catch (e) { ok = false; }
       if (ok) {

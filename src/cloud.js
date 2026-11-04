@@ -526,7 +526,8 @@
       if (!st || !emp) { user = null; stop(); renderChip(); showUpdateChip(false); return; }
       user = { uid: emp.cloudUserId || "", role: emp.role };
       if (!user.uid || !tokens[user.uid]) needLogin = true;
-      try { const m = await membership(user.uid); if (m) user.role = m.role; if (!st.rules) await loadRules(); } catch (e) { /* offline */ }
+      // قواعد المجموعات تُقرأ من جديد عند كل دخول (مثلاً بعد تشغيل ملف SQL يضيف مجموعة جديدة كالجلسات)
+      try { const m = await membership(user.uid); if (m) user.role = m.role; await loadRules(); } catch (e) { /* offline */ }
       start(); renderChip();
     },
     // المالك يربط هذا الجهاز (وبياناته الحالية) بالسحابة لأول مرة

@@ -76,7 +76,7 @@ const UA = {
   let p = await device("android", "ok");
   await tap(p, "#dialogReceiptImgBtn");
   let s = await shares(p);
-  check("Android: image opens the share sheet with one PNG + caption", s.length === 1 && s[0].type === "image/png" && s[0].n === 1 && /إيصال طلبك رقم/.test(s[0].text) && s[0].head[1] === 0x50, JSON.stringify(s[0] && { ...s[0], head: undefined }));
+  check("Android: image opens the share sheet with ONE PNG and no extra text (WhatsApp duplicated the file when text was attached)", s.length === 1 && s[0].type === "image/png" && s[0].n === 1 && !s[0].text && !s[0].title && s[0].head[1] === 0x50, JSON.stringify(s[0] && { ...s[0], head: undefined }));
   check("Android: file is ready before the tap (share sheet opens immediately)", s.length === 1 && s[0].t < 60, s[0] && Math.round(s[0].t) + " ms");
   await tap(p, "#dialogReceiptPdfBtn"); s = await shares(p);
   check("Android: PDF opens the share sheet with a PDF file", s.length === 2 && s[1].type === "application/pdf" && String.fromCharCode(...s[1].head.slice(0, 5)) === "%PDF-", JSON.stringify(s[1] && { type: s[1].type, size: s[1].size }));

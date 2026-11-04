@@ -78,7 +78,13 @@ const OWNER_PW = "Owner#2026pass", NEW_PW = "Fresh#2027pass", NEW_PW2 = "Again#2
   await a.nav("profile"); await a.wait(300);
   await A.click("#cloudEmailBtn"); await A.fill("#qf_email", MAIL); await A.fill("#qf_pw", "wrong-pass1"); await A.click("#quickFormSubmitBtn"); await a.wait(300);
   check("wrong current password → email not saved", (await cloud.query("select 1 from auth.users where email = $1", [MAIL])).rowCount === 0 && await A.isVisible("#quickFormSubmitBtn"));
-  await A.fill("#qf_pw", OWNER_PW); await A.click("#quickFormSubmitBtn"); await a.wait(800);
+  // like the video: this device's copy of the owner's password is out of date (changed on another device)
+  await a.closeAll();
+  await A.evaluate(() => { const l = JSON.parse(localStorage.getItem("l997_employees")); const o = l.find((e) => e.username === "owner"); o.passHash = "0".repeat(64); localStorage.setItem("l997_employees", JSON.stringify(l)); });
+  await A.reload(); await A.waitForSelector("body:not(.auth-locked)"); await a.wait(600); await a.closeAll();
+  await a.nav("profile"); await a.wait(300); await A.click("#cloudEmailBtn"); await A.fill("#qf_email", MAIL);
+  check("current-password field is marked as such (browsers don't offer a «new password» there)", (await A.getAttribute("#qf_pw", "autocomplete")) === "current-password");
+  await A.fill("#qf_pw", OWNER_PW); await A.click("#quickFormSubmitBtn"); await a.wait(1200);
   check("recovery email saved as the owner's cloud email", (await cloud.query("select 1 from auth.users where email = $1", [MAIL])).rowCount === 1);
   check("…shown in the cloud panel and recorded in the activity log", /jassim\.owner@gmail\.com/.test(await A.textContent("#cloudPanel")) && (await a.ls("l997_audit")).some((x) => /بريد استرداد/.test(x.action || "")));
   check("…and reaches the other devices (employee record)", await until(async () => ((await b.ls("l997_employees")) || []).some((e) => e.username === "owner" && e.cloudEmail === MAIL), 25000));
