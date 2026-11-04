@@ -571,3 +571,6 @@ body.auth-locked .top-logout{display:none!important}
   .sidebar-footer{padding-top:6px}.user-card{padding:6px 8px;margin-bottom:4px}
   .sidebar-footer .primary-btn,.sidebar-footer .ghost-btn,.sidebar-footer .secondary-btn{min-height:34px;padding:6px 10px;font-size:12.5px}
 }
+
+.qf-checks-search{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font:inherit}
+#discountCodeInfo .mini-btn{margin:2px}

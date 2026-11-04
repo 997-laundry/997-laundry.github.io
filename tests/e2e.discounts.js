@@ -52,7 +52,7 @@ function check(name, cond, detail) {
   await addCode("ab", 10); const shortOpen = await page.isVisible("#quickFormSubmitBtn"); await closeAll();
   await addCode("SUMMER10", 30); const dupOpen = await page.isVisible("#quickFormSubmitBtn"); await closeAll();
   await addCode("BAD CODE!", 5); const badOpen = await page.isVisible("#quickFormSubmitBtn"); await closeAll();
-  const codes = (await ls("l997_settings")).discountCodes;
+  const codes = (await ls("l997_settings")).discountCodes.filter((c) => c.createdBy !== "system"); // the 8 built-in customer codes are tested in e2e.custcodes
   check("codes saved: letters+digits upper-cased, digits-only allowed, each with its own %", codes.length === 3 && codes[0].code === "SUMMER10" && codes[0].percent === 10 && codes[1].code === "1234" && codes[1].percent === 25, JSON.stringify(codes.map((c) => [c.code, c.percent])));
   check("too short, duplicate and invalid characters refused", shortOpen && dupOpen && badOpen);
 
