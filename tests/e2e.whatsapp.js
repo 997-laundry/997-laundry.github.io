@@ -17,7 +17,7 @@ const CATALOG = Number((/const CATALOG_VERSION = (\d+)/.exec(fs.readFileSync(pat
 
 (async () => {
   const browser = await chromium.launch();
-  const page = await (await browser.newContext({ timezoneId: "Asia/Bahrain", viewport: { width: 1280, height: 900 } })).newPage();
+  const page = await (await browser.newContext({ timezoneId: "Asia/Bahrain", viewport: { width: 1280, height: 900 }, permissions: ["clipboard-read", "clipboard-write"] })).newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
@@ -83,9 +83,13 @@ const CATALOG = Number((/const CATALOG_VERSION = (\d+)/.exec(fs.readFileSync(pat
   check("reminder: order line 0.300 and total 0.300", /#0+1: 0\.300/.test(m.text) && /حسابك لدينا 0\.300/.test(m.text), m.text);
 
   /* 5) delivered → thank-you message with what is left on this order */
-  await openOrder(o1.id); await page.click("#advanceStatusBtn"); await page.fill("#qf_count", "5"); await submit();
-  await sendPrompt(); m = await last();
-  check("delivered message: thanks + remaining on this order 0.300", /تم تسليم طلبك/.test(m.text) && /المتبقي على هذا الطلب 0\.300/.test(m.text), m.text);
+  const nd = await count();
+  await openOrder(o1.id); await page.click("#advanceStatusBtn"); await page.fill("#qf_count", "5"); await submit(); await wait(600);
+  m = await last();
+  check("confirm delivery → WhatsApp opens on the customer's chat at once (same tap, no 'send?' question)", (await count()) === nd + 1 && m.to === "97333445566" && !(await page.isVisible("#quickFormSubmitBtn")), m.to);
+  check("delivered message: thanks + remaining on this order 0.300 (no link)", /تم تسليم طلبك/.test(m.text) && /المتبقي على هذا الطلب 0\.300/.test(m.text) && !/r\.html/.test(m.text), m.text);
+  const clip = await page.evaluate(async () => { try { const items = await navigator.clipboard.read(); const it = items.find((x) => x.types.includes("image/png")); if (!it) return null; const b = await it.getType("image/png"); const img = await createImageBitmap(b); return { w: img.width, h: img.height }; } catch (e) { return { err: e.message }; } });
+  check("…and the receipt image is on the clipboard, ready to paste in WhatsApp", clip && clip.w === 760 && clip.h > 600, JSON.stringify(clip));
   await openOrder(o1.id); const n0 = await count(); await page.click("#dialogWhatsappBtn"); m = await last();
   check("WhatsApp button on a delivered order sends the delivered message (not 'your order is ready')", (await count()) === n0 + 1 && /تم تسليم طلبك/.test(m.text) && !/جاهز/.test(m.text), m.text);
 

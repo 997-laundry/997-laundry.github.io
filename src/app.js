@@ -3678,6 +3678,12 @@
     openWhatsApp(cust.phone, waMsg("ready", { ...orderMsgData(order, cust), due, dueTxt: money(due), paid, paidTxt: money(paid), credit, creditTxt: money(credit) }));
   }
   const sendPaymentConfirmationMessage = sendReadyMessage;
+  function deliveredText(order, cust, link) {
+    const owed = orderOwedNow(order);
+    const accountDebt = round3(Math.max(0, -(Number(cust.balance) || 0)));
+    const account = accountDebt > owed + 0.0005 ? accountDebt : 0;
+    return waMsg("delivered", { ...orderMsgData(order, cust), owed, owedTxt: money(owed), account, accountTxt: money(account), link: link || "" });
+  }
   function sendDeliveredMessage(order, cust, withReceipt) {
     if (!cust) return;
     const link = withReceipt ? publishReceipt(order, cust) : "";
@@ -3983,6 +3989,52 @@
     return /^https?:$/.test(location.protocol) ? location.origin + location.pathname.replace(/[^/]*$/, "") : "https://997-laundry.github.io/";
   }
   const receiptLinksOn = () => cloudOn() && !!(window.L997Cloud && window.L997Cloud.status && window.L997Cloud.status().receiptLinks);
+  // صورة الإيصال كـ Blob فوراً (بدون انتظار) — لتبقى ضمن ضغطة الموظف
+  function receiptPngNow(order, cust) {
+    const url = receiptCanvas(order, cust).toDataURL("image/png");
+    const bin = window.atob(url.split(",")[1]), u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return { blob: new Blob([u8], { type: "image/png" }), b64: url.split(",")[1] };
+  }
+  const waApiOn = () => cloudOn() && !!(settings.waApi && settings.waApi.enabled);
+  function receiptPayLine(order) {
+    const owed = orderOwedNow(order), en = lang === "en";
+    if (order.status === "cancelled") return en ? "Order cancelled" : "الطلب ملغي";
+    return owed > 0 ? (en ? `Remaining: ${money(owed)}` : `المتبقي: ${money(owed)}`) : (en ? "Fully paid ✅" : "مدفوع بالكامل ✅");
+  }
+  // تلقائي عبر WhatsApp Business API: تصل صورة الإيصال للعميل بدون أي ضغطة — وعند الفشل يُعرض الإرسال اليدوي
+  async function autoSendReceipt(order, cust) {
+    const img = receiptPngNow(order, cust);
+    const r = await CLOUD.waSend({ to: cleanPhone(cust.phone), name: cust.name, orderNo: String(order.number), line: receiptPayLine(order), image: img.b64 });
+    if (r && r.ok) {
+      order.waReceiptAt = new Date().toISOString(); persistAll();
+      logActivity(`إرسال إيصال الطلب #${order.number} تلقائياً على واتساب (Business API) — ${cust.name}`);
+      toast(lang === "en" ? `✓ Receipt sent to ${cust.name} on WhatsApp automatically` : `✓ أُرسلت صورة الإيصال إلى ${cust.name} على واتساب تلقائياً`);
+      return true;
+    }
+    logActivity(`تعذّر الإرسال التلقائي لإيصال الطلب #${order.number}: ${(r && r.error) || "خطأ"}`);
+    toast(lang === "en" ? `Automatic WhatsApp failed (${(r && r.error) || "error"}) — send it manually` : `تعذّر الإرسال التلقائي (${(r && r.error) || "خطأ"}) — أرسله يدوياً`);
+    waPrompt(`إرسال إيصال الطلب #${order.number} يدوياً`, "الإرسال التلقائي لم يتم — اضغط لنسخ صورة الإيصال وفتح محادثة العميل.", "📲 نسخ الإيصال وفتح واتساب", () => sendReceiptImageManual(order, cust));
+    return false;
+  }
+  // يدوي (قبل تفعيل Business API): صورة الإيصال تُنسخ ثم يفتح واتساب على محادثة العميل (حتى لو رقمه غير محفوظ)
+  // — الموظف يضغط مطوّلاً في خانة الكتابة ← «لصق» ← إرسال. إن تعذّر النسخ: معاينة الإيصال (حفظ/مشاركة) + فتح المحادثة
+  async function sendReceiptImageManual(order, cust) {
+    const img = receiptPngNow(order, cust);
+    const text = deliveredText(order, cust);
+    let copied = false;
+    try { if (navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) { await navigator.clipboard.write([new window.ClipboardItem({ "image/png": img.blob })]); copied = true; } } catch (e) { copied = false; }
+    logActivity(`إرسال إيصال الطلب #${order.number} على واتساب (${copied ? "صورة منسوخة" : "معاينة"}) — ${cust.name}`);
+    if (copied) {
+      toast(lang === "en" ? "Receipt image copied — in WhatsApp: press and hold the message box → Paste → Send" : "📋 تم نسخ صورة الإيصال — في واتساب: اضغط مطوّلاً في خانة الكتابة ← «لصق» ← إرسال", 7000);
+      openWhatsApp(cust.phone, text);
+      return "copied";
+    }
+    const name = `997-laundry-receipt-${order.number}.png`;
+    let file = null; try { file = new File([img.blob], name, { type: "image/png" }); } catch (e) { file = null; }
+    showReceiptPreview(order, cust, "image", { blob: img.blob, file, name }, text);
+    return "preview";
+  }
   function publishReceipt(order, cust) {
     if (!receiptLinksOn() || !cust) return "";
     const m = receiptModel(order, cust);
@@ -4435,9 +4487,10 @@
           refreshAfterOrderChange();
           toast(t("toast_status_updated"));
           // تلقائياً بنفس ضغطة «تأكيد التسليم»: واتساب يفتح على محادثة العميل وفيها رسالة الشكر + رابط الإيصال — الموظف يضغط «إرسال» فقط
-          if (cust && receiptLinksOn() && settings.autoReceiptOnDelivery !== false && validLocalPhone(cust.phone)) {
-            sendDeliveredMessage(order, cust, true);
-            logActivity(`إرسال رسالة التسليم + رابط الإيصال واتساب — طلب #${order.number}`);
+          // إيصال التسليم كصورة: تلقائياً عبر WhatsApp Business API إن كان مفعّلاً، وإلا بنفس الضغطة: نسخ الصورة + فتح محادثة العميل
+          if (cust && settings.autoReceiptOnDelivery !== false && validLocalPhone(cust.phone)) {
+            if (waApiOn()) autoSendReceipt(order, cust);
+            else sendReceiptImageManual(order, cust);
           } else showDeliveredPrompt(order, cust);
         };
         if (needPay) return applyOrderPayment(order, cust, v, `تسليم طلب #${order.number}`, deliver);
@@ -5542,6 +5595,7 @@
     document.getElementById("normalHoursSetting").value = settings.normalHours;
     document.getElementById("urgentHoursSetting").value = settings.urgentHours;
     document.getElementById("shiftsRequiredSetting").checked = settings.shiftsRequired === true;
+    document.getElementById("waApiSetting").checked = !!(settings.waApi && settings.waApi.enabled);
 
     const body = document.getElementById("pricesBody");
     body.innerHTML = allGarments().map((g) => {
@@ -5734,9 +5788,39 @@
     const shiftsOn = document.getElementById("shiftsRequiredSetting").checked;
     if ((settings.shiftsRequired === true) !== shiftsOn) logActivity(`${shiftsOn ? "تفعيل" : "إيقاف"} إلزام الموظفين ببدء الوردية`);
     settings.shiftsRequired = shiftsOn;
+    const waOn = document.getElementById("waApiSetting").checked;
+    if (!!(settings.waApi && settings.waApi.enabled) !== waOn) logActivity(`${waOn ? "تفعيل" : "إيقاف"} الإرسال التلقائي لإيصال التسليم عبر WhatsApp Business API`);
+    settings.waApi = { ...(settings.waApi || {}), enabled: waOn };
     persistAll();
     logActivity(`تعديل إعدادات التشغيل: ${before} → ${urgent}% / ${normalH}س / ${urgentH}س`);
     toast(t("toast_settings_saved"));
+  });
+
+  // فحص ربط WhatsApp Business API وإرسال إيصال تجريبي
+  const waStatus = (t0) => { const el = document.getElementById("waApiStatus"); if (el) el.textContent = t0; };
+  document.getElementById("waApiCheckBtn")?.addEventListener("click", async () => {
+    if (!cloudOn()) { waStatus("⚠ اربط النظام بالسحابة أولاً (ملف المنشأة ← المزامنة السحابية)."); return; }
+    waStatus("… جارٍ الفحص");
+    const r = await CLOUD.waSend({ ping: true });
+    if (r && r.ok) waStatus(r.configured ? `✓ الربط جاهز — النموذج «${r.template}» (${r.lang}). فعّل الخيار واحفظ، ثم جرّب «إرسال إيصال تجريبي».` : "⚠ الدالة موجودة لكن رمز Meta غير مُضاف — أضف WA_TOKEN و WA_PHONE_ID في Supabase ← Edge Functions ← Secrets.");
+    else waStatus(r && r.status === 404 ? "⚠ دالة whatsapp-send غير موجودة في Supabase بعد — أنشئها من Edge Functions (الملف supabase/functions/whatsapp-send/index.ts)." : `⚠ تعذّر الفحص: ${(r && r.error) || "خطأ"}`);
+  });
+  document.getElementById("waApiTestBtn")?.addEventListener("click", () => {
+    if (!cloudOn()) { waStatus("⚠ اربط النظام بالسحابة أولاً."); return; }
+    const o = orders.find((x) => x.status !== "cancelled");
+    if (!o) { waStatus("⚠ لا يوجد طلب لإرسال إيصاله كتجربة — أنشئ طلباً أولاً."); return; }
+    openQuickForm({
+      title: "📤 إرسال إيصال تجريبي", sub: `يُرسل إيصال الطلب #${o.number} عبر WhatsApp Business API إلى الرقم الذي تكتبه (رقمك مثلاً).`,
+      fields: [{ id: "phone", label: "رقم الواتساب (8 أرقام)", type: "text", value: (loadProfile().whatsapp || "") }],
+      submitLabel: "إرسال",
+      onSubmit: (v) => {
+        if (!validLocalPhone(v.phone)) { toast("اكتب رقماً صحيحاً من 8 أرقام"); return false; }
+        const cust = customers.find((c) => c.id === o.customerId) || { name: "Test", phone: v.phone, balance: 0 };
+        waStatus("… جارٍ الإرسال");
+        CLOUD.waSend({ to: cleanPhone(v.phone), name: cust.name, orderNo: String(o.number), line: receiptPayLine(o), image: receiptPngNow(o, cust).b64 })
+          .then((r) => waStatus(r && r.ok ? "✓ أُرسل — تحقق من واتساب على الرقم." : `⚠ لم يُرسل: ${(r && r.error) || "خطأ"}`));
+      },
+    });
   });
 
   /* ================================ الباقات ================================ */

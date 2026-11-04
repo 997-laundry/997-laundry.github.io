@@ -608,6 +608,11 @@
       }
     },
     // حساب دخول لموظف جديد (يحتاج إنترنت) — يرجع رقم حسابه في السحابة
+    // إرسال الإيصال عبر WhatsApp Business API (دالة whatsapp-send على Supabase — رمز Meta محفوظ هناك فقط)
+    async waSend(payload) {
+      try { return await api("/functions/v1/whatsapp-send", { method: "POST", body: payload }); }
+      catch (e) { return { error: e.offline ? "offline" : e.noSession ? "no-session" : (e.data && (e.data.error + (e.data.detail ? " — " + e.data.detail : ""))) || e.message, status: e.status }; }
+    },
     // صفحة الإيصال العامة: يقرأ إيصالاً واحداً برمزه السري (بدون حساب)
     async publicReceipt(token) {
       try { return { model: await api("/rest/v1/rpc/public_receipt", { method: "POST", auth: false, body: { p_token: String(token || "") } }) }; }

@@ -504,6 +504,13 @@
               <label><span data-i18n="lbl_normal_hours">مدة الطلب العادي بالساعات</span><input id="normalHoursSetting" type="number" min="1" /></label>
               <label><span data-i18n="lbl_urgent_hours">مدة الطلب المستعجل بالساعات</span><input id="urgentHoursSetting" type="number" min="1" /></label>
               <label class="check-line"><input id="shiftsRequiredSetting" type="checkbox" /> <span>إلزام الموظفين ببدء وردية (عهدة صندوق) قبل استلام المبالغ</span></label>
+              <div class="wa-api-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft)">
+                <strong>📲 إيصال التسليم على واتساب</strong>
+                <p class="section-note" style="margin:6px 0 8px">بدون الربط: عند التسليم تُنسخ صورة الإيصال ويفتح واتساب على محادثة العميل (لصق ← إرسال). بعد تفعيل WhatsApp Business API من Meta وربطه في Supabase: تصل الصورة للعميل تلقائياً بدون أي ضغطة.</p>
+                <label class="check-line"><input id="waApiSetting" type="checkbox" /> <span>إرسال إيصال التسليم تلقائياً عبر WhatsApp Business API</span></label>
+                <div class="row-actions" style="margin-top:8px"><button class="secondary-btn" type="button" id="waApiCheckBtn">🔎 فحص الربط</button><button class="secondary-btn" type="button" id="waApiTestBtn">📤 إرسال إيصال تجريبي</button></div>
+                <p class="section-note" id="waApiStatus" style="margin:8px 0 0"></p>
+              </div>
               <button class="primary-btn" id="saveSettingsBtn" data-i18n="btn_save_settings">حفظ الإعدادات</button>
             </div>
           </div>
