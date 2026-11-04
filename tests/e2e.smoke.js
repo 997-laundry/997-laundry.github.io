@@ -174,6 +174,8 @@ function check(name, cond, detail) {
   await page.selectOption("#qf_method", "cash");
   await quickSubmit();
   await quickCancelIfOpen();
+  // delivery opens the receipt for WhatsApp (copy image + chat, or the preview when copying is blocked) — close it
+  await page.waitForTimeout(300); await page.evaluate(() => { const d = document.getElementById("receiptPreviewDialog"); if (d && d.open) d.close(); });
   orders = await page.evaluate(() => JSON.parse(localStorage.getItem("l997_orders")));
   check("pay later: collected and delivered at pickup", orders[0].status === "delivered" && orders[0].paymentConfirmed && orders[0].payment.paid === 0.4, JSON.stringify([orders[0].status, orders[0].payment.paid]));
   if (await page.isVisible("#closeOrderDialog2")) await page.click("#closeOrderDialog2");

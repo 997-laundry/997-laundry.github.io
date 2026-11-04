@@ -4108,7 +4108,7 @@
     }
     // الكمبيوتر: تنزيل الملف مباشرة (يُسحب إلى واتساب ويب) + المعاينة؛ الجوال: المعاينة فقط (التنزيل غير موثوق داخل تطبيق الشاشة الرئيسية في آيفون)
     if (!isTouch()) downloadBlob(r.blob, r.name);
-    showReceiptPreview(order, cust, kind, r, caption);
+    showReceiptPreview(order, cust, kind, r, caption, !isTouch());
     return isTouch() ? "preview" : "downloaded";
   }
   function downloadBlob(blob, name) {
@@ -4116,14 +4116,14 @@
     a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
-  function showReceiptPreview(order, cust, kind, r, caption) {
+  function showReceiptPreview(order, cust, kind, r, caption, downloaded) {
     let dlg = document.getElementById("receiptPreviewDialog");
     if (!dlg) { dlg = document.createElement("dialog"); dlg.id = "receiptPreviewDialog"; dlg.className = "modal"; document.body.appendChild(dlg); }
     const en = lang === "en";
     const src = kind === "image" ? URL.createObjectURL(r.blob) : r.preview;
     dlg.innerHTML = `<div style="padding:16px;max-width:420px;margin:auto;text-align:center">
       <h3 style="margin:0 0 6px">${en ? "Receipt" : "الإيصال"} #${esc(order.number)}</h3>
-      <p class="section-note" style="margin:0 0 10px">${isTouch() ? (en ? "Press and hold the receipt → Save / Share, then send it in the customer's WhatsApp chat." : "اضغط مطوّلاً على الإيصال ← «حفظ» أو «مشاركة»، ثم أرسله في محادثة العميل على واتساب.") : (en ? "The file was downloaded — drag it into the customer's WhatsApp chat (📎)." : "تم تنزيل الملف — اسحبه إلى محادثة العميل على واتساب (📎).")}</p>
+      <p class="section-note" style="margin:0 0 10px">${isTouch() ? (en ? "Press and hold the receipt → Save / Share, then send it in the customer's WhatsApp chat." : "اضغط مطوّلاً على الإيصال ← «حفظ» أو «مشاركة»، ثم أرسله في محادثة العميل على واتساب.") : downloaded ? (en ? "The file was downloaded — drag it into the customer's WhatsApp chat (📎)." : "تم تنزيل الملف — اسحبه إلى محادثة العميل على واتساب (📎).") : (en ? "Press Download, then attach the file in the customer's WhatsApp chat (📎)." : "اضغط «تنزيل» ثم أرفق الملف في محادثة العميل على واتساب (📎).")}</p>
       <img id="rpImg" src="${src}" alt="receipt" style="width:100%;max-height:60vh;object-fit:contain;border:1px solid var(--border);border-radius:12px;background:#fff;-webkit-touch-callout:default;user-select:auto">
       <div class="row-actions" style="justify-content:center;margin-top:12px;flex-wrap:wrap">
         <button class="primary-btn" type="button" id="rpDownload">⬇ ${en ? "Download" : "تنزيل"} ${kind === "image" ? (en ? "image" : "الصورة") : "PDF"}</button>

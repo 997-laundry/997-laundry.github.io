@@ -64,10 +64,12 @@ const AR = /[؀-ۿ]+(?:[\s؀-ۿ«»،؛؟.\-—:()]*[؀-ۿ]+)*/g;
   await page.click("#advanceStatusBtn");
   const t3 = await dialogText("delivery dialog");
   await page.fill("#qf_count", "2"); await page.click("#quickFormSubmitBtn");
-  const t4 = await dialogText("delivered prompt");
+  // delivery now opens the receipt for WhatsApp at once (copy image + chat; here copying is blocked → the receipt preview)
+  await page.waitForSelector("#receiptPreviewDialog[open]", { timeout: 5000 }).catch(() => {});
+  const t4 = await page.evaluate(() => { const d = document.getElementById("receiptPreviewDialog"); const s = d && d.open ? d.textContent.replace(/\s+/g, " ") : ""; if (d && d.open) d.close(); return s; });
   check("delivery dialog in English", /Deliver order/.test(t3) && /Payment method/.test(t3) && /Collect & deliver/.test(t3) && !AR.test(t3), t3.slice(0, 160));
   AR.lastIndex = 0;
-  check("delivered prompt in English", /Order delivered/.test(t4) && /Send delivery message/.test(t4) && /Later/.test(t4), t4.slice(0, 120));
+  check("delivery receipt preview in English", /Receipt/.test(t4) && /Open customer's chat/.test(t4) && /Download/.test(t4) && !AR.test(t4), t4.slice(0, 160));
   check("prepare dialog options in English", /Pay later/.test(t2) && /Cash/.test(t2) && /Credit \(customer debt\)/.test(t2), t2.slice(0, 160));
   await page.click("#quickFormCancelBtn").catch(() => {});
   await page.evaluate(() => document.querySelectorAll("dialog[open]").forEach((d) => d.close()));
