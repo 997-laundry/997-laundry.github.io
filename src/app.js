@@ -30,8 +30,15 @@
   if(/طلب|تسليم|تجهيز|دفع|إرجاع|تعليق|قطعة|order|deliver|ready|payment/i.test(s))return 'orders';
   return 'other'};
  const isSensitiveAction=(s)=>/حذف|إلغاء|ألغي|عكس|استرداد|تسوية|صلاحي|استعادة|كلمة|أسعار|إرجاع|تعطيل|دخول|نسخة احتياطية|إغلاق|خصم رصيد|فاشلة|delete|cancel|revers|refund|adjust|permission|restore|password|price|login|disable|closing|failed/i.test(String(s||''));
+ // سلسلة تحقق لكل جهاز: كل قيد يحمل بصمة (SHA-256) تشمل بصمة القيد السابق من نفس الجهاز ورقمه التسلسلي —
+ // أي تعديل لقيد أو حذف قيد من وسط السجل يظهر في «فحص سلامة السجل» (والسحابة ترفض تعديل أو حذف القيود أصلاً)
+ const auditDev=()=>{try{let d=localStorage.getItem('l997_device_id');if(!d){d=Math.random().toString(16).slice(2,10)+Date.now().toString(16).slice(-4);localStorage.setItem('l997_device_id',d)}return d}catch(e){return 'nodev'}};
+ const auditCanon=(e)=>[e.id,e.action,e.value,e.at,e.who,e.user,e.dev,e.n,e.prev].join('|');
  const log=(action,value=0,meta={})=>{let m;try{m=scrubMeta(meta);if(JSON.stringify(m).length>1500)m={_truncated:true}}catch(e){m={}}
-  audit.unshift({id:uid(),action,value:Number(value)||0,meta:m,at:new Date().toISOString(),user:lsStr('l997_role','مدير')||'مدير',who:lsStr('l997_user',''),cat:classifyAction(action),sens:isSensitiveAction(action)?1:0});
+  const entry={id:uid(),action,value:Number(value)||0,meta:m,at:new Date().toISOString(),user:lsStr('l997_role','مدير')||'مدير',who:lsStr('l997_user',''),cat:m&&m.sec?'system':classifyAction(action),sens:(m&&m.sec)||isSensitiveAction(action)?1:0};
+  try{if(typeof window.sha256Hex997==='function'){const dev=auditDev();let tip={};try{tip=JSON.parse(localStorage.getItem('l997_audit_tip')||'{}')||{}}catch(e){tip={}}
+   entry.dev=dev;entry.n=(Number(tip.n)||0)+1;entry.prev=tip.h||'';entry.h=window.sha256Hex997(auditCanon(entry));localStorage.setItem('l997_audit_tip',JSON.stringify({n:entry.n,h:entry.h}))}}catch(e){}
+  audit.unshift(entry);
   if(audit.length>AUDIT_MAX)audit.length=AUDIT_MAX;save(EXT_KEYS.audit,audit)};
  try{if(!localStorage.getItem('l997_audit_scrubbed')){audit=audit.map(e=>({...e,meta:scrubMeta(e.meta||{})}));if(audit.length>AUDIT_MAX)audit.length=AUDIT_MAX;save(EXT_KEYS.audit,audit);localStorage.setItem('l997_audit_scrubbed','1')}}catch(e){}
  const r3=n=>+(Number(n||0)).toFixed(3);
@@ -111,7 +118,7 @@
     save(EXT_KEYS.recurringExpenses,recurringExpenses);
     return appliedCount;
   },
-  log, classify:classifyAction, isSensitive:isSensitiveAction
+  log, classify:classifyAction, isSensitive:isSensitiveAction, auditCanon, deviceId:auditDev
  };
 })();
 
@@ -250,7 +257,7 @@
       report_revenue: "إجمالي الإيرادات", report_orders_count: "عدد الطلبات",
       report_avg_order: "متوسط قيمة الطلب", report_outstanding: "مبالغ مستحقة",
       nav_finance: "المالية", nav_inventory: "المخزون والمشتريات", nav_employees: "الموظفون والرواتب",
-      nav_closures: "الإغلاقات", nav_audit: "سجل النشاط", nav_ai: "الذكاء الاصطناعي",
+      nav_closures: "الإغلاقات", nav_security: "مركز الأمان", nav_audit: "سجل النشاط", nav_ai: "الذكاء الاصطناعي",
       nav_profile: "ملف المنشأة", nav_access: "المستخدمون والصلاحيات",
       page_finance_title: "المالية", page_finance_sub: "التقارير المالية والمصروفات والأرباح",
       page_inventory_title: "المخزون والمشتريات", page_inventory_sub: "الجرد والمواد والموردون وتنبيهات النقص",
@@ -424,7 +431,7 @@
       report_revenue: "Total revenue", report_orders_count: "Order count",
       report_avg_order: "Average order value", report_outstanding: "Outstanding balances",
       nav_finance: "Finance", nav_inventory: "Inventory & Purchases", nav_employees: "Employees & Payroll",
-      nav_closures: "Closures", nav_audit: "Activity Log", nav_ai: "AI Center",
+      nav_closures: "Closures", nav_security: "Security Center", nav_audit: "Activity Log", nav_ai: "AI Center",
       nav_profile: "Company Profile", nav_access: "Users & Permissions",
       page_finance_title: "Finance", page_finance_sub: "Financial reports, expenses, and profits",
       page_inventory_title: "Inventory & Purchases", page_inventory_sub: "Stock, materials, suppliers, and low-stock alerts",
@@ -598,7 +605,7 @@
       report_revenue: "کل آمدنی", report_orders_count: "آرڈرز کی تعداد",
       report_avg_order: "اوسط آرڈر ویلیو", report_outstanding: "باقی بیلنس",
       nav_finance: "مالیات", nav_inventory: "انوینٹری اور خریداری", nav_employees: "ملازمین اور تنخواہیں",
-      nav_closures: "اختتامیہ", nav_audit: "سرگرمی لاگ", nav_ai: "اے آئی سینٹر",
+      nav_closures: "اختتامیہ", nav_security: "سیکیورٹی سینٹر", nav_audit: "سرگرمی لاگ", nav_ai: "اے آئی سینٹر",
       nav_profile: "کمپنی پروفائل", nav_access: "صارفین اور اجازتیں",
       page_finance_title: "مالیات", page_finance_sub: "مالی رپورٹس، اخراجات، اور منافع",
       page_inventory_title: "انوینٹری اور خریداری", page_inventory_sub: "اسٹاک، مواد، سپلائرز، اور کم اسٹاک الرٹس",
@@ -1024,6 +1031,88 @@
     customerPackages = mergeSaveById(KEYS.customerPackages, customerPackages);
     save(KEYS.activity, activity.slice(0, 60));
   }
+  /* ============================= الأمان: الجهاز، أحداث الأمان، الجلسات، التنبيهات ============================= */
+  function deviceId() { return window.L997Enterprise && window.L997Enterprise.deviceId ? window.L997Enterprise.deviceId() : "nodev"; }
+  function deviceLabel() {
+    const ua = navigator.userAgent || "";
+    const os = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? "iPad" : /Android/.test(ua) ? (/Mobile/.test(ua) ? "Android" : "Android tablet") : /Windows/.test(ua) ? "Windows" : /Mac OS X/.test(ua) ? "Mac" : /Linux/.test(ua) ? "Linux" : "Device";
+    const br = /EdgA?\//.test(ua) ? "Edge" : /SamsungBrowser/.test(ua) ? "Samsung" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /FxiOS|Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "Browser";
+    return `${os} · ${br}`;
+  }
+  // حدث أمني: يُسجَّل في سجل التدقيق مع اسم المستخدم والجهاز ونوعه ودرجته (info / warn / risk)
+  function secLog(type, text, extra) {
+    const x = extra || {};
+    const meta = { sec: type, u: x.u || (me && me.username) || "", dev: deviceId(), label: deviceLabel(), sev: x.sev || "info" };
+    if (x.target) meta.target = x.target;
+    activity.unshift({ text, at: new Date().toISOString() }); activity = activity.slice(0, 60); save(KEYS.activity, activity);
+    if (window.L997Enterprise) window.L997Enterprise.log(text, 0, meta);
+  }
+  const auditList = () => { try { return JSON.parse(localStorage.getItem("l997_audit") || "[]") || []; } catch (e) { return []; } };
+  const secEvents = (type, sinceMs) => auditList().filter((a) => a.meta && a.meta.sec === type && (!sinceMs || Date.now() - new Date(a.at).getTime() <= sinceMs));
+  // تنبيهات الدخول المشبوه — تُسجَّل كحدث «risk» فتصل لأجهزة المالك والمدير وتظهر في صفحة الأمان
+  function checkFailedBurst(username) {
+    if (!username) return;
+    const fails = secEvents("login_fail", 15 * 60000).filter((a) => (a.meta.u || "").toLowerCase() === username.toLowerCase());
+    const alerted = secEvents("alert", 15 * 60000).some((a) => a.meta.target === "fail:" + username.toLowerCase());
+    if (fails.length >= 3 && !alerted) secLog("alert", `🚨 محاولات دخول فاشلة متكررة لحساب «${username}» (${fails.length} خلال 15 دقيقة) — ${deviceLabel()}`, { u: username, sev: "risk", target: "fail:" + username.toLowerCase() });
+  }
+  function checkNewAdminDevice(emp) {
+    if (!emp || !["owner", "manager"].includes(validRole(emp.role))) return;
+    const dev = deviceId();
+    const seen = secEvents("login_ok").some((a) => a.meta.dev === dev && (a.meta.u || "") === (emp.username || ""));
+    if (!seen && secEvents("login_ok").some((a) => (a.meta.u || "") === (emp.username || ""))) secLog("alert", `⚠ دخول حساب إداري «${emp.name}» من جهاز جديد: ${deviceLabel()}`, { u: emp.username, sev: "warn", target: "newdev:" + dev });
+  }
+  // ---- الجلسات: سجل لكل دخول (الجهاز، البداية، آخر نشاط، النهاية) — يُزامن، ويمكن للمدير إبطاله عن بُعد ----
+  const SESS_KEY = "l997_sessions";
+  const loadSessions = () => { try { const a = JSON.parse(localStorage.getItem(SESS_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+  function saveSessions(list) { save(SESS_KEY, list.slice(0, 300)); }
+  let mySessionId = null, lastTouch = 0;
+  function startSessionRecord(emp) {
+    const now = new Date().toISOString();
+    mySessionId = uid(); lastTouch = Date.now();
+    const list = loadSessions();
+    list.unshift({ id: mySessionId, uid: emp.cloudUserId || "", empId: emp.id, name: emp.name, username: emp.username || "", role: validRole(emp.role), dev: deviceId(), label: deviceLabel(), at: now, seen: now, end: null, why: "", revokedAt: null, revokedBy: "", mfa: !!emp._mfaPassed });
+    saveSessions(list);
+    return mySessionId;
+  }
+  function touchSession(force) {
+    if (!mySessionId || (!force && Date.now() - lastTouch < 60000)) return;
+    lastTouch = Date.now();
+    const list = loadSessions(), s0 = list.find((x) => x.id === mySessionId);
+    if (!s0 || s0.end || s0.revokedAt) return;
+    s0.seen = new Date(Math.max(lastAct || 0, Date.now() - 1000)).toISOString();
+    saveSessions(list);
+  }
+  function endSessionRecord(why) {
+    if (!mySessionId) return;
+    const list = loadSessions(), s0 = list.find((x) => x.id === mySessionId);
+    if (s0 && !s0.end) { s0.end = new Date().toISOString(); s0.why = why || "logout"; s0.seen = s0.end; saveSessions(list); }
+    mySessionId = null;
+  }
+  // أُبطلت جلستي من المالك/المدير على جهاز آخر؟
+  function remoteRevoked() {
+    if (!mySessionId) return false;
+    const s0 = loadSessions().find((x) => x.id === mySessionId);
+    return !!(s0 && s0.revokedAt);
+  }
+  function sessionState(x) {
+    if (x.revokedAt) return "revoked";
+    if (x.end) return x.why === "idle" ? "idle" : "ended";
+    return Date.now() - new Date(x.seen || x.at).getTime() > (sec.idleMin * 60000 + 5 * 60000) ? "stale" : "active";
+  }
+  // شارة تنبيهات الأمان في القائمة + رسالة عند وصول تنبيه جديد (للمالك والمدير)
+  let lastAlertCheck = 0;
+  function checkSecurityBadge() {
+    if (!me || !["owner", "manager"].includes(role) || Date.now() - lastAlertCheck < 5000) return;
+    lastAlertCheck = Date.now();
+    let seenAt = ""; try { seenAt = localStorage.getItem("l997_sec_seen_" + me.id) || ""; } catch (e) { seenAt = ""; }
+    const risks = auditList().filter((a) => a.meta && (a.meta.sev === "risk" || a.meta.sev === "warn") && (!seenAt || a.at > seenAt));
+    const nav = document.querySelector('.nav-item[data-page="security"]');
+    if (nav) { let b = nav.querySelector(".sec-badge"); if (risks.length) { if (!b) { b = document.createElement("span"); b.className = "sec-badge"; nav.appendChild(b); } b.textContent = String(risks.length); } else if (b) b.remove(); }
+    const newest = risks[0];
+    let toasted = ""; try { toasted = localStorage.getItem("l997_sec_toasted") || ""; } catch (e) { toasted = ""; }
+    if (newest && newest.id !== toasted && newest.meta.dev !== deviceId()) { try { localStorage.setItem("l997_sec_toasted", newest.id); } catch (e) { /* ignore */ } toast(`🛡 تنبيه أمني: ${newest.action}`); }
+  }
   function logActivity(text, value) {
     activity.unshift({ text, at: new Date().toISOString() });
     activity = activity.slice(0, 60);
@@ -1159,6 +1248,7 @@
     employees: ["page_employees_title", "page_employees_sub"],
     closures: ["page_closures_title", "page_closures_sub"],
     audit: ["page_audit_title", "page_audit_sub"],
+    security: ["مركز الأمان", "محاولات الدخول · الجلسات · التنبيهات · سجل التدقيق"],
     profile: ["page_profile_title", "page_profile_sub"],
     access: ["page_access_title", "page_access_sub"],
     settings: ["page_settings_title", "page_settings_sub"],
@@ -1190,6 +1280,7 @@
     if (pageId === "employees" && typeof window.renderEmployees997 === "function") window.renderEmployees997();
     if (pageId === "closures" && typeof window.renderClosures997 === "function") window.renderClosures997();
     if (pageId === "audit" && typeof window.renderAudit997 === "function") window.renderAudit997();
+    if (pageId === "security") renderSecurityPage();
     if (pageId === "settings") renderSettingsPage();
     if (pageId === "profile") renderProfilePage();
     if (pageId === "access") renderAccessPage();
@@ -1227,6 +1318,140 @@
   let labelQueued = false;
   new MutationObserver(() => { if (labelQueued) return; labelQueued = true; requestAnimationFrame(() => { labelQueued = false; labelTables(); }); })
     .observe(document.body, { childList: true, subtree: true });
+
+  /* ============================= مركز الأمان (للمالك والمدير) ============================= */
+  const secView = { tab: "overview", user: "", from: "", to: "", type: "", q: "" };
+  const LOGIN_TYPES = ["login_ok", "login_fail", "lockout", "mfa_fail", "logout", "idle_logout", "session_revoked"];
+  const SEC_TYPE_LABEL = { login_ok: "دخول ناجح", login_fail: "دخول فاشل", lockout: "قفل الحساب", mfa_fail: "رمز تحقق خاطئ", logout: "تسجيل خروج", idle_logout: "خروج لعدم النشاط", session_revoked: "إنهاء جلسة", alert: "تنبيه أمني", mfa_on: "تفعيل التحقق بخطوتين", mfa_off: "إيقاف التحقق بخطوتين", policy: "سياسة أمان", session_revoke: "إبطال جلسة" };
+  const legacyLoginType = (a) => /محاولة دخول فاشلة/.test(a.action) ? "login_fail" : /^تسجيل دخول/.test(a.action) ? "login_ok" : /^تسجيل خروج/.test(a.action) ? "logout" : /خروج تلقائي/.test(a.action) ? "idle_logout" : "";
+  const evType = (a) => (a.meta && a.meta.sec) || legacyLoginType(a);
+  const evSev = (a) => (a.meta && a.meta.sev) || (evType(a) === "login_fail" ? "warn" : "info");
+  function secFilter(list, timeOf) {
+    const q = secView.q.trim().toLowerCase();
+    return list.filter((x) => {
+      const d = isoDay(timeOf(x));
+      if (secView.from && d < secView.from) return false;
+      if (secView.to && d > secView.to) return false;
+      if (secView.user && (x.who || x.name || "") !== secView.user && (x.meta ? x.meta.u : x.username) !== secView.user) return false;
+      if (q && !JSON.stringify(x).toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }
+  // فحص سلامة سجل التدقيق: البصمات وتسلسل القيود لكل جهاز
+  function verifyAuditChain() {
+    const canon = window.L997Enterprise && window.L997Enterprise.auditCanon;
+    const byDev = {}; let unsigned = 0;
+    auditList().forEach((a) => { if (!a.h || !a.dev) { unsigned++; return; } (byDev[a.dev] = byDev[a.dev] || []).push(a); });
+    const bad = [], gaps = [];
+    Object.entries(byDev).forEach(([dev, list]) => {
+      list.sort((x, y) => x.n - y.n);
+      list.forEach((a, i) => {
+        if (canon && sha256(canon(a)) !== a.h) bad.push(a);
+        const prev = list[i - 1];
+        if (prev && a.n === prev.n + 1 && a.prev !== prev.h) bad.push(a);
+        if (prev && a.n > prev.n + 1) gaps.push({ dev, from: prev.n + 1, to: a.n - 1, after: prev.at });
+      });
+    });
+    return { devices: Object.keys(byDev).length, checked: Object.values(byDev).reduce((n, l) => n + l.length, 0), unsigned, bad, gaps };
+  }
+  function secCsv(rows, name) {
+    const csv = "\ufeff" + rows.map((r) => r.map((c) => `"${String(c == null ? "" : c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })), a = document.createElement("a");
+    a.href = url; a.download = `997-security-${name}-${todayStr()}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+  function renderSecurityPage() {
+    const root = document.getElementById("securityRoot"); if (!root) return;
+    if (!can("security_center")) { root.innerHTML = `<div class="panel"><p class="section-note">${AX("e_noperm")}</p></div>`; return; }
+    const all = auditList(), sessions = loadSessions();
+    const DAY = 86400000, t = Date.now();
+    const logins = all.filter((a) => LOGIN_TYPES.includes(evType(a)));
+    const alerts = all.filter((a) => evType(a) === "alert" || evSev(a) === "risk");
+    const sensitive = all.filter((a) => a.sens && !LOGIN_TYPES.includes(evType(a)));
+    const users = [...new Set([...all.map((a) => a.who).filter(Boolean), ...sessions.map((x) => x.name).filter(Boolean)])].sort();
+    const admins = emps().filter((e) => e.active !== false && isAdminRole(e.role) && hasLoginAccount(e));
+    const active = sessions.filter((x) => sessionState(x) === "active");
+    let seenAt = ""; try { seenAt = localStorage.getItem("l997_sec_seen_" + (me ? me.id : "")) || ""; } catch (e) { seenAt = ""; }
+    const unseen = alerts.filter((a) => !seenAt || a.at > seenAt).length;
+    const fails24 = logins.filter((a) => ["login_fail", "lockout"].includes(evType(a)) && t - new Date(a.at).getTime() < DAY).length;
+    const tabs = [["overview", "نظرة عامة"], ["logins", `محاولات الدخول`], ["sessions", `الجلسات (${active.length})`], ["sensitive", "التغييرات الحساسة"], ["alerts", `التنبيهات${unseen ? ` (${unseen})` : ""}`], ["audit", "سجل التدقيق"]];
+    const typeOpts = secView.tab === "logins" ? [["", "كل الأنواع"], ...LOGIN_TYPES.map((k) => [k, SEC_TYPE_LABEL[k]])]
+      : secView.tab === "audit" ? [["", "كل العمليات"], ["system", "النظام والأمان"], ["orders", "الطلبات"], ["customers", "العملاء والأرصدة"], ["money", "المالية"], ["inventory", "المخزون"], ["staff", "الموظفون"], ["other", "أخرى"]]
+      : secView.tab === "sessions" ? [["", "كل الحالات"], ["active", "نشطة"], ["stale", "متوقفة (بدون نشاط)"], ["ended", "منتهية"], ["idle", "انتهت بالخمول"], ["revoked", "أُبطلت"]]
+      : secView.tab === "alerts" ? [["", "كل الدرجات"], ["risk", "خطر"], ["warn", "تحذير"]] : null;
+    const filters = secView.tab === "overview" ? "" : `<div class="cust-tools" style="margin-bottom:10px">
+        <input type="search" id="secQ" class="inv-search" placeholder="بحث…" value="${esc(secView.q)}">
+        <select id="secUser"><option value="">كل المستخدمين</option>${users.map((u) => `<option ${u === secView.user ? "selected" : ""}>${esc(u)}</option>`).join("")}</select>
+        ${typeOpts ? `<select id="secType">${typeOpts.map(([v, l]) => `<option value="${v}" ${v === secView.type ? "selected" : ""}>${l}</option>`).join("")}</select>` : ""}
+        <label style="display:flex;gap:6px;align-items:center">من<input type="date" id="secFrom" value="${esc(secView.from)}"></label>
+        <label style="display:flex;gap:6px;align-items:center">إلى<input type="date" id="secTo" value="${esc(secView.to)}"></label>
+        <button class="ghost-btn" type="button" id="secClear">مسح الفلاتر</button><button class="secondary-btn" type="button" id="secCsv">تصدير CSV</button></div>`;
+    const sevPill = (sv) => sv === "risk" ? '<span class="status-badge status-cancelled">خطر</span>' : sv === "warn" ? '<span class="status-badge" style="background:#fff3e4;color:#a15b12">تحذير</span>' : '<span class="status-badge status-ready">عادي</span>';
+    const evRows = (list) => list.length ? list.slice(0, 400).map((a) => `<tr><td>${fmtDT(a.at)}</td><td>${esc(a.who || (a.meta && a.meta.u) || "—")}</td><td>${esc((a.meta && a.meta.u) || "")}</td><td>${esc(SEC_TYPE_LABEL[evType(a)] || a.cat || "")}</td><td>${esc(a.action)}</td><td>${esc((a.meta && a.meta.label) || "")}</td><td>${sevPill(evSev(a))}</td></tr>`).join("") : `<tr><td colspan="7" class="empty-state compact">لا توجد سجلات</td></tr>`;
+    const evTable = (list) => `<div class="table-wrap"><table><thead><tr><th>التاريخ والوقت</th><th>المستخدم</th><th>اسم الدخول</th><th>النوع</th><th>العملية</th><th>الجهاز</th><th>الدرجة</th></tr></thead><tbody>${evRows(list)}</tbody></table></div>`;
+    let body = "", current = [];
+    if (secView.tab === "overview") {
+      const chain = secView.chain;
+      body = `<div class="metrics-grid">
+          <div class="metric-card"><div class="metric-top"><span>محاولات فاشلة (24 ساعة)</span><span class="metric-icon">⛔</span></div><div class="metric-value" style="${fails24 ? "color:var(--danger)" : ""}">${fails24}</div><div class="metric-note">القفل بعد ${sec.maxAttempts} محاولات لمدة ${sec.lockMin} دقيقة</div></div>
+          <div class="metric-card"><div class="metric-top"><span>جلسات نشطة الآن</span><span class="metric-icon">🟢</span></div><div class="metric-value">${active.length}</div><div class="metric-note">خروج تلقائي بعد ${sec.idleMin} دقيقة خمول</div></div>
+          <div class="metric-card"><div class="metric-top"><span>تنبيهات أمنية جديدة</span><span class="metric-icon">🚨</span></div><div class="metric-value" style="${unseen ? "color:var(--danger)" : ""}">${unseen}</div><div class="metric-note">${alerts.length} تنبيه إجمالاً</div></div>
+          <div class="metric-card"><div class="metric-top"><span>التحقق بخطوتين للإدارة</span><span class="metric-icon">🔐</span></div><div class="metric-value">${admins.filter((e) => e.mfaOn).length} / ${admins.length}</div><div class="metric-note">${sec.mfaRequired ? "إلزامي لحسابات الإدارة" : "اختياري — فعّل الإلزام من سياسات الأمان"}</div></div>
+        </div>
+        <div class="panel" style="margin-top:14px"><div class="panel-header"><div><h3>🔏 سلامة سجل التدقيق</h3><p>كل قيد يحمل بصمة SHA-256 مرتبطة بالقيد السابق من نفس الجهاز، والسحابة ترفض تعديل القيود أو حذفها.</p></div><button class="secondary-btn" type="button" id="secVerify">فحص سلامة السجل</button></div>
+          ${chain ? (chain.bad.length || chain.gaps.length ? `<div class="cloud-warn">⚠ <b>${chain.bad.length}</b> قيد معدّل و<b>${chain.gaps.length}</b> فجوة (قيود محذوفة) — ${chain.bad.slice(0, 5).map((a) => `${fmtDT(a.at)}: ${esc(a.action.slice(0, 60))}`).join(" · ")}</div>` : `<p style="color:var(--success);font-weight:700">✓ السجل سليم — ${chain.checked} قيد من ${chain.devices} جهاز، بلا تعديل أو حذف.${chain.unsigned ? ` (${chain.unsigned} قيد قديم قبل تفعيل البصمات)` : ""}</p>`) : `<p class="section-note">اضغط «فحص سلامة السجل».</p>`}
+        </div>
+        <div class="panel" style="margin-top:14px"><div class="panel-header"><div><h3>🔐 حسابات الإدارة</h3></div></div>
+          <div class="table-wrap"><table><thead><tr><th>الحساب</th><th>الدور</th><th>التحقق بخطوتين</th><th>آخر دخول</th></tr></thead><tbody>${admins.map((e) => `<tr><td>${esc(e.name)}</td><td>${esc(ACCESS_ROLE_AR[validRole(e.role)] || e.role)}</td><td>${e.mfaOn ? '<span class="status-badge status-ready">مفعّل</span>' : '<span class="status-badge status-cancelled">غير مفعّل</span>'}</td><td>${e.lastLogin ? fmtDT(e.lastLogin) : "—"}</td></tr>`).join("")}</tbody></table></div>
+          <p class="section-note">التفعيل لكل حساب: المستخدمون والصلاحيات ← سياسات الأمان ← «تفعيل التحقق بخطوتين».</p></div>
+        <div class="panel" style="margin-top:14px"><div class="panel-header"><div><h3>آخر التنبيهات</h3></div></div>${evTable(alerts.slice(0, 8))}</div>`;
+    } else if (secView.tab === "logins") {
+      current = secFilter(logins, (a) => a.at).filter((a) => !secView.type || evType(a) === secView.type);
+      body = evTable(current);
+    } else if (secView.tab === "alerts") {
+      current = secFilter(alerts, (a) => a.at).filter((a) => !secView.type || evSev(a) === secView.type);
+      body = evTable(current);
+      try { if (me) localStorage.setItem("l997_sec_seen_" + me.id, new Date().toISOString()); } catch (e) { /* ignore */ }
+    } else if (secView.tab === "sensitive") {
+      current = secFilter(sensitive, (a) => a.at);
+      body = evTable(current);
+    } else if (secView.tab === "audit") {
+      current = secFilter(all, (a) => a.at).filter((a) => !secView.type || a.cat === secView.type);
+      body = evTable(current);
+    } else if (secView.tab === "sessions") {
+      const stLabel = { active: '<span class="status-badge status-ready">نشطة</span>', stale: '<span class="status-badge" style="background:#fff3e4;color:#a15b12">بدون نشاط</span>', ended: '<span class="status-badge">منتهية</span>', idle: '<span class="status-badge">انتهت بالخمول</span>', revoked: '<span class="status-badge status-cancelled">أُبطلت</span>' };
+      current = secFilter(sessions, (x) => x.at).filter((x) => !secView.type || sessionState(x) === secView.type);
+      body = `<div class="table-wrap"><table><thead><tr><th>المستخدم</th><th>الدور</th><th>الجهاز</th><th>بداية الجلسة</th><th>آخر نشاط</th><th>النهاية</th><th>الحالة</th><th></th></tr></thead><tbody>${current.length ? current.slice(0, 300).map((x) => {
+        const stt = sessionState(x), mine = x.id === mySessionId;
+        return `<tr><td>${esc(x.name)}${mine ? ' <span class="status-badge status-ready">هذه الجلسة</span>' : ""}${x.mfa ? " 🔐" : ""}</td><td>${esc(ACCESS_ROLE_AR[x.role] || x.role || "")}</td><td>${esc(x.label || "")}</td><td>${fmtDT(x.at)}</td><td>${x.seen ? fmtDT(x.seen) : "—"}</td><td>${x.end ? fmtDT(x.end) : x.revokedAt ? fmtDT(x.revokedAt) + (x.revokedBy ? " — " + esc(x.revokedBy) : "") : "—"}</td><td>${stLabel[stt]}</td><td>${(stt === "active" || stt === "stale") && !mine ? `<button class="mini-btn danger-mini" type="button" data-sess-revoke="${x.id}">إنهاء الجلسة</button>` : ""}</td></tr>`;
+      }).join("") : `<tr><td colspan="8" class="empty-state compact">لا توجد جلسات</td></tr>`}</tbody></table></div>
+        ${(CLOUD && CLOUD.status && CLOUD.status().sessionsSync === false) ? `<div class="cloud-warn">⚠ الجلسات تظهر من هذا الجهاز فقط. لعرض جلسات كل الأجهزة وإنهائها عن بُعد: شغّل ملف <b>supabase/security.sql</b> في Supabase ← SQL Editor (مرة واحدة).</div>` : ""}`;
+    }
+    root.innerHTML = `<div class="panel"><div class="panel-header"><div><h3>🛡 مركز الأمان</h3><p>محاولات الدخول، الجلسات النشطة، التغييرات الحساسة، التنبيهات وسجل التدقيق — مع اسم المستخدم والتاريخ والوقت والجهاز.</p></div></div>
+      <div class="tabs-row">${tabs.map(([k, l]) => `<button type="button" class="cloth-chip ${secView.tab === k ? "active" : ""}" data-sec-tab="${k}">${l}</button>`).join("")}</div>
+      ${filters}${body}</div>`;
+    root.querySelectorAll("[data-sec-tab]").forEach((b) => b.addEventListener("click", () => { secView.tab = b.dataset.secTab; secView.type = ""; renderSecurityPage(); }));
+    const rer = () => renderSecurityPage();
+    const bind = (id, k) => { const el = document.getElementById(id); if (el) el.addEventListener(el.tagName === "INPUT" && el.type === "search" ? "input" : "change", () => { secView[k] = el.value; rer(); if (id === "secQ") { const n = document.getElementById("secQ"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } } }); };
+    bind("secQ", "q"); bind("secUser", "user"); bind("secType", "type"); bind("secFrom", "from"); bind("secTo", "to");
+    document.getElementById("secClear")?.addEventListener("click", () => { Object.assign(secView, { user: "", from: "", to: "", type: "", q: "" }); rer(); });
+    document.getElementById("secVerify")?.addEventListener("click", () => {
+      secView.chain = verifyAuditChain();
+      if (secView.chain.bad.length || secView.chain.gaps.length) secLog("alert", `🚨 فحص سلامة السجل: ${secView.chain.bad.length} قيد معدّل و${secView.chain.gaps.length} فجوة`, { sev: "risk", target: "chain" });
+      rer();
+    });
+    document.getElementById("secCsv")?.addEventListener("click", () => {
+      if (secView.tab === "sessions") secCsv([["user", "role", "device", "start", "last_seen", "end", "state"], ...current.map((x) => [x.name, x.role, x.label, x.at, x.seen, x.end || x.revokedAt || "", sessionState(x)])], "sessions");
+      else secCsv([["date_time", "user", "username", "type", "action", "device", "severity"], ...current.map((a) => [a.at, a.who, a.meta && a.meta.u, SEC_TYPE_LABEL[evType(a)] || a.cat, a.action, a.meta && a.meta.label, evSev(a)])], secView.tab);
+    });
+    root.querySelectorAll("[data-sess-revoke]").forEach((b) => b.addEventListener("click", () => {
+      const list = loadSessions(), x = list.find((y) => y.id === b.dataset.sessRevoke); if (!x) return;
+      confirmAction(`إنهاء جلسة «${x.name}» على ${x.label || "الجهاز"}؟ سيُسجَّل خروجه فوراً من ذلك الجهاز.`, () => {
+        x.revokedAt = new Date().toISOString(); x.revokedBy = me ? me.name : ""; saveSessions(list);
+        secLog("session_revoke", `إنهاء جلسة «${x.name}» (${x.label || ""}) عن بُعد بواسطة ${me ? me.name : ""}`, { u: x.username, sev: "warn", target: x.id });
+        rer(); toast("تم إنهاء الجلسة");
+      });
+    }));
+  }
 
   /* ============================= ملف المنشأة ============================= */
   function loadProfile() {
@@ -1671,6 +1896,7 @@
     { id: "delete_records", label: "حذف/إلغاء مشتريات ومواد وموردين", worker: false, accountant: false, manager: true },
     { id: "payroll", label: "الموظفون والرواتب", worker: false, accountant: true, manager: true },
     { id: "audit_log", label: "سجل النشاط", worker: false, accountant: true, manager: true },
+    { id: "security_center", label: "مركز الأمان (محاولات الدخول، الجلسات، التنبيهات)", worker: false, accountant: false, manager: true },
     { id: "export_data", label: "تصدير نسخة احتياطية", worker: false, accountant: true, manager: true },
     { id: "restore_backup", label: "استعادة نسخة احتياطية (يستبدل كل البيانات)", worker: false, accountant: false, manager: false },
     { id: "admin_settings", label: "ملف المنشأة والإعدادات", worker: false, accountant: false, manager: true },
@@ -1741,12 +1967,41 @@
         <label>أقل طول لكلمة المرور<select id="secMinLen" ${dis}>${optsFor([6, 8, 10, 12], sec.minLen, (v) => v + " أحرف (مع حرف ورقم)")}</select></label>
         <label>أقصى خصم على الطلب لغير المالك<select id="secMaxDisc" ${dis}>${optsFor([5, 10, 15, 25, 50, 100], sec.maxDiscountPct, (v) => v + "% من قيمة الطلب")}</select></label>
       </div>
+      <label class="check-line" style="margin:10px 0"><input type="checkbox" id="secMfaReq" ${sec.mfaRequired ? "checked" : ""} ${dis}> <span>🔐 إلزام التحقق بخطوتين (MFA) لحسابات الإدارة — المالك والمدير (يحتاج الربط بالسحابة)</span></label>
+      ${me && isAdminRole(me.role) ? `<div class="wa-api-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft);margin:6px 0 12px">
+        <strong>🔐 التحقق بخطوتين لحسابي (${esc(me.name)})</strong>
+        <p class="section-note" style="margin:6px 0 8px">${me.mfaOn ? `مفعّل منذ ${me.mfaAt ? fmtDT(me.mfaAt) : "—"} — يُطلب رمز من تطبيق المصادقة عند كل دخول.` : "غير مفعّل — بعد التفعيل يُطلب رمز من 6 أرقام من تطبيق Google Authenticator أو Microsoft Authenticator عند كل دخول."}</p>
+        ${cloudOn() ? (me.mfaOn ? `<button class="ghost-btn danger-mini" type="button" id="secMfaOffBtn">إيقاف التحقق بخطوتين</button>` : `<button class="primary-btn" type="button" id="secMfaOnBtn">تفعيل التحقق بخطوتين</button>`) : `<p class="section-note">اربط النظام بالسحابة أولاً (ملف المنشأة ← المزامنة السحابية).</p>`}
+      </div>` : ""}
       ${isOwner ? `<button class="primary-btn" id="secSaveBtn">حفظ السياسات</button>` : `<p class="section-note">تعديل السياسات للمالك فقط.</p>`}
       <hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
       <h4 style="margin:0 0 6px">رمز الاسترداد (لنسيان كلمة المرور)</h4>
       <p class="section-note">${sec.recoveryAt ? `أُنشئ بتاريخ ${fmtDT(sec.recoveryAt)} — يُستعمل مرة واحدة ثم يُصدَر رمز جديد.` : "⚠ لم يُنشأ رمز استرداد بعد — أنشئه الآن واحفظه خارج هذا الجهاز."}</p>
       ${isOwner ? `<button class="secondary-btn" id="secNewRecBtn">إنشاء رمز استرداد جديد</button>` : ""}
       <p class="section-note" style="margin-top:14px">ℹ الدخول وكلمات المرور تحمي واجهة النظام من الاستعمال العادي. ولأن النظام يعمل داخل المتصفح بدون خادم، فمن يملك الجهاز نفسه وخبرة تقنية قد يصل للبيانات المخزّنة؛ للحماية الكاملة استخدم قفل الجهاز واستضافة https لاحقاً.</p>`;
+    document.getElementById("secMfaOnBtn")?.addEventListener("click", () => {
+      if (!me.cloudUserId) { toast("هذا الحساب ليس له حساب في السحابة بعد"); return; }
+      pendingUser = me; showAuth("mfaSetup", "", { uid: me.cloudUserId, fromSettings: true });
+    });
+    document.getElementById("secMfaOffBtn")?.addEventListener("click", () => {
+      openQuickForm({
+        title: "إيقاف التحقق بخطوتين", sub: "للتأكيد اكتب كلمة المرور الحالية والرمز من تطبيق المصادقة.",
+        fields: [{ id: "pw", label: "كلمة المرور الحالية", type: "password" }, { id: "code", label: "الرمز (6 أرقام)", type: "text" }], submitLabel: "إيقاف",
+        onSubmit: (v) => {
+          if (!verifyPw(me, v.pw)) { toast(AX("e_cur")); return false; }
+          return cloudStep(async () => {
+            const f = await CLOUD.mfaFactors(me.cloudUserId);
+            if (f.error) return f;
+            for (const x of f.factors) { const ok = await CLOUD.mfaVerify(me.cloudUserId, x.id, v.code); if (ok.error) return { error: "bad-code" }; const del = await CLOUD.mfaRemove(me.cloudUserId, x.id); if (del.error) return del; }
+            return { ok: true };
+          }, () => {
+            me.mfaOn = false; me.mfaAt = ""; persistEmps();
+            secLog("mfa_off", `إيقاف التحقق بخطوتين — ${me.name}`, { sev: "warn" });
+            toast("تم إيقاف التحقق بخطوتين"); renderAccessPage();
+          });
+        },
+      });
+    });
     if (isOwner) {
       document.getElementById("secSaveBtn").addEventListener("click", () => {
         sec.idleMin = Number(document.getElementById("secIdle").value);
@@ -1755,6 +2010,9 @@
         sec.lockMin = Number(document.getElementById("secLock").value);
         sec.minLen = Number(document.getElementById("secMinLen").value);
         sec.maxDiscountPct = Number(document.getElementById("secMaxDisc").value);
+        const mfaReq = document.getElementById("secMfaReq").checked;
+        if (mfaReq !== !!sec.mfaRequired) secLog("policy", `${mfaReq ? "تفعيل" : "إيقاف"} إلزام التحقق بخطوتين لحسابات الإدارة بواسطة ${me.name}`, { sev: mfaReq ? "info" : "warn" });
+        sec.mfaRequired = mfaReq;
         saveSec();
         logActivity(`تعديل سياسات الأمان (خمول ${sec.idleMin} د، ${sec.maxAttempts} محاولات، قفل ${sec.lockMin} د، طول ${sec.minLen}) بواسطة ${me.name}`);
         toast("تم حفظ سياسات الأمان");
@@ -1833,6 +2091,7 @@
     }
     return [h0, h1, h2, h3, h4, h5, h6, h7].map((x) => (x >>> 0).toString(16).padStart(8, "0")).join("");
   }
+  window.sha256Hex997 = sha256; // بصمات سجل التدقيق
   function hashPw(pw, salt) {
     let h = sha256(salt + ":" + pw);
     for (let i = 0; i < 2000; i++) h = sha256(h + salt + pw);
@@ -1853,7 +2112,7 @@
   const toLatinDigits = (s) => String(s || "").replace(/[٠-٩]/g, (d) => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, (d) => d.charCodeAt(0) - 0x6f0);
 
   /* ---------- سياسات الأمان ---------- */
-  const SEC_DEFAULT = { idleMin: 30, warnSec: 60, maxAttempts: 5, lockMin: 10, minLen: 6, maxDiscountPct: 25, recoveryHash: "", recoverySalt: "", recoveryAt: "" };
+  const SEC_DEFAULT = { idleMin: 30, warnSec: 60, maxAttempts: 5, lockMin: 10, minLen: 6, maxDiscountPct: 25, mfaRequired: false, recoveryHash: "", recoverySalt: "", recoveryAt: "" };
   function loadSec() {
     let s = {};
     try { s = JSON.parse(localStorage.getItem("l997_security") || "{}") || {}; } catch (e) { s = {}; }
@@ -2084,6 +2343,9 @@
   function idleLimitMs() { return sec.idleMin * 60000; }
   function idleTick() {
     if (!me) return;
+    if (remoteRevoked()) { doLogout("remote"); return; }
+    touchSession(false);
+    checkSecurityBadge();
     const fresh = emps().find((e) => e.id === me.id);
     if (!fresh || fresh.active === false || isExpired(fresh)) { doLogout("revoked"); return; }
     me = fresh;
@@ -2121,7 +2383,8 @@
     pendingUser = null;
     save("l997_user", emp.name);
     lastAct = Date.now();
-    sessSet({ id: emp.id, at: lastAct, last: lastAct });
+    startSessionRecord(emp);
+    sessSet({ id: emp.id, at: lastAct, last: lastAct, sid: mySessionId || "" });
     lastPersist = lastAct;
     hideAuth();
     applyRole();
@@ -2138,17 +2401,20 @@
   function doLogout(reason) {
     if (me) {
       const nm = me.name;
-      logActivity(reason === "idle" ? `خروج تلقائي لعدم النشاط — ${nm}` : reason === "revoked" ? `إنهاء جلسة (تغيّر الحساب أو عُطّل) — ${nm}` : `تسجيل خروج — ${nm}`);
+      const why = reason === "idle" ? "idle" : reason === "remote" ? "revoked" : reason === "revoked" ? "disabled" : "logout";
+      secLog(why === "logout" ? "logout" : why === "idle" ? "idle_logout" : "session_revoked", reason === "idle" ? `خروج تلقائي لعدم النشاط — ${nm}` : reason === "remote" ? `إنهاء الجلسة من المدير عن بُعد — ${nm}` : reason === "revoked" ? `إنهاء جلسة (تغيّر الحساب أو عُطّل) — ${nm}` : `تسجيل خروج — ${nm}`, { sev: reason === "remote" ? "warn" : "info" });
+      endSessionRecord(why);
     }
     stopIdle();
-    if (CLOUD) CLOUD.setUser(null);
+    // إبطال جلسة السحابة على الخادم عند الخروج (بعد رفع آخر التغييرات)
+    if (CLOUD) { if (CLOUD.endUser && me && me.cloudUserId) CLOUD.endUser(me.cloudUserId); else CLOUD.setUser(null); }
     document.querySelectorAll("dialog[open]").forEach((d) => { try { d.close(); } catch (e) { /* تجاهل */ } });
     sessClear();
     me = null; pendingUser = null; role = "worker";
     save("l997_user", "");
     applyRole();
     const gs = document.getElementById("globalSearch"); if (gs) gs.value = "";
-    showAuth("login", reason === "idle" ? "idle" : reason === "revoked" ? "revoked" : "out");
+    showAuth("login", reason === "idle" ? "idle" : reason === "revoked" || reason === "remote" ? "revoked" : "out");
   }
 
   /* ---------- الصلاحيات ---------- */
@@ -2167,7 +2433,7 @@
   }
   // الصفحة الأولى لكل مستخدم: الرئيسية لمن يملكها، وإلا شاشة الطلب الجديد (الموظف)
   function homePage() { return can("view_dashboard") ? "dashboard" : can("create_order") ? "new-order" : "orders"; }
-  const PAGE_NEED = { dashboard: "view_dashboard", balances: "view_balances", "new-order": "create_order", reports: "view_reports", finance: "view_reports", inventory: "add_expense", employees: "payroll", closures: "view_closures", audit: "audit_log", profile: "admin_settings", settings: "admin_settings", access: "manage_users" };
+  const PAGE_NEED = { dashboard: "view_dashboard", balances: "view_balances", "new-order": "create_order", reports: "view_reports", finance: "view_reports", inventory: "add_expense", employees: "payroll", closures: "view_closures", audit: "audit_log", security: "security_center", profile: "admin_settings", settings: "admin_settings", access: "manage_users" };
   function denied() { toast(AX("e_noperm")); }
   window.L997Auth = { can: (p) => can(p), user: () => me, role: () => role };
 
@@ -2311,6 +2577,17 @@
           <p class="auth-hint" id="au_email_ok" hidden>✓ ${lang === "en" ? "If this email is registered, a link is on its way. Open it on this device to set a new password." : "إذا كان البريد مسجّلاً ستصلك رسالة خلال دقائق. افتح الرابط على هذا الجهاز لتعيين كلمة مرور جديدة."}</p>
         </div>` : ""}
         <div class="auth-links"><button type="button" class="link-btn" id="au_back">${esc(AX("back_login"))}</button></div>`;
+    } else if (authView === "mfa") {
+      html += `<h2>🔐 ${lang === "en" ? "Two-step verification" : "التحقق بخطوتين"}</h2><p class="auth-sub">${lang === "en" ? "Open your authenticator app (Google Authenticator / Microsoft Authenticator) and enter the 6-digit code for 997 Laundry." : "افتح تطبيق المصادقة (Google Authenticator أو Microsoft Authenticator) واكتب الرمز المكوّن من 6 أرقام الخاص بـ 997 Laundry."}</p>
+        <form id="au_form" novalidate>${txtField("au_code", lang === "en" ? "6-digit code" : "الرمز (6 أرقام)", "one-time-code", 'inputmode="numeric" maxlength="8" style="letter-spacing:4px;font-size:20px;text-align:center"')}
+        <div class="auth-err" id="au_err" role="alert"></div><button type="submit" class="primary-btn full">${lang === "en" ? "Verify" : "تحقق"}</button></form>
+        <div class="auth-links"><button type="button" class="link-btn" id="au_back">${esc(AX("back_login"))}</button></div>`;
+    } else if (authView === "mfaSetup") {
+      html += `<h2>🔐 ${lang === "en" ? "Set up two-step verification" : "إعداد التحقق بخطوتين"}</h2><p class="auth-sub">${authCtx.required ? (lang === "en" ? "The owner requires two-step verification for admin accounts. " : "المالك يشترط التحقق بخطوتين لحسابات الإدارة. ") : ""}${lang === "en" ? "1) Install Google Authenticator or Microsoft Authenticator. 2) Scan the code (or type the key). 3) Enter the 6-digit code." : "1) ثبّت تطبيق Google Authenticator أو Microsoft Authenticator. ‏2) امسح الرمز (أو اكتب المفتاح). ‏3) اكتب الرمز المكوّن من 6 أرقام."}</p>
+        <div id="au_mfa_qr" style="text-align:center;margin:8px 0 12px"><div class="auth-hint">☁ …</div></div>
+        <form id="au_form" novalidate>${txtField("au_code", lang === "en" ? "6-digit code" : "الرمز (6 أرقام)", "one-time-code", 'inputmode="numeric" maxlength="8" style="letter-spacing:4px;font-size:20px;text-align:center"')}
+        <div class="auth-err" id="au_err" role="alert"></div><button type="submit" class="primary-btn full">${lang === "en" ? "Turn on and continue" : "تفعيل ومتابعة"}</button></form>
+        <div class="auth-links"><button type="button" class="link-btn" id="au_back">${authCtx.fromSettings ? (lang === "en" ? "Cancel" : "إلغاء") : esc(AX("back_login"))}</button></div>`;
     } else if (authView === "emailReset") {
       html += `<h2>${lang === "en" ? "Set a new password" : "تعيين كلمة مرور جديدة"}</h2><p class="auth-sub">${lang === "en" ? "You opened the link from your email. Choose a new password." : "فتحت الرابط من بريدك. اختر كلمة مرور جديدة."}</p>
         <form id="au_form" novalidate>${pwField("au_pw", AX("cp_new"), "new-password")}${pwField("au_pw2", AX("cp_new2"), "new-password")}
@@ -2355,6 +2632,10 @@
     if (authView === "setup") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitSetup(); });
     if (authView === "forgot") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitForgot(); });
     if (authView === "emailReset") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitEmailReset(); });
+    if (authView === "mfa") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitMfaCode(); });
+    if (authView === "mfaSetup") { form.addEventListener("submit", (ev) => { ev.preventDefault(); submitMfaSetup(); }); startMfaSetup(); }
+    if ((authView === "mfa" || authView === "mfaSetup") && !authCtx.fromSettings) $a("au_back")?.addEventListener("click", () => { pendingUser = null; if (CLOUD && CLOUD.signOut) CLOUD.signOut(authCtx.uid); });
+    if (authView === "mfaSetup" && authCtx.fromSettings) { const bk = $a("au_back"); if (bk) { const nb = bk.cloneNode(true); bk.replaceWith(nb); nb.addEventListener("click", () => { pendingUser = null; hideAuth(); }); } }
     $a("au_email_send")?.addEventListener("click", sendRecoveryEmail);
     if (authView === "mustChange") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitMustChange(); });
     if (authView === "cloudJoin") form.addEventListener("submit", (ev) => { ev.preventDefault(); submitCloudJoin(); });
@@ -2455,11 +2736,12 @@
     if (!verifyPw(emp, pw)) {
       const f = attFail(key);
       save("l997_user", ""); save("l997_role", "—");
-      logActivity(emp ? `محاولة دخول فاشلة — حساب: ${emp.name}${f.locked ? " (تم قفل الحساب مؤقتاً)" : ""}` : "محاولة دخول فاشلة — اسم مستخدم غير معروف");
+      secLog(f.locked ? "lockout" : "login_fail", emp ? `محاولة دخول فاشلة — حساب: ${emp.name}${f.locked ? " (تم قفل الحساب مؤقتاً)" : ""}` : `محاولة دخول فاشلة — اسم مستخدم غير معروف: «${String(raw).slice(0, 40)}»`, { u: emp ? emp.username : String(raw).slice(0, 40), sev: f.locked ? "risk" : "warn" });
+      if (!f.locked) checkFailedBurst(emp ? emp.username : String(raw).slice(0, 40)); else secLog("alert", `🔒 قفل حساب «${emp ? emp.name : raw}» مؤقتاً بعد ${sec.maxAttempts} محاولات فاشلة — ${deviceLabel()}`, { u: emp ? emp.username : "", sev: "risk", target: "lock:" + (emp ? emp.id : raw) });
       return { err: f.locked ? AX("e_locked", sec.lockMin) : AX("e_bad") + (f.left > 0 && f.left < sec.maxAttempts ? " — " + AX("e_bad_left", f.left) : "") };
     }
     // كلمة المرور صحيحة — فحص حالة الحساب
-    if (emp.active === false) { logActivity(`محاولة دخول لحساب معطّل — ${emp.name}`); return { err: AX("e_inactive") }; }
+    if (emp.active === false) { secLog("login_fail", `محاولة دخول لحساب معطّل — ${emp.name}`, { u: emp.username, sev: "warn" }); return { err: AX("e_inactive") }; }
     if (isExpired(emp)) { logActivity(`محاولة دخول لحساب منتهي الصلاحية — ${emp.name}`); return { err: AX("e_expired") }; }
     attClear(key);
     return { emp };
@@ -2470,8 +2752,10 @@
     role = validRole(emp.role);
     save("l997_user", emp.name);
     save("l997_role", t("role_" + role));
-    logActivity(`تسجيل دخول — ${emp.name} (${ACCESS_ROLE_AR[role]})`);
+    checkNewAdminDevice(emp);
+    secLog("login_ok", `تسجيل دخول — ${emp.name} (${ACCESS_ROLE_AR[role]})${emp._mfaPassed ? " — بالتحقق بخطوتين" : ""} — ${deviceLabel()}`, { u: emp.username });
     beginSession(emp);
+    delete emp._mfaPassed;
   }
   function submitLogin() {
     if (cloudOn()) { submitLoginCloud(); return; }
@@ -2484,11 +2768,13 @@
   async function submitLoginCloud() {
     const ident = $a("au_user").value, pw = $a("au_pass").value;
     const emp = findAccount(ident);
+    let cloudRes = null;
     if (emp && emp.username && pw && emp.active !== false && lockLeftMs("u:" + emp.id) <= 0) {
       const btn = $a("au_form").querySelector("button[type=submit]");
       btn.disabled = true; setErr("☁ …");
       const c = await CLOUD.signIn(emp.username, pw);
       btn.disabled = false; setErr("");
+      cloudRes = c;
       if (!c.error) {
         if (!emp.cloudUserId) { emp.cloudUserId = c.uid; persistEmps(); }
         cacheLocalPassword(emp, pw);
@@ -2500,8 +2786,61 @@
     }
     const r = attemptLogin(ident, pw);
     if (r.err) { setErr(r.err); $a("au_pass").value = ""; $a("au_pass").focus(); return; }
-    if (r.emp.mustChange) { pendingUser = r.emp; showAuth("mustChange"); return; }
-    finishLogin(r.emp);
+    // التحقق بخطوتين لحسابات الإدارة
+    const admin = isAdminRole(r.emp.role), signed = cloudRes && !cloudRes.error;
+    if (signed && cloudRes.factors && cloudRes.factors.length) { pendingUser = r.emp; showAuth("mfa", "", { uid: cloudRes.uid, factor: cloudRes.factors[0].id, tries: 0 }); return; }
+    if (!signed && admin && r.emp.mfaOn) {
+      secLog("login_fail", `دخول حساب إداري بدون التحقق بخطوتين (لا يوجد اتصال) — رُفض — ${r.emp.name}`, { u: r.emp.username, sev: "warn" });
+      setErr(lang === "en" ? "This admin account uses two-step verification — an internet connection is needed to sign in" : "حساب الإدارة محمي بالتحقق بخطوتين — الدخول يحتاج اتصال إنترنت"); return;
+    }
+    if (signed && admin && sec.mfaRequired && !r.emp.mfaOn) { pendingUser = r.emp; showAuth("mfaSetup", "", { uid: cloudRes.uid, required: true }); return; }
+    afterPasswordOk(r.emp);
+  }
+  const isAdminRole = (r0) => ["owner", "manager"].includes(validRole(r0));
+  function afterPasswordOk(emp) {
+    if (emp.mustChange) { pendingUser = emp; showAuth("mustChange"); return; }
+    finishLogin(emp);
+  }
+  async function submitMfaCode() {
+    const e = pendingUser; if (!e) { showAuth("login"); return; }
+    const code = toLatinDigits($a("au_code").value).replace(/\D/g, "");
+    if (code.length !== 6) return setErr(lang === "en" ? "Enter the 6-digit code from your authenticator app" : "اكتب الرمز المكوّن من 6 أرقام من تطبيق المصادقة");
+    const btn = $a("au_form").querySelector("button[type=submit]"); btn.disabled = true; setErr("☁ …");
+    const v = await CLOUD.mfaVerify(authCtx.uid, authCtx.factor, code);
+    btn.disabled = false;
+    if (v.error) {
+      authCtx.tries = (authCtx.tries || 0) + 1;
+      secLog("mfa_fail", `رمز تحقق بخطوتين خاطئ — ${e.name} (محاولة ${authCtx.tries})`, { u: e.username, sev: "warn" });
+      if (authCtx.tries >= 3) secLog("alert", `🚨 رموز تحقق بخطوتين خاطئة متكررة لحساب «${e.name}» — ${deviceLabel()}`, { u: e.username, sev: "risk", target: "mfa:" + e.id });
+      if (authCtx.tries >= 5) { pendingUser = null; if (CLOUD.signOut) CLOUD.signOut(authCtx.uid); showAuth("login"); setErr(lang === "en" ? "Too many wrong codes — sign in again" : "رموز خاطئة كثيرة — سجّل الدخول من جديد"); return; }
+      $a("au_code").value = ""; return setErr(v.error === "bad-code" ? (lang === "en" ? "Wrong or expired code" : "الرمز غير صحيح أو انتهت صلاحيته") : cloudErr(v.error));
+    }
+    e._mfaPassed = true;
+    afterPasswordOk(e);
+  }
+  // إعداد التحقق بخطوتين (إلزامي عند الدخول إن فعّله المالك، أو اختياري من «سياسات الأمان»)
+  async function startMfaSetup() {
+    const box = $a("au_mfa_qr"); if (!box) return;
+    const r = await CLOUD.mfaEnroll(authCtx.uid, pendingUser ? pendingUser.name : "997 Laundry");
+    if (r.error) { box.innerHTML = `<div class="auth-err">${esc(cloudErr(r.error))}</div>`; return; }
+    authCtx.factor = r.id;
+    box.innerHTML = `${r.qr ? `<img alt="QR" src="${esc(r.qr)}" style="width:180px;height:180px;background:#fff;border-radius:12px;padding:6px;border:1px solid var(--border)">` : ""}
+      <div class="auth-hint" style="margin-top:6px">${lang === "en" ? "Or enter this key in the app:" : "أو اكتب هذا المفتاح في التطبيق:"}</div>
+      <div class="auth-code" id="au_mfa_secret" style="font-size:14px;letter-spacing:1px;word-break:break-all">${esc((r.secret || "").replace(/(.{4})/g, "$1 ").trim())}</div>`;
+  }
+  async function submitMfaSetup() {
+    const e = pendingUser; if (!e || !authCtx.factor) return;
+    const code = toLatinDigits($a("au_code").value).replace(/\D/g, "");
+    if (code.length !== 6) return setErr(lang === "en" ? "Enter the 6-digit code shown in the app" : "اكتب الرمز المكوّن من 6 أرقام الظاهر في التطبيق");
+    const btn = $a("au_form").querySelector("button[type=submit]"); btn.disabled = true; setErr("☁ …");
+    const v = await CLOUD.mfaVerify(authCtx.uid, authCtx.factor, code);
+    btn.disabled = false;
+    if (v.error) return setErr(v.error === "bad-code" ? (lang === "en" ? "Wrong code — check the time on the phone and try the new code" : "الرمز غير صحيح — تأكد من وقت الجوال وجرّب الرمز الجديد") : cloudErr(v.error));
+    e.mfaOn = true; e.mfaAt = new Date().toISOString(); persistEmps();
+    secLog("mfa_on", `تفعيل التحقق بخطوتين — ${e.name}`, { u: e.username, sev: "info" });
+    e._mfaPassed = true;
+    if (authCtx.fromSettings) { pendingUser = null; hideAuth(); toast("✓ تم تفعيل التحقق بخطوتين"); renderAccessPage(); return; }
+    afterPasswordOk(e);
   }
   let cloudPwChangedFor = null;
   function submitMustChange() {
@@ -2883,6 +3222,9 @@
       if (okAcct && Date.now() - (s.last || 0) < idleLimitMs()) {
         me = e; role = validRole(e.role);
         lastAct = s.last || Date.now(); lastPersist = Date.now();
+        // نفس الجلسة بعد تحديث الصفحة (ولجلسة قديمة بلا سجل: يُنشأ سجلها الآن)
+        mySessionId = s.sid || null;
+        if (!mySessionId || !loadSessions().some((x) => x.id === mySessionId)) { startSessionRecord(e); sessSet({ ...s, sid: mySessionId }); }
         save("l997_user", e.name);
         // بعد تحديث تلقائي من السحابة نعود لنفس الصفحة
         let back = ""; try { back = sessionStorage.getItem("l997_cloud_page") || ""; sessionStorage.removeItem("l997_cloud_page"); } catch (err) { back = ""; }

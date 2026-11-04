@@ -111,7 +111,8 @@ insert into public.collection_rules (collection, read_roles, write_roles) values
   ('purchases',          '{owner,manager,accountant}',        '{owner,manager,accountant}'),
   ('suppliers',          '{owner,manager,accountant}',        '{owner,manager,accountant}'),
   ('stock_moves',        '{owner,manager,accountant}',        '{owner,manager,accountant}'),
-  ('closures',           '{owner,manager,accountant}',        '{owner,manager}')
+  ('closures',           '{owner,manager,accountant}',        '{owner,manager}'),
+  ('sessions',           '{owner,manager,accountant,worker}', '{owner,manager,accountant,worker}')
 on conflict (collection) do update set read_roles = excluded.read_roles, write_roles = excluded.write_roles;
 
 -- ---------- helpers ----------
@@ -254,6 +255,10 @@ begin
     end if;
   elsif p_collection = 'customer_packages' and p_role = 'worker' and o is not null then
     if jdiff(o, n, array['totalPieces', 'price', 'customerId', 'purchasedAt']) then raise exception 'workers cannot change a sold package'; end if;
+  elsif p_collection = 'sessions' and not trusted then
+    -- staff write only their own login sessions; a session ended or revoked by the owner/manager cannot be reopened
+    if coalesce(n ->> 'uid', '') <> coalesce(auth.uid()::text, '-') then raise exception 'a session belongs to its own user'; end if;
+    if o is not null and (o ->> 'revokedAt') is not null and (n ->> 'revokedAt') is distinct from (o ->> 'revokedAt') then raise exception 'a revoked session cannot be restored'; end if;
   end if;
 end $$;
 

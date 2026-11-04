@@ -72,6 +72,8 @@
     ["recurring_expenses", "l997_recurring_expenses", "list"], ["inventory", "l997_inventory", "list"],
     ["purchases", "l997_purchases", "list"], ["suppliers", "l997_suppliers", "list"],
     ["stock_moves", "l997_stock_moves", "list", { keepRemoved: true }], ["closures", "l997_closures", "list"],
+    // جلسات الدخول (جهاز/مستخدم/آخر نشاط) — صفحة الأمان + إبطال جلسة عن بُعد (supabase/security.sql)
+    ["sessions", "l997_sessions", "list"],
   ].map(([name, key, type, o]) => ({ name, key, type, local: [], defaults: {}, keepRemoved: false, ...(o || {}) }));
   const byKey = {}, byName = {};
   COLLECTIONS.forEach((c) => { byKey[c.key] = c; byName[c.name] = c; });
@@ -88,6 +90,7 @@
   let tokens = ls ? read(TOK_KEY, {}) : {}; // cloud user id → { a, r, exp }
   let user = null; // { uid, role }
   let applying = false, busy = false, timer = null, debounce = null, needLogin = false, online = true;
+  let userGen = 0;
   let lastInput = Date.now(), lastError = "", staged = new Map(), stagedCursor = 0;
   // طلبات خسر هذا الجهاز تعديلها لصالح جهاز آخر في هذه الجولة — قيود الدفع المرتبطة بها لا تُرفع
   let lostOrders = new Set(), localChanged = false;
@@ -192,6 +195,8 @@
   const canRead = (c) => !st || !st.rules || !st.rules[c.name] || (user && st.rules[c.name].r.includes(user.role));
   const retried = new Set(); // سجلات رُفضت سابقاً — تُعاد محاولتها مرة واحدة في كل فتح للنظام
   const canWrite = (c) => !st || !st.rules || !st.rules[c.name] || (user && st.rules[c.name].w.includes(user.role));
+  // مجموعة جديدة لم تُفعَّل بعد على الخادم (لم يُشغَّل ملف SQL الخاص بها) — تبقى على الجهاز ولا تُرفع
+  const serverKnows = (c) => !st || !st.rules || !!st.rules[c.name] || ["orders", "customers", "ledger"].includes(c.name);
   function note(list, item, max) { st[list] = [item, ...(st[list] || [])].slice(0, max || 40); }
   async function serverRow(c, rid) {
     const rows = await api(`/rest/v1/records?shop_id=eq.${st.shopId}&collection=eq.${c.name}&record_id=eq.${encodeURIComponent(rid)}`);
@@ -305,6 +310,7 @@
     for (const k of keys) {
       const c = byKey[k];
       if (!canWrite(c)) continue; // يبقى معلّقاً حتى يدخل مستخدم له صلاحية الكتابة
+      if (!serverKnows(c)) { dirty.delete(k); continue; }
       dirty.delete(k);
       try { await pushCollection(c); } catch (e) { dirty.add(k); throw e; } finally { saveBase(); saveSt(); }
     }
@@ -400,7 +406,7 @@
     root.location.reload();
   }
   // ما يمكن عرضه فوراً بدون إعادة تحميل الصفحة؛ غيرها (إعدادات، صلاحيات، موظفون…) يحتاج إعادة تهيئة كاملة
-  const SOFT = new Set(["orders", "customers", "ledger", "customer_packages", "suspended_orders", "shifts", "attendance", "audit", "expenses"]);
+  const SOFT = new Set(["orders", "customers", "ledger", "customer_packages", "suspended_orders", "shifts", "attendance", "audit", "expenses", "sessions"]);
   // تغيير لا يؤثر على عمل الشاشة (مثل «آخر دخول» لموظف سجّل دخوله على جهاز آخر) — يُطبَّق بهدوء بدون إعادة تحميل الصفحة
   const VOLATILE = { employees: ["lastLogin"] };
   function harmless(row) {
@@ -528,9 +534,12 @@
     }
     throw last;
   }
+  const verifiedTotp = (u) => ((u && u.factors) || []).filter((f) => f.factor_type === "totp" && f.status === "verified");
   async function signInRaw(username, password) {
-    try { return { uid: keepSession(await passwordToken(username, password)) }; }
-    catch (e) { return { error: msgOf(e) }; }
+    try {
+      const s = await passwordToken(username, password);
+      return { uid: keepSession(s), factors: verifiedTotp(s && s.user) };
+    } catch (e) { return { error: msgOf(e) }; }
   }
   function storeDirtyAll() { COLLECTIONS.forEach((c) => { if (ls.getItem(c.key) !== null) dirty.add(c.key); }); }
 
@@ -550,6 +559,7 @@
     },
     // الدخول تم (محلياً) — تبدأ المزامنة باسم هذا الموظف
     async setUser(emp) {
+      userGen++;
       if (!st || !emp) { user = null; stop(); renderChip(); showUpdateChip(false); return; }
       user = { uid: emp.cloudUserId || "", role: emp.role };
       if (!user.uid || !tokens[user.uid]) needLogin = true;
@@ -655,6 +665,48 @@
       try { await api("/rest/v1/rpc/set_member_password", { method: "POST", body: { p_user: uid, p_password: password } }); return { ok: true }; }
       catch (e) { return { error: msgOf(e) }; }
     },
+    // ---------- التحقق بخطوتين (MFA / TOTP — Google Authenticator) — السر محفوظ في Supabase فقط ----------
+    async mfaFactors(uid) {
+      try { const u = await api("/auth/v1/user", { as: uid }); return { factors: verifiedTotp(u), all: (u && u.factors) || [] }; }
+      catch (e) { return { error: msgOf(e) }; }
+    },
+    async mfaEnroll(uid, label) {
+      try {
+        const f = await api("/auth/v1/factors", { method: "POST", as: uid, body: { factor_type: "totp", friendly_name: (label || "997 Laundry") + " " + Date.now().toString(36), issuer: "997 Laundry" } });
+        return { id: f.id, qr: f.totp && f.totp.qr_code, secret: f.totp && f.totp.secret, uri: f.totp && f.totp.uri };
+      } catch (e) { return { error: msgOf(e) }; }
+    },
+    // يتحقق من الرمز (6 أرقام) — عند النجاح تصبح الجلسة بمستوى التحقق الثاني (aal2)
+    async mfaVerify(uid, factorId, code) {
+      try {
+        const ch = await api(`/auth/v1/factors/${factorId}/challenge`, { method: "POST", as: uid, body: {} });
+        const s = await api(`/auth/v1/factors/${factorId}/verify`, { method: "POST", as: uid, body: { challenge_id: ch.id, code: String(code || "").replace(/\D/g, "") } });
+        if (s && s.access_token) { if (!s.user) s.user = { id: uid }; keepSession(s); }
+        return { ok: true };
+      } catch (e) { return { error: e.status === 422 || e.status === 400 ? "bad-code" : msgOf(e) }; }
+    },
+    async mfaRemove(uid, factorId) {
+      try { await api(`/auth/v1/factors/${factorId}`, { method: "DELETE", as: uid }); return { ok: true }; }
+      catch (e) { return { error: msgOf(e) }; }
+    },
+    // خروج المستخدم: رفع آخر التغييرات (سجل الخروج ونهاية الجلسة)، ثم إبطال جلسته على الخادم، ثم إيقاف المزامنة
+    async endUser(uid) {
+      const gen = ++userGen;
+      try { await sync(false); } catch (e) { /* offline */ }
+      if (gen !== userGen) return; // دخل مستخدم آخر في الأثناء
+      await api997.signOut(uid);
+      if (gen !== userGen) return;
+      user = null; stop(); renderChip(); showUpdateChip(false);
+    },
+    // تسجيل الخروج: إبطال جلسة السحابة على الخادم (رمز التحديث لا يعود صالحاً) وحذفها من الجهاز
+    async signOut(uid) {
+      const t = uid && tokens[uid];
+      if (!t) return { ok: true };
+      try { if (online) await api("/auth/v1/logout", { method: "POST", bearer: t.a, body: {} }); } catch (e) { /* offline / expired: يُحذف محلياً على أي حال */ }
+      delete tokens[uid]; saveTok();
+      if (user && user.uid === uid) needLogin = true;
+      return { ok: true };
+    },
     // بريد استرداد كلمة المرور (للمالك): يصبح بريد الدخول في السحابة، فيصل إليه رابط «نسيت كلمة المرور»
     async setRecoveryEmail(email, uid) {
       try {
@@ -705,7 +757,8 @@
     return {
       linked: !!(st && st.shopId), signedIn: !!user, needLogin, online, receiptLinks,
       // ما لا يملك المستخدم رفعه (صلاحيات) لا يُعدّ «معلّقاً»
-      pending: [...dirty].filter((k) => byKey[k] && canWrite(byKey[k])).length, incoming: staged.size,
+      pending: [...dirty].filter((k) => byKey[k] && canWrite(byKey[k]) && serverKnows(byKey[k])).length,
+      sessionsSync: !st || !st.rules ? null : !!st.rules.sessions, incoming: staged.size,
       clockSkewMin: clockSkewMs === null ? null : Math.round(clockSkewMs / 60000), lastSyncAt: st ? st.lastSyncAt : null, linkedAt: st ? st.linkedAt : null, lastError,
       conflicts: st && st.conflicts ? st.conflicts.length : 0, rejected: st && st.rejected ? st.rejected.length : 0,
       conflictList: st && st.conflicts ? st.conflicts.slice(0, 20) : [], rejectedList: st && st.rejected ? st.rejected.slice(0, 20) : [],

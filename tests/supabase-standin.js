@@ -33,10 +33,17 @@ async function startStandin(opts = {}) {
   const refresh = new Map();  // refresh token -> user id
   let requests = 0, offline = false, loseNextWrite = false;
 
+  // MFA (TOTP) like Supabase: factors per user; verify a 6-digit code (RFC 6238, 30 s, ±1 step)
+  const factors = new Map(); // uid -> [{ id, factor_type, status, secret, friendly_name }]
+  const B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const b32decode = (s) => { let bits = ""; for (const ch of s.replace(/=+$/, "")) bits += B32.indexOf(ch).toString(2).padStart(5, "0"); const out = []; for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2)); return Buffer.from(out); };
+  const totp = (secret, step) => { const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(step)); const h = crypto.createHmac("sha1", b32decode(secret)).update(b).digest(); const o = h[h.length - 1] & 15; return String(((h.readUInt32BE(o) & 0x7fffffff) % 1000000)).padStart(6, "0"); };
+  const totpOk = (secret, code) => { const st = Math.floor(Date.now() / 30000); return [st - 1, st, st + 1].some((x) => totp(secret, x) === String(code)); };
+  const pubFactors = (uid) => (factors.get(uid) || []).map(({ secret, ...f }) => f);
   const issue = (user) => {
     const access = crypto.randomBytes(24).toString("hex"), rt = crypto.randomBytes(24).toString("hex");
     sessions.set(access, user.id); refresh.set(rt, user.id);
-    return { access_token: access, token_type: "bearer", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: rt, user: { id: user.id, email: user.email } };
+    return { access_token: access, token_type: "bearer", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: rt, user: { id: user.id, email: user.email, factors: pubFactors(user.id) } };
   };
   async function asUser(uid, fn) {
     const c = await pool.connect();
@@ -132,7 +139,34 @@ async function startStandin(opts = {}) {
       if (u.pathname === "/auth/v1/user" && req.method === "GET") {
         if (!uid) return send(401, { code: 401, msg: "invalid JWT" });
         const r = await pool.query("select id, email from auth.users where id = $1", [uid]);
-        return send(200, r.rows[0]);
+        return send(200, { ...r.rows[0], factors: pubFactors(uid) });
+      }
+      if (u.pathname === "/auth/v1/logout" && req.method === "POST") {
+        // like Supabase: the session and all of the user's refresh tokens stop working
+        if (uid) { for (const [k, v] of sessions) if (v === uid) sessions.delete(k); for (const [k, v] of refresh) if (v === uid) refresh.delete(k); }
+        return send(204);
+      }
+      if (u.pathname === "/auth/v1/factors" && req.method === "POST") {
+        if (!uid) return send(401, { code: 401, msg: "invalid JWT" });
+        const secret = Array.from(crypto.randomBytes(20)).map((x) => B32[x % 32]).join("");
+        const f = { id: crypto.randomUUID(), factor_type: "totp", status: "unverified", friendly_name: body.friendly_name || "", secret };
+        factors.set(uid, [...(factors.get(uid) || []), f]);
+        const uri = `otpauth://totp/${encodeURIComponent(body.issuer || "app")}:${uid}?secret=${secret}&issuer=${encodeURIComponent(body.issuer || "app")}`;
+        return send(200, { id: f.id, type: "totp", totp: { qr_code: "data:image/svg+xml;utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><rect width='120' height='120' fill='%23000'/></svg>", secret, uri } });
+      }
+      const fm = /^\/auth\/v1\/factors\/([\w-]+)(\/challenge|\/verify)?$/.exec(u.pathname);
+      if (fm) {
+        if (!uid) return send(401, { code: 401, msg: "invalid JWT" });
+        const f = (factors.get(uid) || []).find((x) => x.id === fm[1]);
+        if (!f) return send(404, { code: 404, msg: "Factor not found" });
+        if (fm[2] === "/challenge") return send(200, { id: crypto.randomUUID(), expires_at: Math.floor(Date.now() / 1000) + 300 });
+        if (fm[2] === "/verify") {
+          if (!totpOk(f.secret, body.code)) return send(422, { code: 422, error_code: "mfa_verification_failed", msg: "Invalid TOTP code entered" });
+          f.status = "verified";
+          const r = await pool.query("select id, email from auth.users where id = $1", [uid]);
+          return send(200, issue(r.rows[0]));
+        }
+        if (req.method === "DELETE") { factors.set(uid, (factors.get(uid) || []).filter((x) => x.id !== f.id)); return send(200, { id: f.id }); }
       }
       if (u.pathname === "/auth/v1/recover" && req.method === "POST") {
         // like Supabase: always 200; if the email exists, an email with a one-time link is "sent" (kept in outbox)
@@ -191,6 +225,9 @@ async function startStandin(opts = {}) {
     db,
     get requests() { return requests; },
     get outbox() { return outbox; },
+    totpNow: (secret) => totp(secret, Math.floor(Date.now() / 30000)),
+    get factors() { return factors; },
+    get liveSessions() { return sessions.size; },
     setOffline(v) { offline = !!v; },
     loseNextWriteResponse() { loseNextWrite = true; },
     // test inspection only: runs as the stand-in's own login (bypasses RLS); app requests always switch to "authenticated"
