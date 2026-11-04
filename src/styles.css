@@ -574,3 +574,31 @@ body.auth-locked .top-logout{display:none!important}
 
 .qf-checks-search{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font:inherit}
 #discountCodeInfo .mini-btn{margin:2px}
+
+/* 🚚 الاستلام والتوصيل */
+.pos-delivery{border:1px solid var(--border);border-radius:14px;padding:10px 12px;background:var(--panel-soft);display:flex;flex-direction:column;gap:8px;margin:8px 0}
+.pos-dlv-head{font-weight:800;font-size:13px}
+.pos-dlv-more{display:flex;flex-direction:column;gap:6px}
+.pos-dlv-more input,.pos-dlv-more select{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:10px;font:inherit;background:#fff}
+.pos-dlv-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pos-dlv-quote{font-size:12.5px;display:flex;flex-direction:column;gap:4px}
+.pos-dlv-info{color:var(--muted)}
+.pos-dlv-line{display:flex;justify-content:space-between;gap:8px}
+.pos-dlv-line b.free{color:var(--success)}
+.dlv-hero{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:linear-gradient(135deg,var(--primary-soft),var(--panel))}
+.dlv-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start;margin:14px 0}
+.dlv-list{display:flex;flex-direction:column;gap:10px}
+.dlv-list-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.dlv-card{border:1px solid var(--border);border-radius:14px;padding:12px;background:var(--panel);display:flex;flex-direction:column;gap:6px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.dlv-card.late{border-color:var(--danger)}
+.dlv-card-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.dlv-no{font-weight:800;color:var(--muted);direction:ltr}
+.dlv-line{font-size:13px}
+.dlv-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.dlv-actions .primary-btn.mini{padding:7px 12px;font-size:12.5px;min-height:0}
+.dlv-actions a.mini-btn{text-decoration:none;display:inline-flex;align-items:center;color:inherit}
+#deliveryRoot .metrics-grid{margin:14px 0}
+.dlv-settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+.dlv-settings-grid label{display:flex;flex-direction:column;gap:4px;font-size:12.5px}
+.nav-item .nav-count,.dlv-col .nav-count{display:inline-flex;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--danger,#d33);color:#fff;font-size:11px;font-weight:800;align-items:center;justify-content:center;margin-inline-start:6px}
+@media (max-width:1100px){.dlv-board{grid-template-columns:1fr}.dlv-settings-grid{grid-template-columns:1fr}}

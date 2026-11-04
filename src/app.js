@@ -257,7 +257,7 @@
       report_revenue: "إجمالي الإيرادات", report_orders_count: "عدد الطلبات",
       report_avg_order: "متوسط قيمة الطلب", report_outstanding: "مبالغ مستحقة",
       nav_finance: "المالية", nav_inventory: "المخزون والمشتريات", nav_employees: "الموظفون والرواتب",
-      nav_closures: "الإغلاقات", nav_security: "مركز الأمان", nav_audit: "سجل النشاط", nav_ai: "الذكاء الاصطناعي",
+      nav_closures: "الإغلاقات", nav_security: "مركز الأمان", nav_delivery: "التوصيل", nav_audit: "سجل النشاط", nav_ai: "الذكاء الاصطناعي",
       nav_profile: "ملف المنشأة", nav_access: "المستخدمون والصلاحيات",
       page_finance_title: "المالية", page_finance_sub: "التقارير المالية والمصروفات والأرباح",
       page_inventory_title: "المخزون والمشتريات", page_inventory_sub: "الجرد والمواد والموردون وتنبيهات النقص",
@@ -431,7 +431,7 @@
       report_revenue: "Total revenue", report_orders_count: "Order count",
       report_avg_order: "Average order value", report_outstanding: "Outstanding balances",
       nav_finance: "Finance", nav_inventory: "Inventory & Purchases", nav_employees: "Employees & Payroll",
-      nav_closures: "Closures", nav_security: "Security Center", nav_audit: "Activity Log", nav_ai: "AI Center",
+      nav_closures: "Closures", nav_security: "Security Center", nav_delivery: "Delivery", nav_audit: "Activity Log", nav_ai: "AI Center",
       nav_profile: "Company Profile", nav_access: "Users & Permissions",
       page_finance_title: "Finance", page_finance_sub: "Financial reports, expenses, and profits",
       page_inventory_title: "Inventory & Purchases", page_inventory_sub: "Stock, materials, suppliers, and low-stock alerts",
@@ -605,7 +605,7 @@
       report_revenue: "کل آمدنی", report_orders_count: "آرڈرز کی تعداد",
       report_avg_order: "اوسط آرڈر ویلیو", report_outstanding: "باقی بیلنس",
       nav_finance: "مالیات", nav_inventory: "انوینٹری اور خریداری", nav_employees: "ملازمین اور تنخواہیں",
-      nav_closures: "اختتامیہ", nav_security: "سیکیورٹی سینٹر", nav_audit: "سرگرمی لاگ", nav_ai: "اے آئی سینٹر",
+      nav_closures: "اختتامیہ", nav_security: "سیکیورٹی سینٹر", nav_delivery: "ڈیلیوری", nav_audit: "سرگرمی لاگ", nav_ai: "اے آئی سینٹر",
       nav_profile: "کمپنی پروفائل", nav_access: "صارفین اور اجازتیں",
       page_finance_title: "مالیات", page_finance_sub: "مالی رپورٹس، اخراجات، اور منافع",
       page_inventory_title: "انوینٹری اور خریداری", page_inventory_sub: "اسٹاک، مواد، سپلائرز، اور کم اسٹاک الرٹس",
@@ -824,7 +824,22 @@
   if (!settings.extras) { settings.extras = { perfume: { price: 0, per: "order" }, wrap: { price: 0, per: "order" } }; save(KEYS.settings, settings); }
   function extraCfg(id) { const c = settings.extras && settings.extras[id]; return { price: Number(c && c.price) || 0, per: c && c.per === "piece" ? "piece" : "order" }; }
   function activeExtras() { return EXTRAS_DEFAULT.filter((x) => extraCfg(x.id).price > 0); }
-  function extraName(id) { const x = EXTRAS_DEFAULT.find((e) => e.id === id); return x ? t(x.key) : id; }
+  function extraName(id) {
+    if (id === "dlv_pickup") return lang === "en" ? "🚚 Home pickup" : "🚚 استلام من البيت";
+    if (id === "dlv_drop") return lang === "en" ? "🚚 Home delivery" : "🚚 توصيل للبيت";
+    const x = EXTRAS_DEFAULT.find((e) => e.id === id); return x ? t(x.key) : id;
+  }
+  // سطر إضافة للعرض: التوصيل المجاني يظهر «مجاني» بدل 0.000
+  const extraLabel = (l) => extraName(l.id) + (l.free === "package" ? (lang === "en" ? " (package — free)" : " (ضمن الباقة)") : l.free === "threshold" ? (lang === "en" ? " (free over limit)" : " (مجاني فوق الحد)") : "");
+  const extraVal = (l) => (l.free && !(Number(l.total) > 0) ? (lang === "en" ? "Free" : "مجاني") : money(l.total));
+  /* ============ الاستلام والتوصيل ============
+     كل مشوار (استلام من البيت أو توصيل للبيت) = رحلة. عميل الباقة: عدد رحلات مجانية بالشهر ثم رسوم مخفّضة.
+     عميل بدون باقة: رسوم رمزية لكل رحلة، ومجاناً إن تجاوز الطلب حداً يحدده المالك (0 = لا يوجد). */
+  if (!settings.delivery) { settings.delivery = { on: true, fee: 0.5, pkgFree: 4, pkgFee: 0.5, freeOver: 0 }; save(KEYS.settings, settings); }
+  function dlvCfg() {
+    const d = settings.delivery || {}, n = (v, def) => (v === undefined || v === null || v === "" || !Number.isFinite(Number(v)) ? def : Math.max(0, Number(v)));
+    return { on: d.on !== false, fee: round3(n(d.fee, 0.5)), pkgFree: Math.floor(n(d.pkgFree, 4)), pkgFee: round3(n(d.pkgFee, 0.5)), freeOver: round3(n(d.freeOver, 0)) };
+  }
   // سطور الإضافات بالسعر الحالي: «لكل قطعة» = الكمية بعدد قطع الطلب، وإلا مرة واحدة للطلب
   function extrasLines(ids, pieces) {
     return ids.map((id) => {
@@ -842,6 +857,8 @@
   let role = "worker"; // owner | manager | accountant | worker — البدء بأقل صلاحية دائماً؛ الترقية لمالك/مدير تتطلب كلمة المرور
   let draftItems = [];
   let draftExtras = new Set();
+  const blankDelivery = () => ({ pickup: false, drop: false, address: "", date: "", slot: "", reqId: null });
+  let draftDelivery = blankDelivery();
   let draftCustomerId = null;
   let currentQty = 1;
   let activeClothingId = CLOTHING_DEFAULT[0].id;
@@ -1264,6 +1281,7 @@
     closures: ["page_closures_title", "page_closures_sub"],
     audit: ["page_audit_title", "page_audit_sub"],
     security: ["مركز الأمان", "محاولات الدخول · الجلسات · التنبيهات · سجل التدقيق"],
+    delivery: ["🚚 الاستلام والتوصيل", "طلبات الاستلام من البيوت · الطلبات الجاهزة للتوصيل · المندوب في الطريق"],
     profile: ["page_profile_title", "page_profile_sub"],
     access: ["page_access_title", "page_access_sub"],
     settings: ["page_settings_title", "page_settings_sub"],
@@ -1296,6 +1314,8 @@
     if (pageId === "closures" && typeof window.renderClosures997 === "function") window.renderClosures997();
     if (pageId === "audit" && typeof window.renderAudit997 === "function") window.renderAudit997();
     if (pageId === "security") renderSecurityPage();
+    if (pageId === "delivery") renderDeliveryPage();
+    try { updateDeliveryBadge(); } catch (e) { /* ignore */ }
     if (pageId === "settings") renderSettingsPage();
     if (pageId === "profile") renderProfilePage();
     if (pageId === "access") renderAccessPage();
@@ -3484,7 +3504,7 @@
   let suspendedOrders = load("l997_suspended_orders", []);
 
   function resetDraft() {
-    draftItems = []; draftExtras = new Set(); draftCustomerId = null; currentQty = 1;
+    draftItems = []; draftExtras = new Set(); draftCustomerId = null; currentQty = 1; draftDelivery = blankDelivery();
     document.getElementById("orderCustomerPhone").value = "";
     const card = document.getElementById("selectedCustomerCard");
     card.textContent = t("no_customer_selected");
@@ -3506,6 +3526,7 @@
     document.getElementById("posCustomerBarBtn").classList.remove("has-customer");
     renderOrderItemsTable();
     renderPosExtras();
+    renderPosDelivery();
     updateSummary();
     if (document.getElementById("posProductGrid")) renderProductGrid();
   }
@@ -3884,7 +3905,8 @@
   // المجموع الأساسي = القطع + الإضافات؛ رسوم الاستعجال تُحسب على القطع فقط
   function draftBase() {
     const itemsTotal = round3(draftItems.reduce((s, it) => s + it.total, 0));
-    const extras = extrasLines([...draftExtras], draftItems.reduce((n, it) => n + it.qty, 0));
+    const extras0 = extrasLines([...draftExtras], draftItems.reduce((n, it) => n + it.qty, 0));
+    const extras = extras0.concat(deliveryQuote(draftCustomerId, draftDelivery, round3(itemsTotal + extrasTotalOf(extras0))).lines);
     const extrasTotal = extrasTotalOf(extras);
     const priority = document.getElementById("orderPriority").value;
     const urgentFee = priority === "urgent" ? urgentFeeOf(draftItems) : 0;
@@ -3935,6 +3957,7 @@
   function updateSummary() {
     const t2 = currentTotals();
     try { updatePosBar(t2); } catch (e) { /* ignore */ }
+    try { updateDeliveryQuote(); } catch (e) { /* ignore */ }
     document.getElementById("summaryPieces").textContent = draftItems.reduce((s, it) => s + it.qty, 0);
     document.getElementById("summarySubtotal").textContent = money(t2.subtotal);
     document.getElementById("summaryUrgent").textContent = money(t2.urgentFee);
@@ -4025,6 +4048,8 @@
     if (converted) { toast(`تم تغيير العميل — ${converted} قطعة كانت من باقة العميل السابق أصبحت بالسعر العادي`); renderOrderItemsTable(); }
     draftCustomerId = cust.id;
     if (draftCode && !codeAllowed(findCode(draftCode.code), cust.id)) { toast(`أُزيل الكود «${draftCode.code}» — خاص بعملاء آخرين`); clearDraftCode(false); }
+    if (!draftDelivery.address && (cust.address || cust.area)) draftDelivery.address = [cust.area, cust.address].filter(Boolean).join(" — ");
+    renderPosDelivery();
     const card = document.getElementById("selectedCustomerCard");
     card.classList.remove("empty-state", "compact");
     card.innerHTML = `
@@ -4131,6 +4156,7 @@
       id: uid(), number, customerId: draftCustomerId,
       items: draftItems.map((it) => ({ ...it })),
       extras: draftBase().extras,
+      delivery: draftDelivery.pickup || draftDelivery.drop ? { pickup: !!draftDelivery.pickup, drop: !!draftDelivery.drop, address: draftDelivery.address || "", date: draftDelivery.date || "", slot: draftDelivery.slot || "", dropStatus: draftDelivery.drop ? "pending" : undefined, reqId: draftDelivery.reqId || undefined } : undefined,
       priority: document.getElementById("orderPriority").value,
       expectedDelivery: document.getElementById("expectedDelivery").value || null,
       employeeId: empSelVal || null,
@@ -4161,6 +4187,12 @@
     });
 
     const cust = customers.find((c) => c.id === draftCustomerId);
+    if (order.delivery) {
+      if (cust && order.delivery.address && !cust.address) cust.address = order.delivery.address;
+      if (order.delivery.reqId) { suspendedOrders = suspendedOrders.filter((x) => x.id !== order.delivery.reqId); save("l997_suspended_orders", suspendedOrders); }
+      const dl = (order.extras || []).filter((l) => String(l.id).startsWith("dlv_"));
+      logActivity(`🚚 الطلب #${number}: ${[order.delivery.pickup ? "استلام من البيت" : "", order.delivery.drop ? "توصيل للبيت" : ""].filter(Boolean).join(" + ")} — ${dl.map((l) => (l.free ? `مجاني (${l.free === "package" ? "ضمن الباقة" : "فوق الحد"})` : money(l.total))).join("، ")}`);
+    }
     logActivity(`${t("toast_order_saved", number)} — ${cust ? cust.name : ""} — ${money(tt.total)}${tt.discount > 0 ? ` — خصم ${money(tt.discount)} (${opts.discountReason || ""})${opts.approver ? " اعتمده " + opts.approver.name : ""}` : ""}`);
     persistAll();
     return order;
@@ -4219,13 +4251,13 @@
     const n = d.name || "";
     const M = {
       received: {
-        ar: () => `هلا والله ${n} 🌸\nاستلمنا ملابسك وهي الحين بين أيادٍ أمينة 🧺✨\n\n🧾 رقم الطلب: #${d.number}\n👕 عدد القطع: ${d.pieces}\n💰 قيمة الطلب: ${d.covered ? "مغطاة بالكامل من الباقة 🎟" : d.total}${d.discount ? `\n🏷 شامل خصم: ${d.discount}` : ""}${d.expected ? `\n⏰ موعد الجاهزية المتوقع: ${d.expected}` : ""}${d.urgent ? "\n⚡ طلبك مستعجل — بنخلصه لك بأسرع وقت" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}\n\nبنرسل لك رسالة أول ما يجهز إن شاء الله 😊\n${SIGN.ar}`,
-        en: () => `Hi ${n} 🌸\nWe've received your clothes — they're in safe hands 🧺✨\n\n🧾 Order: #${d.number}\n👕 Pieces: ${d.pieces}\n💰 Order value: ${d.covered ? "fully covered by your package 🎟" : d.total}${d.discount ? `\n🏷 Includes discount: ${d.discount}` : ""}${d.expected ? `\n⏰ Expected ready: ${d.expected}` : ""}${d.urgent ? "\n⚡ Urgent — we'll have it ready as fast as we can" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}\n\nWe'll message you as soon as it's ready 😊\n${SIGN.en}`,
+        ar: () => `هلا والله ${n} 🌸\nاستلمنا ملابسك وهي الحين بين أيادٍ أمينة 🧺✨\n\n🧾 رقم الطلب: #${d.number}\n👕 عدد القطع: ${d.pieces}\n💰 قيمة الطلب: ${d.covered ? "مغطاة بالكامل من الباقة 🎟" : d.total}${d.discount ? `\n🏷 شامل خصم: ${d.discount}` : ""}${d.expected ? `\n⏰ موعد الجاهزية المتوقع: ${d.expected}` : ""}${d.urgent ? "\n⚡ طلبك مستعجل — بنخلصه لك بأسرع وقت" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}${d.dlv ? `\n🚚 ${d.dlv}` : ""}\n\nبنرسل لك رسالة أول ما يجهز إن شاء الله 😊\n${SIGN.ar}`,
+        en: () => `Hi ${n} 🌸\nWe've received your clothes — they're in safe hands 🧺✨\n\n🧾 Order: #${d.number}\n👕 Pieces: ${d.pieces}\n💰 Order value: ${d.covered ? "fully covered by your package 🎟" : d.total}${d.discount ? `\n🏷 Includes discount: ${d.discount}` : ""}${d.expected ? `\n⏰ Expected ready: ${d.expected}` : ""}${d.urgent ? "\n⚡ Urgent — we'll have it ready as fast as we can" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}${d.dlv ? `\n🚚 ${d.dlv}` : ""}\n\nWe'll message you as soon as it's ready 😊\n${SIGN.en}`,
         ur: () => `السلام علیکم ${n} 🌸\nآپ کے کپڑے ہمیں موصول ہو گئے ہیں — بالکل محفوظ ہاتھوں میں 🧺✨\n\n🧾 آرڈر نمبر: #${d.number}\n👕 قطعات: ${d.pieces}\n💰 آرڈر کی قیمت: ${d.covered ? "مکمل طور پر پیکیج سے 🎟" : d.total}${d.discount ? `\n🏷 رعایت شامل: ${d.discount}` : ""}${d.expected ? `\n⏰ متوقع تیاری: ${d.expected}` : ""}${d.urgent ? "\n⚡ فوری آرڈر — جلد از جلد تیار کریں گے" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}\n\nتیار ہوتے ہی آپ کو پیغام بھیج دیں گے 😊\n${SIGN.ur}`,
       },
       ready: {
-        ar: () => `بشارة حلوة يا ${n} 🎉\nطلبك رقم #${d.number} جاهز ومرتب بانتظارك 👔✨\n\n👕 عدد القطع: ${d.pieces}\n${d.due > 0 ? `${d.paid > 0 ? `✅ المدفوع: ${d.paidTxt}\n📌 المتبقي: ${d.dueTxt}` : `💰 المبلغ المستحق: ${d.dueTxt}`}\n💳 الدفع نقداً أو بالبطاقة أو Benefit Pay عند الاستلام${d.credit > 0 ? `\n💙 لك رصيد لدينا ${d.creditTxt} — نقدر نخصم منه` : ""}` : `✅ مدفوع بالكامل — ما عليك إلا تشرفنا وتستلم`}\n\nنتشرف بزيارتك في أي وقت — المحل مفتوح 24 ساعة 🕐\n${SIGN.ar}`,
-        en: () => `Great news, ${n} 🎉\nYour order #${d.number} is ready and waiting for you 👔✨\n\n👕 Pieces: ${d.pieces}\n${d.due > 0 ? `${d.paid > 0 ? `✅ Paid: ${d.paidTxt}\n📌 Remaining: ${d.dueTxt}` : `💰 Amount due: ${d.dueTxt}`}\n💳 Pay by cash, card or Benefit Pay on pickup${d.credit > 0 ? `\n💙 You have ${d.creditTxt} credit with us — we can use it` : ""}` : `✅ Fully paid — just drop by and collect`}\n\nCome by anytime — we're open 24 hours 🕐\n${SIGN.en}`,
+        ar: () => `بشارة حلوة يا ${n} 🎉\nطلبك رقم #${d.number} جاهز ومرتب بانتظارك 👔✨\n\n👕 عدد القطع: ${d.pieces}\n${d.due > 0 ? `${d.paid > 0 ? `✅ المدفوع: ${d.paidTxt}\n📌 المتبقي: ${d.dueTxt}` : `💰 المبلغ المستحق: ${d.dueTxt}`}\n💳 الدفع نقداً أو بالبطاقة أو Benefit Pay عند الاستلام${d.credit > 0 ? `\n💙 لك رصيد لدينا ${d.creditTxt} — نقدر نخصم منه` : ""}` : `✅ مدفوع بالكامل — ما عليك إلا تشرفنا وتستلم`}\n\n${d.dlv ? `🚚 بنوصله لبيتك قريباً، وبنبلغك أول ما يطلع المندوب 🛵` : "نتشرف بزيارتك في أي وقت — المحل مفتوح 24 ساعة 🕐"}\n${SIGN.ar}`,
+        en: () => `Great news, ${n} 🎉\nYour order #${d.number} is ready and waiting for you 👔✨\n\n👕 Pieces: ${d.pieces}\n${d.due > 0 ? `${d.paid > 0 ? `✅ Paid: ${d.paidTxt}\n📌 Remaining: ${d.dueTxt}` : `💰 Amount due: ${d.dueTxt}`}\n💳 Pay by cash, card or Benefit Pay on pickup${d.credit > 0 ? `\n💙 You have ${d.creditTxt} credit with us — we can use it` : ""}` : `✅ Fully paid — just drop by and collect`}\n\n${d.dlv ? "🚚 We'll deliver it to your home soon and let you know when the driver is on the way 🛵" : "Come by anytime — we're open 24 hours 🕐"}\n${SIGN.en}`,
         ur: () => `خوشخبری ${n} 🎉\nآپ کا آرڈر #${d.number} تیار ہے اور آپ کا منتظر ہے 👔✨\n\n👕 قطعات: ${d.pieces}\n${d.due > 0 ? `${d.paid > 0 ? `✅ ادا شدہ: ${d.paidTxt}\n📌 باقی: ${d.dueTxt}` : `💰 واجب الادا رقم: ${d.dueTxt}`}\n💳 وصولی پر نقد، کارڈ یا Benefit Pay سے ادائیگی کریں${d.credit > 0 ? `\n💙 آپ کا بیلنس ${d.creditTxt} ہے — اس سے کٹوتی ہو سکتی ہے` : ""}` : `✅ مکمل ادائیگی ہو چکی — بس تشریف لائیں اور وصول کریں`}\n\nکسی بھی وقت تشریف لائیں — ہم 24 گھنٹے کھلے ہیں 🕐\n${SIGN.ur}`,
       },
       delivered: {
@@ -4243,8 +4275,23 @@
         en: () => `Hi ${n} 🌸\nHere is the receipt for your order #${d.number}:\n🧾 ${d.link}\n\nOpen and save it anytime 😊\n${SIGN.en}`,
         ur: () => `السلام علیکم ${n} 🌸\nآپ کے آرڈر #${d.number} کی رسید:\n🧾 ${d.link}\n\nکسی بھی وقت کھول کر محفوظ کریں 😊\n${SIGN.ur}`,
       },
+      pickup_booked: {
+        ar: () => `هلا والله ${n} 🚚\nتم تأكيد موعد استلام ملابسك من البيت ✅\n\n📅 الموعد: ${d.when}\n📍 العنوان: ${d.address || "—"}\n💰 رسوم المشوار: ${d.fee}\n\nبنبلغك أول ما يطلع المندوب 🛵\n${SIGN.ar}`,
+        en: () => `Hi ${n} 🚚\nYour home pickup is confirmed ✅\n\n📅 When: ${d.when}\n📍 Address: ${d.address || "—"}\n💰 Trip fee: ${d.fee}\n\nWe'll let you know when the driver is on the way 🛵\n${SIGN.en}`,
+        ur: () => `السلام علیکم ${n} 🚚\nگھر سے کپڑے وصول کرنے کا وقت طے ہو گیا ✅\n\n📅 وقت: ${d.when}\n📍 پتہ: ${d.address || "—"}\n💰 فیس: ${d.fee}\n\nڈرائیور روانہ ہوتے ہی اطلاع دیں گے 🛵\n${SIGN.ur}`,
+      },
+      pickup_onway: {
+        ar: () => `هلا ${n} 🛵\nالمندوب في الطريق لك الحين لاستلام ملابسك 🧺\n📍 ${d.address || ""}\n\nجهّز الملابس لو سمحت، وشكراً لك 🌷\n${SIGN.ar}`,
+        en: () => `Hi ${n} 🛵\nOur driver is on the way now to collect your clothes 🧺\n📍 ${d.address || ""}\n\nPlease have them ready — thank you 🌷\n${SIGN.en}`,
+        ur: () => `السلام علیکم ${n} 🛵\nہمارا ڈرائیور آپ کے کپڑے لینے کے لیے روانہ ہو چکا ہے 🧺\n📍 ${d.address || ""}\n\nبراہ کرم کپڑے تیار رکھیں — شکریہ 🌷\n${SIGN.ur}`,
+      },
+      drop_onway: {
+        ar: () => `هلا ${n} 🛵\nطلبك رقم #${d.number} (${arPcs(d.pieces)}) طلع مع المندوب وفي الطريق لبيتك 🚚✨\n${d.due > 0 ? `💰 المبلغ المستحق عند الاستلام: ${d.dueTxt} (نقداً أو Benefit Pay)` : "✅ مدفوع بالكامل"}\n\nنشوفك على خير 🌷\n${SIGN.ar}`,
+        en: () => `Hi ${n} 🛵\nYour order #${d.number} (${d.pieces} pcs) is out for delivery 🚚✨\n${d.due > 0 ? `💰 Amount due on delivery: ${d.dueTxt} (cash or Benefit Pay)` : "✅ Fully paid"}\n\nSee you soon 🌷\n${SIGN.en}`,
+        ur: () => `السلام علیکم ${n} 🛵\nآپ کا آرڈر #${d.number} (${d.pieces} قطعات) ڈیلیوری کے لیے روانہ ہو گیا 🚚✨\n${d.due > 0 ? `💰 وصولی پر واجب الادا: ${d.dueTxt} (نقد یا Benefit Pay)` : "✅ مکمل ادائیگی ہو چکی"}\n\nجلد ملاقات ہوگی 🌷\n${SIGN.ur}`,
+      },
       package: {
-        ar: () => `هلا والله ${n} 🎟\nتم تفعيل باقتك «${d.pkg}» بنجاح ✅\n\n👕 عدد القطع: ${d.pieces}\n🧺 تشمل: ${d.garments}\n💰 قيمة الباقة: ${d.price} (${d.method})${d.bonus ? `\n🎁 هدية الباقة: ${d.bonus}` : ""}${d.rules ? `\n📌 ${d.rules}` : ""}\n\nتُخصم القطع تلقائياً من باقتك مع كل طلب، وبنبلغك بالمتبقي في كل مرة 😊\n${SIGN.ar}`,
+        ar: () => `هلا والله ${n} 🎟\nتم تفعيل باقتك «${d.pkg}» بنجاح ✅\n\n👕 عدد القطع: ${d.pieces}\n🧺 تشمل: ${d.garments}\n💰 قيمة الباقة: ${d.price} (${d.method})${d.bonus ? `\n🎁 هدية الباقة: ${d.bonus}` : ""}${d.rules ? `\n📌 ${d.rules}` : ""}${d.dlv ? `\n🚚 ${d.dlv}` : ""}\n\nتُخصم القطع تلقائياً من باقتك مع كل طلب، وبنبلغك بالمتبقي في كل مرة 😊\n${SIGN.ar}`,
         en: () => `Hi ${n} 🎟\nYour package «${d.pkg}» is now active ✅\n\n👕 Pieces: ${d.pieces}\n🧺 Covers: ${d.garments}\n💰 Package price: ${d.price} (${d.method})${d.bonus ? `\n🎁 Bonus: ${d.bonus}` : ""}${d.rules ? `\n📌 ${d.rules}` : ""}\n\nPieces are deducted automatically with each order, and we'll tell you what's left every time 😊\n${SIGN.en}`,
         ur: () => `السلام علیکم ${n} 🎟\nآپ کا پیکیج «${d.pkg}» فعال ہو گیا ✅\n\n👕 قطعات: ${d.pieces}\n🧺 شامل: ${d.garments}\n💰 پیکیج کی قیمت: ${d.price} (${d.method})${d.bonus ? `\n🎁 تحفہ: ${d.bonus}` : ""}${d.rules ? `\n📌 ${d.rules}` : ""}\n\nہر آرڈر کے ساتھ قطعات خودبخود کم ہوں گی اور ہم ہر بار باقی تعداد بتائیں گے 😊\n${SIGN.ur}`,
       },
@@ -4285,7 +4332,7 @@
   function sendOrderConfirmation(order, cust) {
     if (!cust) return;
     const pkg = orderPackageLines(order).join("\n🎟 ");
-    openWhatsApp(cust.phone, waMsg("received", { ...orderMsgData(order, cust), expected: order.expectedDelivery ? fmtDT(order.expectedDelivery) : "", urgent: order.priority === "urgent", pkg }));
+    openWhatsApp(cust.phone, waMsg("received", { ...orderMsgData(order, cust), expected: order.expectedDelivery ? fmtDT(order.expectedDelivery) : "", urgent: order.priority === "urgent", pkg, dlv: dlvMsgLine(order) }));
   }
   // رسالة الجاهزية: تُظهر المستحق إن لم يُدفع (أو المتبقي)، وإلا «مدفوع بالكامل»
   function sendReadyMessage(order, cust) {
@@ -4293,7 +4340,7 @@
     // المستحق الفعلي الآن (يشمل أي سداد لاحق)، والمدفوع، ورصيد العميل المسبق إن وُجد
     const due = orderOwedNow(order), paid = order.paymentConfirmed ? round3((Number(order.payment.total) || 0) - due) : 0;
     const credit = !order.paymentConfirmed ? Math.max(0, round3(cust.balance)) : 0;
-    openWhatsApp(cust.phone, waMsg("ready", { ...orderMsgData(order, cust), due, dueTxt: money(due), paid, paidTxt: money(paid), credit, creditTxt: money(credit) }));
+    openWhatsApp(cust.phone, waMsg("ready", { ...orderMsgData(order, cust), due, dueTxt: money(due), paid, paidTxt: money(paid), credit, creditTxt: money(credit), dlv: !!(order.delivery && order.delivery.drop) }));
   }
   const sendPaymentConfirmationMessage = sendReadyMessage;
   function deliveredText(order, cust, link) {
@@ -4397,9 +4444,10 @@
 
   function renderRecentTransactions() {
     const suspSection = document.getElementById("suspendedOrdersSection");
-    suspSection.innerHTML = suspendedOrders.length === 0 ? "" : `
-      <h4 style="margin:4px 0 8px">طلبات معلّقة (${suspendedOrders.length})</h4>
-      ${suspendedOrders.map((s) => `
+    const suspList = suspendedOrders.filter((x) => x.kind !== "pickup");
+    suspSection.innerHTML = suspList.length === 0 ? "" : `
+      <h4 style="margin:4px 0 8px">طلبات معلّقة (${suspList.length})</h4>
+      ${suspList.map((s) => `
         <div class="recent-tx-row">
           <div class="recent-tx-info"><strong>${esc(s.customerName)}</strong><div class="pos-cart-row-sub">${s.items.length} صنف · ${fmtDT(s.suspendedAt)}</div></div>
           <div class="recent-tx-actions">
@@ -4547,7 +4595,7 @@
     if (cust) lines.push(`👤 ${cust.name}`);
     lines.push("");
     order.items.forEach((it) => lines.push(`• ${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty} = ${it.fromPackageId ? L("من الباقة", "from package") : money(it.total)}`));
-    (order.extras || []).forEach((l) => lines.push(`➕ ${extraName(l.id)}${l.per === "piece" ? ` × ${l.qty}` : ""} = ${money(l.total)}`));
+    (order.extras || []).forEach((l) => lines.push(`➕ ${extraLabel(l)}${l.per === "piece" ? ` × ${l.qty}` : ""} = ${extraVal(l)}`));
     lines.push(`👕 ${L("عدد القطع", "Pieces")}: ${piecesOf(order)}`, "──────────");
     lines.push(`${L("المجموع الأساسي", "Subtotal")}: ${money(p.subtotal)}`);
     if (p.urgentFee > 0) lines.push(`⚡ ${L("رسوم الاستعجال", "Urgent fee")}: ${money(p.urgentFee)}`);
@@ -4575,7 +4623,7 @@
     const en = lang === "en" || lang === "ur", L = (ar, eng) => (en ? eng : ar);
     const p = order.payment, profile = loadProfile();
     const rows = order.items.map((it) => ({ a: `${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}`, q: it.qty, v: it.fromPackageId ? L("من الباقة", "Package") : money(it.total) }));
-    (order.extras || []).forEach((l) => rows.push({ a: `+ ${extraName(l.id)}`, q: l.per === "piece" ? l.qty : "", v: money(l.total) }));
+    (order.extras || []).forEach((l) => rows.push({ a: `+ ${extraLabel(l)}`, q: l.per === "piece" ? l.qty : "", v: extraVal(l) }));
     const totals = [[L("المجموع الأساسي", "Subtotal"), money(p.subtotal)]], paidRows = [];
     if (p.urgentFee > 0) totals.push([L("رسوم الاستعجال", "Urgent fee"), money(p.urgentFee)]);
     if (p.discount > 0) totals.push([L("الخصم", "Discount") + (order.discountCode ? " · " + iso(order.discountCode) : ""), en ? "−" + money(p.discount) : money(p.discount)]);
@@ -4823,7 +4871,7 @@
 
         <table>
           <thead><tr><th>${t("th_cloth")}</th><th>${t("th_service")}</th><th>${t("th_qty")}</th><th>${t("th_total")}</th></tr></thead>
-          <tbody>${order.items.map((it) => `<tr><td>${clothingName(it.clothingId)}</td><td>${serviceName(it.serviceId)}</td><td>${it.qty}</td><td>${money(it.total)}</td></tr>`).join("")}${(order.extras || []).map((l) => `<tr><td>${esc(extraName(l.id))}</td><td>—</td><td>${l.qty}</td><td>${money(l.total)}</td></tr>`).join("")}</tbody>
+          <tbody>${order.items.map((it) => `<tr><td>${clothingName(it.clothingId)}</td><td>${serviceName(it.serviceId)}</td><td>${it.qty}</td><td>${money(it.total)}</td></tr>`).join("")}${(order.extras || []).map((l) => `<tr><td>${esc(extraLabel(l))}</td><td>—</td><td>${l.qty}</td><td>${extraVal(l)}</td></tr>`).join("")}</tbody>
         </table>
         ${order.notes ? `<div class="receipt-notes"><strong>⚠ ${t("dlg_notes")}:</strong> ${esc(order.notes)}</div>` : ""}
         ${orderPackageLines(order).map((l) => `<div class="receipt-notes">🎟 ${esc(l)}</div>`).join("")}
@@ -5128,6 +5176,7 @@
           const now = new Date().toISOString();
           order.status = "delivered";
           order.deliveredAt = now;
+          if (order.delivery && order.delivery.drop) { order.delivery.dropStatus = "done"; order.delivery.doneAt = now; }
           order.deliveredBy = me ? me.name : "";
           order.deliveredById = me ? me.id : "";
           order.receiver = v.receiver || "";
@@ -5272,7 +5321,7 @@
         <div class="details-box">
           <h4>${t("dlg_items")}</h4>
           ${order.items.map((it) => `<div class="details-line"><span>${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty}</span><strong>${money(it.total)}</strong></div>`).join("")}
-          ${(order.extras || []).map((l) => `<div class="details-line"><span>➕ ${esc(extraName(l.id))}${l.per === "piece" ? ` × ${l.qty}` : ""}</span><strong>${money(l.total)}</strong></div>`).join("")}
+          ${(order.extras || []).map((l) => `<div class="details-line"><span>➕ ${esc(extraLabel(l))}${l.per === "piece" ? ` × ${l.qty}` : ""}</span><strong>${extraVal(l)}</strong></div>`).join("")}${order.delivery ? `<div class="details-line"><span>🚚 ${esc(dlvStatusText(order))}</span><strong>${esc(order.delivery.address || "—")}</strong></div>` : ""}
         </div>
         <div class="details-box">
           <h4>${t("dlg_payment")}</h4>
@@ -5665,9 +5714,11 @@
           ${card(L.cnt[0], cs.counts.open)}${card(L.cnt[1], cs.counts.ready)}${card(L.cnt[2], cs.counts.delivered)}${card(L.cnt[3], cs.counts.cancelled)}
         </div>
         ${packagesHtml}
+        ${dlvCfg().on ? (() => { const q = deliveryQuote(c.id, { pickup: false, drop: false }, 0); return `<p class="section-note" style="margin:10px 0 0">🚚 ${q.hasPkg ? `${en ? "Free trips this month" : "المشاوير المجانية هذا الشهر"}: <b>${q.used}/${q.quota}</b> — ${en ? "left" : "متبقي"} <b>${Math.max(0, q.quota - q.used)}</b>` : `${en ? "Delivery trip fee" : "رسوم المشوار"}: <b>${money(dlvCfg().fee)}</b>${dlvCfg().freeOver > 0 ? ` (${en ? "free over" : "مجاني فوق"} ${money(dlvCfg().freeOver)})` : ""}`}</p>`; })() : ""}
         ${codesForCustomer(c.id).length ? `<p class="section-note" style="margin:10px 0 0">🏷 ${en ? "Customer codes" : "أكواد العميل"}: ${codesForCustomer(c.id).map((x) => `<b dir="ltr">${esc(x.code)}</b> (${esc(codeDesc(x))})`).join(" · ")}</p>` : ""}
         <div class="row-actions" style="margin:14px 0;flex-wrap:wrap">
           <button class="primary-btn" type="button" id="cpNewOrder">${L.neworder}</button>
+          ${dlvCfg().on && can("create_order") ? `<button class="secondary-btn" type="button" id="cpPickup">🚚 ${en ? "Book pickup" : "طلب استلام من البيت"}</button>` : ""}
           ${can("edit_pricing") && (settings.discountCodes || []).some(codeRestricted) ? `<button class="secondary-btn" type="button" id="cpCodes">🏷 ${en ? "Discount codes" : "أكواد الخصم"}</button>` : ""}
           ${settings.packageDefs.length ? `<button class="secondary-btn" type="button" id="cpSellPkg">🎟 ${en ? "Sell package" : "بيع باقة"}</button>` : ""}
           ${can("balance_tx") ? `<button class="secondary-btn" type="button" id="cpSettle">${cs.debt > 0 ? L.settle : en ? "💵 Add deposit" : "💵 إيداع رصيد"}</button>` : ""}
@@ -5685,6 +5736,7 @@
     if (q("cpRemind")) q("cpRemind").onclick = () => sendDueReminder(c);
     if (q("cpDelete")) q("cpDelete").onclick = () => deleteCustomer(c.id);
     if (q("cpStatement")) q("cpStatement").onclick = () => { customerProfileDialog.close(); bv.stmt = c.id; openPage("balances"); };
+    if (q("cpPickup")) q("cpPickup").onclick = () => { customerProfileDialog.close(); openPickupForm(c.id); };
     if (q("cpCodes")) q("cpCodes").onclick = () => {
       const list = (settings.discountCodes || []).filter(codeRestricted);
       openQuickForm({
@@ -6304,6 +6356,8 @@
     document.getElementById("urgentHoursSetting").value = settings.urgentHours;
     document.getElementById("shiftsRequiredSetting").checked = settings.shiftsRequired === true;
     document.getElementById("waApiSetting").checked = !!(settings.waApi && settings.waApi.enabled);
+    { const d = dlvCfg(); const set = (id, v) => { const el = document.getElementById(id); if (el) { if (el.type === "checkbox") el.checked = v; else el.value = v; } };
+      set("dlvOnSetting", d.on); set("dlvFeeSetting", d.fee.toFixed(3)); set("dlvPkgFreeSetting", d.pkgFree); set("dlvPkgFeeSetting", d.pkgFee.toFixed(3)); set("dlvFreeOverSetting", d.freeOver.toFixed(3)); }
 
     const body = document.getElementById("pricesBody");
     body.innerHTML = allGarments().map((g) => {
@@ -6538,6 +6592,13 @@
     const waOn = document.getElementById("waApiSetting").checked;
     if (!!(settings.waApi && settings.waApi.enabled) !== waOn) logActivity(`${waOn ? "تفعيل" : "إيقاف"} الإرسال التلقائي لإيصال التسليم عبر WhatsApp Business API`);
     settings.waApi = { ...(settings.waApi || {}), enabled: waOn };
+    if (document.getElementById("dlvOnSetting")) {
+      const num = (id) => Math.max(0, Number(normDigits(document.getElementById(id).value)) || 0);
+      const nd = { on: document.getElementById("dlvOnSetting").checked, fee: round3(num("dlvFeeSetting")), pkgFree: Math.floor(num("dlvPkgFreeSetting")), pkgFee: round3(num("dlvPkgFeeSetting")), freeOver: round3(num("dlvFreeOverSetting")) };
+      const od = dlvCfg();
+      if (JSON.stringify(od) !== JSON.stringify(nd)) logActivity(`تعديل إعدادات التوصيل: ${nd.on ? "مفعّل" : "متوقف"} — الرحلة ${money(nd.fee)} — الباقة ${nd.pkgFree} مجاناً/شهر ثم ${money(nd.pkgFee)} — مجاني فوق ${nd.freeOver > 0 ? money(nd.freeOver) : "لا يوجد"}`);
+      settings.delivery = nd;
+    }
     persistAll();
     logActivity(`تعديل إعدادات التشغيل: ${before} → ${urgent}% / ${normalH}س / ${urgentH}س`);
     toast(t("toast_settings_saved"));
@@ -6724,7 +6785,7 @@
         logActivity(`${cust.name} اشترى باقة «${def.name}» (${def.pieceCount} قطعة، ${money(def.price)})`, def.price);
         toast(`تم تفعيل باقة «${def.name}» للعميل — ${def.pieceCount} قطعة متاحة`);
         waPrompt(`✓ تم تفعيل باقة «${def.name}»`, `هل ترسل تأكيد الباقة للعميل على واتساب؟`, "📲 إرسال تأكيد الباقة", () => {
-          openWhatsApp(cust.phone, waMsg("package", { name: cust.name, pkg: def.name, pieces: def.pieceCount, garments: garmentsLabel(def.garments, 6), price: money(def.price), method: paymentLabel(v.method), bonus: def.bonus || "", rules: pkgRulesText(def) }));
+          openWhatsApp(cust.phone, waMsg("package", { name: cust.name, pkg: def.name, pieces: def.pieceCount, garments: garmentsLabel(def.garments, 6), price: money(def.price), method: paymentLabel(v.method), bonus: def.bonus || "", rules: pkgRulesText(def), dlv: dlvCfg().on && dlvCfg().pkgFree > 0 ? `${dlvCfg().pkgFree} مشاوير استلام/توصيل مجانية كل شهر طوال فترة الباقة` : "" }));
           logActivity(`إرسال تأكيد باقة واتساب — ${cust.name} — ${def.name}`);
         });
         renderCustomersPage();
@@ -6732,6 +6793,235 @@
       },
     });
   }
+
+  /* ============================= 🚚 الاستلام والتوصيل ============================= */
+  const DLV_SLOTS = [
+    { v: "morning", ar: "صباحاً 8–12", en: "Morning 8–12" }, { v: "noon", ar: "ظهراً 12–4", en: "Afternoon 12–4" },
+    { v: "evening", ar: "مساءً 4–8", en: "Evening 4–8" }, { v: "night", ar: "ليلاً 8–12", en: "Night 8–12" },
+  ];
+  const slotLabel = (v) => { const x = DLV_SLOTS.find((s2) => s2.v === v); return x ? (lang === "en" ? x.en : x.ar) : ""; };
+  const dayLabel = (ymd) => {
+    if (!ymd) return "";
+    if (ymd === todayStr()) return lang === "en" ? "Today" : "اليوم";
+    if (ymd === FIN.addDays(todayStr(), 1)) return lang === "en" ? "Tomorrow" : "بكرة";
+    try { return new Date(ymd + "T12:00:00").toLocaleDateString(lang === "en" ? "en-GB" : "ar-BH", { weekday: "long", day: "numeric", month: "numeric" }); } catch (e) { return ymd; }
+  };
+  const whenLabel = (date, slot) => [date ? dayLabel(date) : (lang === "en" ? "As soon as possible" : "بأقرب وقت"), slotLabel(slot)].filter(Boolean).join(" · ");
+  const monthOf = (iso) => (iso ? FIN.localDay(iso).slice(0, 7) : "");
+  // المشاوير المجانية التي استخدمها عميل الباقة هذا الشهر (من الطلبات غير الملغاة)
+  function freeTripsUsed(custId, month, excludeOrderId) {
+    return orders.filter((o) => o.customerId === custId && o.status !== "cancelled" && o.id !== excludeOrderId && monthOf(o.createdAt) === month)
+      .reduce((n, o) => n + (o.extras || []).filter((l) => String(l.id).startsWith("dlv_") && l.free === "package").length, 0);
+  }
+  // تسعير مشاوير الطلب: لكل رحلة (استلام/توصيل) — مجاني ضمن حصة الباقة، أو مجاني فوق الحد، وإلا الرسوم
+  function deliveryQuote(custId, legs, orderValue) {
+    const cfg = dlvCfg(), lines = [];
+    const hasPkg = !!custId && activePackagesForCustomer(custId).length > 0;
+    const used = custId ? freeTripsUsed(custId, todayStr().slice(0, 7)) : 0;
+    let left = hasPkg ? Math.max(0, cfg.pkgFree - used) : 0;
+    if (!cfg.on || !legs) return { lines, hasPkg, used, quota: cfg.pkgFree, cfg };
+    ["pickup", "drop"].forEach((leg) => {
+      if (!legs[leg]) return;
+      let free = null, unit = hasPkg ? cfg.pkgFee : cfg.fee;
+      if (hasPkg && left > 0) { free = "package"; left--; unit = 0; }
+      else if (cfg.freeOver > 0 && orderValue >= cfg.freeOver) { free = "threshold"; unit = 0; }
+      else if (!(unit > 0)) free = "threshold";
+      lines.push({ id: "dlv_" + leg, per: "order", qty: 1, unit: round3(unit), total: round3(unit), free: free || undefined });
+    });
+    return { lines, hasPkg, used, quota: cfg.pkgFree, left, cfg };
+  }
+  function dlvStatusText(order) {
+    const d = order.delivery || {}, en = lang === "en";
+    const parts = [];
+    if (d.pickup) parts.push(en ? "Picked up from home" : "استُلم من البيت");
+    if (d.drop) parts.push(({ pending: en ? "Home delivery — waiting" : "توصيل للبيت — بالانتظار", onway: en ? "Out for delivery 🛵" : "خرج للتوصيل 🛵", done: en ? "Delivered home ✓" : "وُصّل للبيت ✓" })[d.dropStatus || "pending"]);
+    return parts.join(" · ") + (d.date || d.slot ? ` · ${whenLabel(d.date, d.slot)}` : "");
+  }
+  function dlvMsgLine(order) {
+    const d = order.delivery; if (!d || !d.drop) return "";
+    const l = (order.extras || []).find((x) => x.id === "dlv_drop");
+    return `بنوصل طلبك لبيتك بعد التجهيز${d.date || d.slot ? ` (${whenLabel(d.date, d.slot)})` : ""} — التوصيل: ${l ? (l.free ? "مجاني" : money(l.total)) : "—"}`;
+  }
+  const mapsUrl = (addr) => (/^https?:\/\//i.test(String(addr || "").trim()) ? String(addr).trim() : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(addr || "") + " Bahrain")}`);
+
+  // صندوق الاستلام والتوصيل في شاشة الطلب الجديد
+  function renderPosDelivery() {
+    let box = document.getElementById("posDelivery");
+    const anchor = document.getElementById("posExtras");
+    if (!box && anchor) { box = document.createElement("div"); box.id = "posDelivery"; box.className = "pos-delivery"; anchor.insertAdjacentElement("afterend", box); }
+    if (!box) return;
+    if (!dlvCfg().on) { box.style.display = "none"; draftDelivery.pickup = draftDelivery.drop = false; return; }
+    box.style.display = "";
+    const d = draftDelivery, any = d.pickup || d.drop;
+    box.innerHTML = `<div class="pos-dlv-head">🚚 الاستلام والتوصيل</div>
+      <label class="pos-urgent-toggle pos-extra-toggle"><input type="checkbox" id="dlvPickup" ${d.pickup ? "checked" : ""} /> 📥 استلمناها من بيت العميل</label>
+      <label class="pos-urgent-toggle pos-extra-toggle"><input type="checkbox" id="dlvDrop" ${d.drop ? "checked" : ""} /> 📦 توصيل للبيت بعد التجهيز</label>
+      <div class="pos-dlv-more" style="${any ? "" : "display:none"}">
+        <input id="dlvAddress" type="text" value="${esc(d.address)}" placeholder="📍 العنوان: المنطقة، مجمع، طريق، منزل — أو رابط الموقع" />
+        <div class="pos-dlv-row"><input id="dlvDate" type="date" value="${esc(d.date)}" /><select id="dlvSlot"><option value="">⏰ الوقت</option>${DLV_SLOTS.map((x) => `<option value="${x.v}" ${x.v === d.slot ? "selected" : ""}>${x.ar}</option>`).join("")}</select></div>
+      </div>
+      <div class="pos-dlv-quote" id="dlvQuote"></div>`;
+    const on = () => { d.pickup = box.querySelector("#dlvPickup").checked; d.drop = box.querySelector("#dlvDrop").checked; box.querySelector(".pos-dlv-more").style.display = d.pickup || d.drop ? "" : "none"; updateSummary(); };
+    box.querySelector("#dlvPickup").addEventListener("change", on);
+    box.querySelector("#dlvDrop").addEventListener("change", on);
+    box.querySelector("#dlvAddress").addEventListener("input", (e) => { d.address = e.target.value.trim(); });
+    box.querySelector("#dlvDate").addEventListener("change", (e) => { d.date = e.target.value; });
+    box.querySelector("#dlvSlot").addEventListener("change", (e) => { d.slot = e.target.value; });
+    updateDeliveryQuote();
+  }
+  function updateDeliveryQuote() {
+    const el = document.getElementById("dlvQuote"); if (!el) return;
+    const cfg = dlvCfg();
+    if (!draftCustomerId) { el.innerHTML = `<span class="section-note">اختر العميل لمعرفة رسوم التوصيل</span>`; return; }
+    const b = draftBase(), q = deliveryQuote(draftCustomerId, draftDelivery, round3(b.itemsTotal + extrasTotalOf(b.extras.filter((l) => !String(l.id).startsWith("dlv_")))));
+    const head = q.hasPkg
+      ? `🎟 عميل باقة — المشاوير المجانية هذا الشهر: <b>${q.used}</b> من <b>${q.quota}</b>${q.used >= q.quota ? ` · بعدها ${money(cfg.pkgFee)} للمشوار` : ""}`
+      : `رسوم رمزية ${money(cfg.fee)} للمشوار${cfg.freeOver > 0 ? ` · 🎁 مجاني للطلبات من ${money(cfg.freeOver)}` : ""}`;
+    const lines = q.lines.map((l) => `<div class="pos-dlv-line"><span>${esc(extraName(l.id))}</span><b class="${l.free ? "free" : ""}">${l.free ? (l.free === "package" ? "مجاني ✓ (ضمن الباقة)" : "مجاني ✓") : money(l.total)}</b></div>`).join("");
+    el.innerHTML = `<div class="pos-dlv-info">${head}</div>${lines}`;
+  }
+
+  // طلب استلام من البيت (قبل وجود القطع): يُحفظ مع الطلبات المعلّقة (kind = pickup) ويتزامن بين الأجهزة
+  function openPickupForm(custId) {
+    const c0 = custId ? customers.find((x) => x.id === custId) : null;
+    const today = todayStr();
+    openQuickForm({
+      title: "🚚 طلب استلام من البيت", sub: c0 ? `${c0.name} — ${fmtPhone(c0.phone)}` : "اكتب رقم العميل المسجّل (أو أضفه من صفحة العملاء أولاً)",
+      fields: [
+        ...(c0 ? [] : [{ id: "phone", label: "رقم جوال العميل", type: "text", placeholder: "مثال 3xxxxxxx" }]),
+        { id: "address", label: "📍 العنوان (أو رابط الموقع)", type: "text", value: c0 ? [c0.area, c0.address].filter(Boolean).join(" — ") : "" },
+        { id: "date", label: "📅 تاريخ الاستلام", type: "date", value: today },
+        { id: "slot", label: "⏰ الوقت", type: "select", value: "evening", options: DLV_SLOTS.map((x) => ({ value: x.v, label: x.ar })) },
+        { id: "drop", label: "التوصيل بعد التجهيز", type: "select", value: "yes", options: [{ value: "yes", label: "نعم — نرجّعها للبيت" }, { value: "no", label: "لا — العميل يستلم من المحل" }] },
+        { id: "notes", label: "ملاحظات (اختياري)", type: "text", placeholder: "مثال: الاتصال قبل الوصول، الدور الثاني" },
+      ],
+      submitLabel: "حفظ الموعد",
+      onSubmit: (v) => {
+        const c = c0 || customers.find((x) => phoneMatches(x.phone, v.phone));
+        if (!c) { toast("لم يُعثر على العميل — أضفه من صفحة العملاء ثم أعد المحاولة"); return false; }
+        if (!v.address) { toast("اكتب عنوان الاستلام"); return false; }
+        const req = { id: uid(), kind: "pickup", customerId: c.id, customerName: c.name, address: v.address, date: v.date, slot: v.slot, drop: v.drop !== "no", notes: v.notes, status: "new",
+          items: [], extras: [], createdAt: new Date().toISOString(), suspendedAt: new Date().toISOString(), createdBy: me ? me.name : "" };
+        suspendedOrders.unshift(req);
+        if (!c.address) c.address = v.address;
+        save("l997_suspended_orders", suspendedOrders); persistAll();
+        logActivity(`🚚 طلب استلام من البيت — ${c.name} — ${whenLabel(v.date, v.slot)} — ${v.address}`);
+        toast("✓ تم حفظ موعد الاستلام");
+        const q = deliveryQuote(c.id, { pickup: true }, 0), l = q.lines[0];
+        waPrompt("✓ تم حفظ موعد الاستلام", "ترسل تأكيد الموعد للعميل على واتساب؟", "📲 إرسال التأكيد", () => {
+          openWhatsApp(c.phone, waMsg("pickup_booked", { name: c.name, when: whenLabel(v.date, v.slot), address: v.address, fee: l && l.free ? (l.free === "package" ? "مجاني ضمن باقتك 🎟" : "مجاني") : money(l ? l.total : dlvCfg().fee) }));
+        });
+        if (currentPage === "delivery") renderDeliveryPage();
+        updateDeliveryBadge();
+      },
+    });
+  }
+  function pickupRequests() { return suspendedOrders.filter((x) => x.kind === "pickup"); }
+  // الملابس وصلت المحل: يتحول الموعد إلى طلب جديد بنفس العميل والعنوان (المشوار يُحسب عند حفظ الطلب)
+  function convertPickup(id) {
+    const r = suspendedOrders.find((x) => x.id === id); if (!r) return;
+    const c = customers.find((x) => x.id === r.customerId);
+    if (!c) { toast("العميل غير موجود"); return; }
+    openPage("new-order");
+    resetDraft();
+    selectCustomerForOrder(c, true);
+    draftDelivery = { pickup: true, drop: r.drop !== false, address: r.address || "", date: "", slot: "", reqId: r.id };
+    if (r.notes) document.getElementById("orderNotes").value = r.notes;
+    renderPosDelivery(); updateSummary();
+    toast("✓ أدخل قطع العميل ثم احفظ الطلب — مشوار الاستلام محسوب تلقائياً");
+  }
+  function updateDeliveryBadge() {
+    const btn = document.querySelector('.nav-item[data-page="delivery"]'); if (!btn) return;
+    btn.style.display = dlvCfg().on ? "" : "none";
+    const n = pickupRequests().length + orders.filter((o) => o.delivery && o.delivery.drop && o.status === "ready" && o.delivery.dropStatus !== "done").length;
+    let b = btn.querySelector(".nav-count");
+    if (!b) { b = document.createElement("span"); b.className = "nav-count"; btn.appendChild(b); }
+    b.textContent = n; b.style.display = n ? "" : "none";
+  }
+
+  function renderDeliveryPage() {
+    const root = document.getElementById("deliveryRoot"); if (!root) return;
+    const cfg = dlvCfg(), en = lang === "en", month = todayStr().slice(0, 7);
+    const custOf = (id) => customers.find((c) => c.id === id) || { name: "—", phone: "" };
+    const reqs = pickupRequests().slice().sort((a, b) => String(a.date || "9").localeCompare(String(b.date || "9")) || String(a.createdAt).localeCompare(String(b.createdAt)));
+    const dropOrders = orders.filter((o) => o.delivery && o.delivery.drop && o.status !== "cancelled");
+    const ready = dropOrders.filter((o) => o.status === "ready" && (o.delivery.dropStatus || "pending") === "pending");
+    const onway = dropOrders.filter((o) => o.status === "ready" && o.delivery.dropStatus === "onway");
+    const working = dropOrders.filter((o) => !["ready", "delivered", "cancelled"].includes(o.status));
+    const monthOrders = orders.filter((o) => o.status !== "cancelled" && monthOf(o.createdAt) === month);
+    const legs = monthOrders.flatMap((o) => (o.extras || []).filter((l) => String(l.id).startsWith("dlv_")));
+    const deliveredMonth = dropOrders.filter((o) => o.status === "delivered" && monthOf(o.deliveredAt) === month).length;
+    const kpi = (lbl, v, color, note) => { const [ic, ...rest] = lbl.split(" "); return `<div class="metric-card"><div class="metric-top"><span>${rest.join(" ")}</span><span class="metric-icon">${ic}</span></div><div class="metric-value" style="${color ? `color:${color}` : ""}">${v}</div>${note ? `<div class="metric-note">${note}</div>` : ""}</div>`; };
+    const card = (o, actions) => {
+      const c = custOf(o.customerId), d = o.delivery, due = orderOwedNow(o);
+      return `<div class="dlv-card"><div class="dlv-card-top"><b>${esc(c.name)}</b><span class="dlv-no">#${esc(o.number)}</span></div>
+        <div class="dlv-line">📍 ${esc(d.address || "—")}</div>
+        <div class="dlv-line">👕 ${arPcs(o.items.reduce((n, it) => n + it.qty, 0))}${d.date || d.slot ? ` · ⏰ ${esc(whenLabel(d.date, d.slot))}` : ""} · ${due > 0 ? `💰 ${en ? "Due" : "مستحق"} <b>${money(due)}</b>` : `✅ ${en ? "Paid" : "مدفوع"}`}</div>
+        ${d.onwayAt ? `<div class="dlv-line section-note">🛵 ${esc(d.driver || "")} · ${fmtDT(d.onwayAt)}</div>` : ""}
+        <div class="dlv-actions">${actions}<a class="mini-btn" target="_blank" rel="noopener" href="${esc(mapsUrl(d.address))}">📍 ${en ? "Map" : "الخريطة"}</a><button class="mini-btn" data-dlv-call="${esc(c.phone)}">📞</button><button class="mini-btn" data-dlv-view="${o.id}">${en ? "Order" : "الطلب"}</button></div></div>`;
+    };
+    const reqCard = (r) => {
+      const c = custOf(r.customerId), late = r.date && r.date < todayStr();
+      return `<div class="dlv-card ${late ? "late" : ""}"><div class="dlv-card-top"><b>${esc(c.name)}</b><span class="status-badge ${r.status === "onway" ? "status-washing" : "status-new"}">${r.status === "onway" ? "🛵 المندوب في الطريق" : "📅 موعد"}</span></div>
+        <div class="dlv-line">📍 ${esc(r.address || "—")}</div>
+        <div class="dlv-line">⏰ ${esc(whenLabel(r.date, r.slot))}${late ? ` · <b style="color:var(--danger)">متأخر</b>` : ""}${r.drop !== false ? " · 📦 مع توصيل" : ""}</div>
+        ${r.notes ? `<div class="dlv-line section-note">📝 ${esc(r.notes)}</div>` : ""}
+        <div class="dlv-actions">${r.status !== "onway" ? `<button class="mini-btn" data-req-onway="${r.id}">🛵 في الطريق</button>` : ""}<button class="primary-btn mini" data-req-done="${r.id}">✓ استلمنا الملابس ← إنشاء الطلب</button><a class="mini-btn" target="_blank" rel="noopener" href="${esc(mapsUrl(r.address))}">📍</a><button class="mini-btn" data-dlv-call="${esc(c.phone)}">📞</button><button class="mini-btn danger-mini" data-req-del="${r.id}">✕</button></div></div>`;
+    };
+    const col = (title, n, body, empty) => `<div class="panel dlv-col"><div class="panel-header"><div><h3>${title} <span class="nav-count" style="${n ? "" : "display:none"}">${n}</span></h3></div></div><div class="dlv-list">${body || `<div class="empty-state compact">${empty}</div>`}</div></div>`;
+    root.innerHTML = `
+      ${cfg.on ? "" : `<div class="panel" style="border-color:var(--warning)"><b>⚠ خدمة التوصيل متوقفة</b> — فعّلها من الإعدادات ← إعدادات التشغيل.</div>`}
+      <div class="dlv-hero panel">
+        <div><h3 style="margin:0">سياسة التوصيل الحالية</h3>
+          <p class="section-note" style="margin:6px 0 0">🎟 عملاء الباقات: <b>${cfg.pkgFree}</b> مشاوير مجانية كل شهر${cfg.pkgFee > 0 ? `، بعدها ${money(cfg.pkgFee)}` : ""} · 👤 بدون باقة: <b>${money(cfg.fee)}</b> للمشوار${cfg.freeOver > 0 ? ` · 🎁 مجاني للطلب من ${money(cfg.freeOver)}` : ""}</p></div>
+        <button class="primary-btn" id="newPickupBtn">＋ طلب استلام من البيت</button>
+      </div>
+      <div class="metrics-grid metrics-grid-compact">
+        ${kpi("📥 مواعيد استلام", reqs.length, reqs.length ? "var(--primary)" : "")}
+        ${kpi("📦 جاهزة للتوصيل", ready.length, ready.length ? "var(--warning)" : "")}
+        ${kpi("🛵 في الطريق", onway.length)}
+        ${kpi("⏳ قيد التشغيل", working.length, "", "تُوصّل بعد التجهيز")}
+        ${kpi("✓ وُصّلت هذا الشهر", deliveredMonth, "var(--success)")}
+        ${kpi("🎟 مشاوير مجانية هذا الشهر", legs.filter((l) => l.free).length)}
+        ${kpi("💰 إيراد التوصيل هذا الشهر", money(legs.reduce((a, l) => a + (Number(l.total) || 0), 0)), "var(--success)")}
+      </div>
+      <div class="dlv-board">
+        ${col("📥 مواعيد الاستلام من البيوت", reqs.length, reqs.map(reqCard).join(""), "لا توجد مواعيد استلام — اضغط «＋ طلب استلام من البيت»")}
+        ${col("📦 جاهزة للتوصيل", ready.length, ready.map((o) => card(o, `<button class="primary-btn mini" data-drop-onway="${o.id}">🛵 خرج للتوصيل</button>`)).join(""), "لا توجد طلبات جاهزة للتوصيل")}
+        ${col("🛵 في الطريق", onway.length, onway.map((o) => card(o, `<button class="primary-btn mini" data-drop-done="${o.id}">✓ تم التوصيل والتسليم</button>`)).join(""), "لا يوجد مندوب في الطريق الآن")}
+      </div>
+      ${working.length ? `<div class="panel"><div class="panel-header"><div><h3>⏳ طلبات توصيل قيد التشغيل</h3><p>تنتقل تلقائياً إلى «جاهزة للتوصيل» عندما يصبح الطلب جاهزاً</p></div></div><div class="dlv-list dlv-list-row">${working.map((o) => card(o, `<span class="status-badge status-${o.status}">${esc(statusLabel(o.status))}</span>`)).join("")}</div></div>` : ""}`;
+    const q = (sel) => root.querySelectorAll(sel);
+    root.querySelector("#newPickupBtn").onclick = () => openPickupForm(null);
+    q("[data-dlv-call]").forEach((b) => (b.onclick = () => { if (b.dataset.dlvCall) window.location.href = `tel:+${cleanPhone(b.dataset.dlvCall)}`; }));
+    q("[data-dlv-view]").forEach((b) => (b.onclick = () => openOrderDialog(b.dataset.dlvView)));
+    q("[data-req-onway]").forEach((b) => (b.onclick = () => {
+      const r = suspendedOrders.find((x) => x.id === b.dataset.reqOnway); if (!r) return;
+      r.status = "onway"; r.onwayAt = new Date().toISOString(); r.driver = me ? me.name : "";
+      save("l997_suspended_orders", suspendedOrders); logActivity(`🛵 المندوب في الطريق لاستلام ملابس ${r.customerName}`);
+      const c = custOf(r.customerId); if (c.phone) openWhatsApp(c.phone, waMsg("pickup_onway", { name: c.name, address: r.address }));
+      renderDeliveryPage();
+    }));
+    q("[data-req-done]").forEach((b) => (b.onclick = () => convertPickup(b.dataset.reqDone)));
+    q("[data-req-del]").forEach((b) => (b.onclick = () => {
+      const r = suspendedOrders.find((x) => x.id === b.dataset.reqDel); if (!r) return;
+      confirmAction(`إلغاء موعد استلام ${r.customerName}؟`, () => {
+        suspendedOrders = suspendedOrders.filter((x) => x.id !== r.id); save("l997_suspended_orders", suspendedOrders);
+        logActivity(`إلغاء موعد استلام من البيت — ${r.customerName}`); renderDeliveryPage(); updateDeliveryBadge();
+      });
+    }));
+    q("[data-drop-onway]").forEach((b) => (b.onclick = () => {
+      const o = orders.find((x) => x.id === b.dataset.dropOnway); if (!o) return;
+      o.delivery.dropStatus = "onway"; o.delivery.onwayAt = new Date().toISOString(); o.delivery.driver = me ? me.name : "";
+      persistAll(); logActivity(`🛵 الطلب #${o.number} خرج للتوصيل مع ${o.delivery.driver}`);
+      const c = custOf(o.customerId), due = orderOwedNow(o);
+      if (c.phone) openWhatsApp(c.phone, waMsg("drop_onway", { name: c.name, number: o.number, pieces: o.items.reduce((n, it) => n + it.qty, 0), due, dueTxt: money(due) }));
+      renderDeliveryPage(); updateDeliveryBadge();
+    }));
+    q("[data-drop-done]").forEach((b) => (b.onclick = () => { openOrderDialog(b.dataset.dropDone); setTimeout(() => document.getElementById("advanceStatusBtn")?.click(), 150); }));
+    updateDeliveryBadge();
+  }
+  window.renderDeliveryPage997 = renderDeliveryPage;
 
   /* ============================= الورديات (حضور وانصراف + عهدة الصندوق) =============================
      كل موظف يبدأ ورديته عند الدخول (= حضور) بعدّ النقد المستلم، وكل حركة مالية يقوم بها تُسجَّل باسمه،

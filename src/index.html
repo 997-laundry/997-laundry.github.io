@@ -66,6 +66,7 @@
         <button type="button" class="nav-item" data-need="create_order" data-page="new-order">＋ <span data-i18n="nav_neworder">طلب جديد</span></button>
         <button type="button" class="nav-item" data-page="orders">▦ <span data-i18n="nav_orders">الطلبات</span></button>
         <button type="button" class="nav-item" data-page="customers">◉ <span data-i18n="nav_customers">العملاء</span></button>
+        <button type="button" class="nav-item" data-page="delivery">🚚 <span data-i18n="nav_delivery">التوصيل</span></button>
         <button type="button" class="nav-item" data-need="view_balances" data-page="balances">◈ <span data-i18n="nav_balances">الأرصدة</span></button>
         <button type="button" class="nav-item" data-need="view_reports" data-page="reports">▥ <span data-i18n="nav_reports">التقارير</span></button>
 
@@ -429,6 +430,7 @@
       </section>
       <section class="page" id="page-audit"><div id="auditRoot"></div></section>
       <section class="page" id="page-security"><div id="securityRoot"></div></section>
+      <section class="page" id="page-delivery"><div id="deliveryRoot"></div></section>
 
       
 
@@ -506,6 +508,17 @@
               <label><span data-i18n="lbl_normal_hours">مدة الطلب العادي بالساعات</span><input id="normalHoursSetting" type="number" min="1" /></label>
               <label><span data-i18n="lbl_urgent_hours">مدة الطلب المستعجل بالساعات</span><input id="urgentHoursSetting" type="number" min="1" /></label>
               <label class="check-line"><input id="shiftsRequiredSetting" type="checkbox" /> <span>إلزام الموظفين ببدء وردية (عهدة صندوق) قبل استلام المبالغ</span></label>
+              <div class="dlv-settings-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft)">
+                <strong>🚚 الاستلام والتوصيل</strong>
+                <p class="section-note" style="margin:6px 0 8px">كل مشوار (استلام من البيت أو توصيل للبيت) يُحسب رحلة. عملاء الباقات يحصلون على مشاوير مجانية كل شهر، وغيرهم برسوم رمزية.</p>
+                <label class="check-line"><input id="dlvOnSetting" type="checkbox" /> <span>تفعيل خدمة الاستلام والتوصيل</span></label>
+                <div class="dlv-settings-grid">
+                  <label><span>رسوم المشوار — عميل بدون باقة (د.ب)</span><input id="dlvFeeSetting" type="text" inputmode="decimal" /></label>
+                  <label><span>مشاوير مجانية شهرياً — عميل الباقة</span><input id="dlvPkgFreeSetting" type="text" inputmode="numeric" /></label>
+                  <label><span>رسوم المشوار للباقة بعد المجاني (د.ب)</span><input id="dlvPkgFeeSetting" type="text" inputmode="decimal" /></label>
+                  <label><span>توصيل مجاني للطلب من (د.ب) — 0 = لا يوجد</span><input id="dlvFreeOverSetting" type="text" inputmode="decimal" /></label>
+                </div>
+              </div>
               <div class="wa-api-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft)">
                 <strong>📲 إيصال التسليم على واتساب</strong>
                 <p class="section-note" style="margin:6px 0 8px">بدون الربط: عند التسليم تُنسخ صورة الإيصال ويفتح واتساب على محادثة العميل (لصق ← إرسال). بعد تفعيل WhatsApp Business API من Meta وربطه في Supabase: تصل الصورة للعميل تلقائياً بدون أي ضغطة.</p>
