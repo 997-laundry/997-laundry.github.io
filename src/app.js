@@ -205,7 +205,7 @@
       toast_valid_amount: "أدخل مبلغاً صحيحاً", toast_tx_recorded: "تم تسجيل العملية",
       toast_status_updated: "تم تحديث الحالة", toast_order_cancelled: "تم إلغاء الطلب",
       toast_settings_saved: "تم حفظ الإعدادات", toast_role: (r) => `تم الدخول كـ ${r}`,
-      dlg_order_title: (n) => `طلب #${n}`, dlg_items: "القطع", dlg_payment: "الدفع", dlg_status: "الحالة", dlg_notes: "ملاحظات",
+      cust_search_ph: "ابحث بالاسم أو رقم الجوال", dlg_order_title: (n) => `طلب \u2066#${n}\u2069`, dlg_items: "القطع", dlg_payment: "الدفع", dlg_status: "الحالة", dlg_notes: "ملاحظات",
       dlg_payment_method: "طريقة الدفع", dlg_total: "الإجمالي", dlg_paid: "المدفوع", dlg_remaining: "المتبقي",
       dlg_advance_to: (s) => `الانتقال إلى «${s}»`, dlg_cancel_order: "إلغاء الطلب",
       dlg_send_whatsapp: "إرسال واتساب", dlg_print: "طباعة الإيصال", dlg_close: "إغلاق",
@@ -379,7 +379,7 @@
       toast_valid_amount: "Enter a valid amount", toast_tx_recorded: "Transaction recorded",
       toast_status_updated: "Status updated", toast_order_cancelled: "Order cancelled",
       toast_settings_saved: "Settings saved", toast_role: (r) => `Signed in as ${r}`,
-      dlg_order_title: (n) => `Order #${n}`, dlg_items: "Items", dlg_payment: "Payment", dlg_status: "Status", dlg_notes: "Notes",
+      cust_search_ph: "Search by name or phone", dlg_order_title: (n) => `Order #${n}`, dlg_items: "Items", dlg_payment: "Payment", dlg_status: "Status", dlg_notes: "Notes",
       dlg_payment_method: "Payment method", dlg_total: "Total", dlg_paid: "Paid", dlg_remaining: "Remaining",
       dlg_advance_to: (s) => `Move to "${s}"`, dlg_cancel_order: "Cancel order",
       dlg_send_whatsapp: "Send WhatsApp", dlg_print: "Print receipt", dlg_close: "Close",
@@ -553,7 +553,7 @@
       toast_valid_amount: "درست رقم درج کریں", toast_tx_recorded: "لین دین ریکارڈ ہو گیا",
       toast_status_updated: "حالت اپ ڈیٹ ہو گئی", toast_order_cancelled: "آرڈر منسوخ ہو گیا",
       toast_settings_saved: "ترتیبات محفوظ ہو گئیں", toast_role: (r) => `${r} کے طور پر داخل ہوئے`,
-      dlg_order_title: (n) => `آرڈر #${n}`, dlg_items: "آئٹمز", dlg_payment: "ادائیگی", dlg_status: "حالت", dlg_notes: "نوٹس",
+      cust_search_ph: "نام یا فون نمبر سے تلاش کریں", dlg_order_title: (n) => `آرڈر \u2066#${n}\u2069`, dlg_items: "آئٹمز", dlg_payment: "ادائیگی", dlg_status: "حالت", dlg_notes: "نوٹس",
       dlg_payment_method: "ادائیگی کا طریقہ", dlg_total: "کل", dlg_paid: "ادا شدہ", dlg_remaining: "باقی",
       dlg_advance_to: (s) => `"${s}" پر منتقل کریں`, dlg_cancel_order: "آرڈر منسوخ کریں",
       dlg_send_whatsapp: "واٹس ایپ بھیجیں", dlg_print: "رسید پرنٹ کریں", dlg_close: "بند کریں",
@@ -845,7 +845,8 @@
     if (!stack) {
       stack = document.createElement("div");
       stack.id = "l997BannerStack";
-      stack.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;display:flex;flex-direction:column";
+      // جزء من الصفحة (وليس فوقها): التنبيهات لا تغطي زر القائمة ☰ وعنوان الصفحة على الجوال
+      stack.style.cssText = "position:relative;z-index:60;display:flex;flex-direction:column";
       document.body.prepend(stack);
     }
     return stack;
@@ -1193,6 +1194,39 @@
     if (pageId === "profile") renderProfilePage();
     if (pageId === "access") renderAccessPage();
   }
+
+  /* جداول القوائم على الجوال: كل خلية تأخذ عنوان عمودها (data-label) لتُعرض كبطاقة مرتبة بدل التمرير الأفقي.
+     تُستثنى جداول الإدخال (الأسعار، الصلاحيات) والإيصالات. */
+  function labelTables() {
+    document.querySelectorAll(".page table, dialog table").forEach((tb) => {
+      if (tb.closest("#printReceipt, .receipt") || tb.classList.contains("permission-table") || tb.classList.contains("no-mcard")) return;
+      const head = tb.tHead && tb.tHead.rows[0];
+      if (!head || head.querySelector("input, select")) return;
+      const labels = [];
+      [...head.cells].forEach((th) => { const n = th.colSpan || 1; for (let i = 0; i < n; i++) labels.push(th.textContent.replace(/\s+/g, " ").trim()); });
+      tb.classList.add("mcard");
+      [...tb.tBodies].forEach((body) => [...body.rows].forEach((tr) => {
+        let col = 0;
+        [...tr.cells].forEach((td) => {
+          const lb = labels[col] || ""; col += td.colSpan || 1;
+          if (td.getAttribute("data-label") !== lb) td.setAttribute("data-label", lb);
+          const txt = td.textContent.replace(/\s+/g, "").trim();
+          const empty = !td.querySelector("button, a, input, select, img") && (txt === "" || txt === "—" || txt === "-" || txt === "–");
+          td.toggleAttribute("data-empty", empty);
+          td.toggleAttribute("data-full", (td.colSpan || 1) > 1);
+          // خلية أزرار فقط (الإجراءات) — تُعرض صفاً كاملاً بدون عنوان
+          const btns = td.querySelectorAll("button, a.primary-btn, a.ghost-btn");
+          const btnText = [...btns].map((b) => b.textContent).join("").replace(/\s+/g, "");
+          td.toggleAttribute("data-actions", btns.length > 0 && btnText.length >= txt.length && !td.matches(":first-child"));
+        });
+      }));
+    });
+  }
+  // شاشة لمس (آيفون / تابلت): أزرار وحقول أكبر
+  try { if ((window.matchMedia && window.matchMedia("(pointer:coarse)").matches) || (navigator.maxTouchPoints || 0) > 0) document.documentElement.classList.add("touch"); } catch (e) { /* ignore */ }
+  let labelQueued = false;
+  new MutationObserver(() => { if (labelQueued) return; labelQueued = true; requestAnimationFrame(() => { labelQueued = false; labelTables(); }); })
+    .observe(document.body, { childList: true, subtree: true });
 
   /* ============================= ملف المنشأة ============================= */
   function loadProfile() {
@@ -3869,8 +3903,10 @@
     quickFormMandatory = !!mandatory;
     document.getElementById("quickFormCancelBtn").style.display = mandatory ? "none" : "";
     document.getElementById("closeQuickFormDialog").style.display = mandatory ? "none" : "";
-    document.getElementById("quickFormTitle").textContent = title;
-    document.getElementById("quickFormSub").textContent = sub || "";
+    // «#00005» يبقى بترتيبه الصحيح داخل النص العربي
+    const isoNum = (x) => String(x || "").replace(/#(\d+)/g, "\u2066#$1\u2069");
+    document.getElementById("quickFormTitle").textContent = isoNum(title);
+    document.getElementById("quickFormSub").textContent = isoNum(sub);
     document.getElementById("quickFormSubmitBtn").textContent = submitLabel || "حفظ";
     document.getElementById("quickFormCancelBtn").textContent = cancelLabel || "إلغاء";
     const wrap = document.getElementById("quickFormFields");
