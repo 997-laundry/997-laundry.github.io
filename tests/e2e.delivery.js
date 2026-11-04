@@ -157,6 +157,35 @@ function check(name, cond, detail) {
   const o6 = await saveOrder();
   check("free delivery over the owner's limit (1.200 ≥ 1.000 → trip free)", (await ls("l997_settings")).delivery.freeOver === 1 && o6.extras.find((l) => l.id === "dlv_drop").free === "threshold" && Math.abs(o6.payment.total - 1.2) < 0.001, JSON.stringify(o6.extras));
 
+  /* discount codes take off the laundry, not the delivery fee (0.400 shirt −50% = 0.200, + 0.500 trip = 0.700) */
+  await closeAll(); await page.evaluate(() => { const s = JSON.parse(localStorage.getItem("l997_settings")); s.delivery.freeOver = 0; s.discountCodes = (s.discountCodes || []).concat([{ code: "HALF50", type: "percent", percent: 50, scope: "all", customerIds: [], active: true }]); localStorage.setItem("l997_settings", JSON.stringify(s)); });
+  await page.reload(); await page.waitForSelector("#au_user, body:not(.auth-locked)");
+  if (await page.isVisible("#au_user")) { await page.fill("#au_user", "owner"); await page.fill("#au_pass", PW); await page.click("#au_form button[type=submit]"); await page.waitForSelector("body:not(.auth-locked)"); }
+  await fresh(); await pick("33220002"); await page.click('#posProductGrid [data-cloth="shirt"]'); await page.check("#dlvDrop"); await wait(100);
+  await page.fill("#discountCode", "half50"); await page.click("#applyCodeBtn"); await wait(150);
+  check("a 50% code discounts the laundry only: 0.200 + 0.500 delivery = 0.700", /0\.700/.test(await page.textContent("#summaryTotal")), await page.textContent("#summaryTotal"));
+  const o7 = await saveOrder();
+  check("…saved the same way (discount 0.200, total 0.700)", Math.abs(o7.payment.discount - 0.2) < 0.001 && Math.abs(o7.payment.total - 0.7) < 0.001, JSON.stringify(o7.payment));
+
+  /* money: a delivery order paid in cash counts in sales/collections with its delivery fee, and Reports show delivery */
+  for (let step = 0; step < 3; step++) {
+    const st0 = (await ls("l997_orders")).find((o) => o.id === o4.id).status;
+    if (st0 === "delivered") break;
+    await openOrder(o4.id); await page.click("#advanceStatusBtn"); await wait(250);
+    if (await page.isVisible("#qf_count")) await page.fill("#qf_count", "1");
+    if (await page.isVisible("#qf_method")) { await page.selectOption("#qf_method", "cash").catch(() => {}); if (await page.isVisible("#qf_paid")) await page.fill("#qf_paid", "0.9"); }
+    if (await page.isVisible("#quickFormSubmitBtn")) { await submit(); await wait(400); }
+    await later(); await closeAll();
+  }
+  const d4 = (await ls("l997_orders")).find((o) => o.id === o4.id);
+  check("delivered with cash: paid 0.900 (0.400 + 0.500 delivery)", d4.status === "delivered" && Math.abs((d4.payment.paid || 0) - 0.9) < 0.001, JSON.stringify(d4.payment));
+  const fin = await page.evaluate(() => { const F = window.L997Finance, d = { orders: JSON.parse(localStorage.getItem("l997_orders")), ledger: JSON.parse(localStorage.getItem("l997_ledger") || "[]"), customers: JSON.parse(localStorage.getItem("l997_customers")), customerPackages: [], expenses: [], payroll: [] }; const t = F.todayStr(); const s = F.summarize(d, t, t); return { sales: s.salesTotal, collected: s.collected }; });
+  const expSales = (await ls("l997_orders")).filter((o) => o.status === "delivered" && o.paymentConfirmed).reduce((a, o) => a + o.payment.total, 0);
+  check("finance: today's sales include the delivery fees (equal to the delivered orders' totals)", Math.abs(fin.sales - expSales) < 0.001 && fin.collected >= 0.9 - 0.001, JSON.stringify({ fin, expSales }));
+  await closeAll(); await nav("reports"); await wait(300);
+  const rep = await page.textContent("#reportContent");
+  check("Reports overview shows a 🚚 Delivery card with trips and income", /التوصيل: \d+ مشوار/.test(rep), (rep.match(/🚚[^د]*د\.ب|🚚.{0,60}/) || [""])[0]);
+
   /* customer file shows the month's free trips */
   await closeAll(); await page.evaluate(() => window.openCustomerProfile997("c_pkg")); await wait(200);
   const prof = await page.textContent("#customerProfileContent");

@@ -3950,7 +3950,10 @@
   function currentTotals() {
     const { subtotal, urgentFee, extrasTotal } = draftBase();
     const codeBase = round3(subtotal + urgentFee);
-    if (draftCode) document.getElementById("discountAmount").value = Math.min(codeBase, codeDiscountOf(draftCode, codeBase)).toFixed(3);
+    // كود الخصم يخصم من الغسيل فقط — رسوم التوصيل لا تُخصم، إلا كود 100% (الطلب كله مجاني)
+    const dlvFee = extrasTotalOf(draftBase().extras.filter((l) => String(l.id).startsWith("dlv_")));
+    const codeBase2 = draftCode && draftCode.type !== "piece" && Number(draftCode.percent) >= 100 ? codeBase : round3(codeBase - dlvFee);
+    if (draftCode) document.getElementById("discountAmount").value = Math.min(codeBase, codeDiscountOf(draftCode, codeBase2)).toFixed(3);
     const rawDiscount = Number(document.getElementById("discountAmount").value) || 0;
     // خصم الكود حدّده المالك مسبقاً: لا يخضع لسقف الموظف (لكن لا يتجاوز قيمة الطلب)
     const discountCap = draftCode ? codeBase : discountCapAmount(codeBase);
@@ -5241,7 +5244,8 @@
     const subtotal = round3(itemsTotal + extrasTotal);
     const urgentFee = order.priority === "urgent" ? urgentFeeOf(order.items) : 0;
     const ppc = Number(order.discountPiecePrice);
-    const discount = order.discountCode && order.discountPercent ? round3(((subtotal + urgentFee) * order.discountPercent) / 100)
+    const dlvFee = Number(order.discountPercent) >= 100 ? 0 : extrasTotalOf((order.extras || []).filter((l) => String(l.id).startsWith("dlv_")));
+    const discount = order.discountCode && order.discountPercent ? round3(((subtotal + urgentFee - dlvFee) * order.discountPercent) / 100)
       : order.discountCode && order.discountPiecePrice !== undefined && ppc >= 0 ? round3(Math.min(subtotal + urgentFee, order.items.reduce((a, it) => (it.fromPackageId ? a : a + Math.max(0, (Number(it.unit) || 0) - ppc) * it.qty), 0)))
       : round3(Math.min(Number(p.discount) || 0, subtotal + urgentFee));
     const preVat = Math.max(0, round3(subtotal + urgentFee - discount));
@@ -6295,6 +6299,13 @@
         metric(FX("avg"), money(s.avgOrder)),
         metric(FX("receivables"), money(snap.receivables), snap.receivables > 0 ? "var(--danger)" : ""),
         metric(FX("open_value"), money(snap.openValue)),
+        ...(() => {
+          if (!dlvCfg().on && !orders.some((o) => o.delivery)) return [];
+          const inP = orders.filter((o) => o.status !== "cancelled" && o.delivery && FIN.inRange(o.createdAt, fromInput, toInput));
+          const legs = inP.flatMap((o) => (o.extras || []).filter((l) => String(l.id).startsWith("dlv_")));
+          const inc = round3(legs.reduce((a, l) => a + (Number(l.total) || 0), 0));
+          return [metric(`🚚 ${lang === "ar" ? `التوصيل: ${legs.length} مشوار (${legs.filter((l) => l.free).length} مجاني)` : `Delivery: ${legs.length} trips (${legs.filter((l) => l.free).length} free)`}`, money(inc), inc > 0 ? "var(--success)" : "")];
+        })(),
       ].join("");
       drawBarChart("paymentReport", Object.entries(s.collectedBy).filter(([, v]) => v > 0).map(([k, v]) => ({ label: paymentLabel(k), value: v })), { money: true });
       drawBarChart("servicesReport", Object.entries(s.piecesByService).map(([k, v]) => ({ label: serviceName(k), value: v })));
