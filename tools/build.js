@@ -18,6 +18,10 @@ const out = path.join(root, "laundry-997-full.html");
 fs.writeFileSync(out, html);
 // نسخة باسم index.html ليفتحها رابط الموقع (GitHub Pages) مباشرة من الجوال
 fs.writeFileSync(path.join(root, "index.html"), html);
+// صفحة الإيصال العامة التي يفتحها العميل من رابط واتساب (r.html?t=…)
+let rp = src("r.html").replace(/    <script src="([\w.-]+)"><\/script>/g, (_, f) => "    <script>\n" + src(f) + "\n</script>");
+if (/<script src=/.test(rp)) throw new Error("build: r.html asset not inlined");
+fs.writeFileSync(path.join(root, "r.html"), rp.split("__LOGO_997__").join(LOGO));
 // ملفات التطبيق على الجوال (العمل بدون إنترنت + الأيقونة) تُنسخ بجانب index.html
 for (const f of fs.readdirSync(path.join(root, "src", "pwa"))) fs.copyFileSync(path.join(root, "src", "pwa", f), path.join(root, f));
 console.log(`built ${path.relative(root, out)} (${(html.length / 1024).toFixed(0)} KB)`);

@@ -2558,7 +2558,9 @@
         <div><span>الاتصال</span><strong>${s.needLogin ? "يحتاج تسجيل دخول" : s.online ? "متصل ✓" : "بدون إنترنت"}</strong></div>
         <div><span>بانتظار الرفع</span><strong>${s.pending}</strong></div>
         <div><span>تحديثات واردة</span><strong>${s.incoming}</strong></div>
+        <div><span>رابط الإيصال على واتساب</span><strong>${s.receiptLinks ? "مفعّل ✓" : s.receiptLinks === false ? "غير مفعّل" : "…"}</strong></div>
       </div>
+      ${s.receiptLinks === false ? `<div class="cloud-warn">⚠ لتفعيل إرسال رابط الإيصال تلقائياً عند التسليم: افتح Supabase ← SQL Editor والصق محتوى الملف <b>supabase/receipt_link.sql</b> ثم Run (مرة واحدة). حتى ذلك الحين يسأل النظام قبل إرسال رسالة التسليم كالمعتاد.</div>` : ""}
       ${noCloud.length ? `<div class="cloud-warn">⚠ موظفون لهم دخول على هذا الجهاز وليس لهم حساب سحابي بعد: <b>${noCloud.map((e) => esc(e.name)).join("، ")}</b>.<br><button class="primary-btn" id="cloudStaffBtn" type="button" style="margin-top:8px">☁ إنشاء حساباتهم في السحابة الآن</button></div>` : ""}
       ${s.conflicts ? `<details class="cloud-warn"><summary>⚠ ${s.conflicts} تعديل تعارض مع جهاز آخر (اعتُمدت نسخة السحابة) — اضغط للتفاصيل</summary>${s.conflictList.map((c) => `<div class="cloud-row">${fmtDT(c.at)} · ${esc(c.collection)} · ${esc(c.id)}</div>`).join("")}</details>` : ""}
       ${s.rejected ? `<details class="cloud-warn"><summary>⚠ ${s.rejected} تعديل رفضته السحابة (صلاحيات) — اضغط للتفاصيل</summary>${s.rejectedList.map((c) => `<div class="cloud-row">${fmtDT(c.at)} · ${esc(c.collection)} · ${esc(c.why)}</div>`).join("")}</details>` : ""}
@@ -3609,14 +3611,19 @@
         ur: () => `خوشخبری ${n} 🎉\nآپ کا آرڈر #${d.number} تیار ہے اور آپ کا منتظر ہے 👔✨\n\n👕 قطعات: ${d.pieces}\n${d.due > 0 ? `${d.paid > 0 ? `✅ ادا شدہ: ${d.paidTxt}\n📌 باقی: ${d.dueTxt}` : `💰 واجب الادا رقم: ${d.dueTxt}`}\n💳 وصولی پر نقد، کارڈ یا Benefit Pay سے ادائیگی کریں${d.credit > 0 ? `\n💙 آپ کا بیلنس ${d.creditTxt} ہے — اس سے کٹوتی ہو سکتی ہے` : ""}` : `✅ مکمل ادائیگی ہو چکی — بس تشریف لائیں اور وصول کریں`}\n\nکسی بھی وقت تشریف لائیں — ہم 24 گھنٹے کھلے ہیں 🕐\n${SIGN.ur}`,
       },
       delivered: {
-        ar: () => `شكراً لك يا ${n} 💐\nتم تسليم طلبك رقم #${d.number} (${arPcs(d.pieces)}) — نتمنى إنها تعجبك وتكون عند حسن ظنك ✨${d.owed > 0 ? `\n\n📌 للتذكير: المتبقي على هذا الطلب ${d.owedTxt}` : ""}${d.account > 0 ? `\n📌 إجمالي المتبقي على حسابك: ${d.accountTxt}` : ""}\n\nرأيك يهمنا، وإذا عندك أي ملاحظة لا تتردد تراسلنا 🌷\nننتظرك في طلبك الجاي 😊\n${SIGN.ar}`,
-        en: () => `Thank you, ${n} 💐\nYour order #${d.number} (${d.pieces} pcs) has been handed over — we hope you love the result ✨${d.owed > 0 ? `\n\n📌 Just a reminder: ${d.owedTxt} remains on this order` : ""}${d.account > 0 ? `\n📌 Total remaining on your account: ${d.accountTxt}` : ""}\n\nYour feedback means a lot — message us anytime 🌷\nSee you on your next visit 😊\n${SIGN.en}`,
-        ur: () => `شکریہ ${n} 💐\nآپ کا آرڈر #${d.number} (${d.pieces} قطعات) حوالے کر دیا گیا — امید ہے آپ کو پسند آئے گا ✨${d.owed > 0 ? `\n\n📌 یاد دہانی: اس آرڈر پر ${d.owedTxt} باقی ہیں` : ""}${d.account > 0 ? `\n📌 آپ کے اکاؤنٹ پر کل باقی: ${d.accountTxt}` : ""}\n\nآپ کی رائے ہمارے لیے اہم ہے — کسی بھی وقت پیغام کریں 🌷\nاگلی بار پھر ملیں گے 😊\n${SIGN.ur}`,
+        ar: () => `شكراً لك يا ${n} 💐\nتم تسليم طلبك رقم #${d.number} (${arPcs(d.pieces)}) — نتمنى إنها تعجبك وتكون عند حسن ظنك ✨${d.owed > 0 ? `\n\n📌 للتذكير: المتبقي على هذا الطلب ${d.owedTxt}` : ""}${d.account > 0 ? `\n📌 إجمالي المتبقي على حسابك: ${d.accountTxt}` : ""}${d.link ? `\n\n🧾 إيصال طلبك: ${d.link}` : ""}\n\nرأيك يهمنا، وإذا عندك أي ملاحظة لا تتردد تراسلنا 🌷\nننتظرك في طلبك الجاي 😊\n${SIGN.ar}`,
+        en: () => `Thank you, ${n} 💐\nYour order #${d.number} (${d.pieces} pcs) has been handed over — we hope you love the result ✨${d.owed > 0 ? `\n\n📌 Just a reminder: ${d.owedTxt} remains on this order` : ""}${d.account > 0 ? `\n📌 Total remaining on your account: ${d.accountTxt}` : ""}${d.link ? `\n\n🧾 Your receipt: ${d.link}` : ""}\n\nYour feedback means a lot — message us anytime 🌷\nSee you on your next visit 😊\n${SIGN.en}`,
+        ur: () => `شکریہ ${n} 💐\nآپ کا آرڈر #${d.number} (${d.pieces} قطعات) حوالے کر دیا گیا — امید ہے آپ کو پسند آئے گا ✨${d.owed > 0 ? `\n\n📌 یاد دہانی: اس آرڈر پر ${d.owedTxt} باقی ہیں` : ""}${d.account > 0 ? `\n📌 آپ کے اکاؤنٹ پر کل باقی: ${d.accountTxt}` : ""}${d.link ? `\n\n🧾 آپ کی رسید: ${d.link}` : ""}\n\nآپ کی رائے ہمارے لیے اہم ہے — کسی بھی وقت پیغام کریں 🌷\nاگلی بار پھر ملیں گے 😊\n${SIGN.ur}`,
       },
       balance: {
         ar: () => `هلا ${n} 👋\n${{ payment: `استلمنا دفعتك ${d.amount}${d.orderNo ? ` لطلب #${d.orderNo}` : ""} ✅ شكراً لك`, deposit: `تم إيداع ${d.amount} في رصيدك لدينا ✅`, refund: `تم استرداد ${d.amount} لك ✅`, debit: `تم خصم ${d.amount} من رصيدك${d.note ? ` (${d.note})` : ""}`, plus: `تمت إضافة ${d.amount} إلى رصيدك${d.note ? ` (${d.note})` : ""} ✅` }[d.kind]}\n💳 ${d.status}\n\nشكراً لثقتك فينا، ودايماً بخدمتك 🌷\n${SIGN.ar}`,
         en: () => `Hi ${n} 👋\n${{ payment: `We've received your payment of ${d.amount}${d.orderNo ? ` for order #${d.orderNo}` : ""} ✅ Thank you`, deposit: `${d.amount} has been deposited to your balance ✅`, refund: `${d.amount} has been refunded to you ✅`, debit: `${d.amount} has been deducted from your balance${d.note ? ` (${d.note})` : ""}`, plus: `${d.amount} has been added to your balance${d.note ? ` (${d.note})` : ""} ✅` }[d.kind]}\n💳 ${d.status}\n\nThank you for trusting us — always happy to help 🌷\n${SIGN.en}`,
         ur: () => `السلام علیکم ${n} 👋\n${{ payment: `آپ کی ادائیگی ${d.amount}${d.orderNo ? ` (آرڈر #${d.orderNo})` : ""} موصول ہو گئی ✅ شکریہ`, deposit: `آپ کے بیلنس میں ${d.amount} جمع کر دیے گئے ✅`, refund: `${d.amount} آپ کو واپس کر دیے گئے ✅`, debit: `آپ کے بیلنس سے ${d.amount} منہا کر دیے گئے${d.note ? ` (${d.note})` : ""}`, plus: `آپ کے بیلنس میں ${d.amount} شامل کر دیے گئے${d.note ? ` (${d.note})` : ""} ✅` }[d.kind]}\n💳 ${d.status}\n\nہم پر اعتماد کا شکریہ — ہمیشہ خدمت میں حاضر 🌷\n${SIGN.ur}`,
+      },
+      receipt: {
+        ar: () => `هلا ${n} 🌸\nهذا إيصال طلبك رقم #${d.number}:\n🧾 ${d.link}\n\nتقدر تفتحه وتحفظه في أي وقت 😊\n${SIGN.ar}`,
+        en: () => `Hi ${n} 🌸\nHere is the receipt for your order #${d.number}:\n🧾 ${d.link}\n\nOpen and save it anytime 😊\n${SIGN.en}`,
+        ur: () => `السلام علیکم ${n} 🌸\nآپ کے آرڈر #${d.number} کی رسید:\n🧾 ${d.link}\n\nکسی بھی وقت کھول کر محفوظ کریں 😊\n${SIGN.ur}`,
       },
       package: {
         ar: () => `هلا والله ${n} 🎟\nتم تفعيل باقتك «${d.pkg}» بنجاح ✅\n\n👕 عدد القطع: ${d.pieces}\n🧺 تشمل: ${d.garments}\n💰 قيمة الباقة: ${d.price} (${d.method})${d.bonus ? `\n🎁 هدية الباقة: ${d.bonus}` : ""}\n\nتُخصم القطع تلقائياً من باقتك مع كل طلب، وبنبلغك بالمتبقي في كل مرة 😊\n${SIGN.ar}`,
@@ -3671,12 +3678,13 @@
     openWhatsApp(cust.phone, waMsg("ready", { ...orderMsgData(order, cust), due, dueTxt: money(due), paid, paidTxt: money(paid), credit, creditTxt: money(credit) }));
   }
   const sendPaymentConfirmationMessage = sendReadyMessage;
-  function sendDeliveredMessage(order, cust) {
+  function sendDeliveredMessage(order, cust, withReceipt) {
     if (!cust) return;
+    const link = withReceipt ? publishReceipt(order, cust) : "";
     const owed = orderOwedNow(order);
     const accountDebt = round3(Math.max(0, -(Number(cust.balance) || 0)));
     const account = accountDebt > owed + 0.0005 ? accountDebt : 0;
-    openWhatsApp(cust.phone, waMsg("delivered", { ...orderMsgData(order, cust), owed, owedTxt: money(owed), account, accountTxt: money(account) }));
+    openWhatsApp(cust.phone, waMsg("delivered", { ...orderMsgData(order, cust), owed, owedTxt: money(owed), account, accountTxt: money(account), link }));
   }
   // kind: payment (سداد دين/طلب) · deposit (إيداع) · refund (استرداد) · debit (خصم) · plus (إضافة)
   function sendBalanceMessage(cust, amount, kind, extra) {
@@ -3931,14 +3939,11 @@
   /* ---------- إيصال PDF / صورة للمشاركة عبر واتساب ----------
      يُرسم الإيصال على canvas (المتصفح يشكّل الحروف العربية تلقائياً)، ثم يُغلَّف بصفحة PDF واحدة.
      المشاركة عبر قائمة «مشاركة» في الجهاز (واتساب يرفق الملف)؛ وإن لم يدعمها الجهاز يُنزَّل الملف ويُفتح واتساب. */
-  function receiptCanvas(order, cust) {
+  // محتوى الإيصال (نصوص جاهزة) — يُرسم بـ L997Receipt.draw هنا، وفي صفحة الإيصال العامة (r.html) لرابط واتساب
+  function receiptModel(order, cust) {
     const iso = (x) => "\u2066" + x + "\u2069"; // رقم أو نص إنجليزي داخل سطر عربي يبقى بترتيبه الصحيح
     const en = lang === "en" || lang === "ur", L = (ar, eng) => (en ? eng : ar);
     const p = order.payment, profile = loadProfile();
-    const S = 2, W = 380 * S, pad = 22 * S;
-    const FONT = (w, px) => `${w} ${px * S}px Tajawal, "Geeza Pro", "Segoe UI", Tahoma, Arial, sans-serif`;
-    const C = { brand: "#5587C6", ink: "#132630", muted: "#5d707a", line: "#dbe6eb", good: "#1f7a55", goodBg: "#e2f3eb", warn: "#a86411", warnBg: "#fbf0e0", bad: "#b4372f", badBg: "#f9e6e4", soft: "#f4f8fa" };
-    // المحتوى أولاً لحساب الطول
     const rows = order.items.map((it) => ({ a: `${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}`, q: it.qty, v: it.fromPackageId ? L("من الباقة", "Package") : money(it.total) }));
     (order.extras || []).forEach((l) => rows.push({ a: `+ ${extraName(l.id)}`, q: l.per === "piece" ? l.qty : "", v: money(l.total) }));
     const totals = [[L("المجموع الأساسي", "Subtotal"), money(p.subtotal)]], paidRows = [];
@@ -3946,79 +3951,47 @@
     if (p.discount > 0) totals.push([L("الخصم", "Discount") + (order.discountCode ? " · " + iso(order.discountCode) : ""), en ? "−" + money(p.discount) : money(p.discount)]);
     if (p.vat > 0) totals.push([`${L("ضريبة القيمة المضافة", "VAT")} ${p.vatPercent}%`, money(p.vat)]);
     let status;
-    if (order.status === "cancelled") status = [L("الطلب ملغي", "Order cancelled"), C.bad, C.badBg];
-    else if (!order.paymentConfirmed) status = [`${L("المستحق عند الاستلام", "Due on pickup")}: ${money(p.total)}`, C.warn, C.warnBg];
+    if (order.status === "cancelled") status = { text: L("الطلب ملغي", "Order cancelled"), kind: "bad" };
+    else if (!order.paymentConfirmed) status = { text: `${L("المستحق عند الاستلام", "Due on pickup")}: ${money(p.total)}`, kind: "warn" };
     else {
       const owed = order.debtRecorded && cust ? FIN.allocateDebts([cust], orders, ledger)[order.id] || 0 : 0;
       if (owed > 0 && owed < p.total - 0.0005) paidRows.push([L("المدفوع", "Paid") + ` (${orderPayLabel(order)})`, money(round3(p.total - owed))]);
-      status = owed > 0 ? [`${L("المتبقي عليكم", "Balance due")}: ${money(owed)}`, C.bad, C.badBg] : [`✓ ${L("مدفوع بالكامل", "Fully paid")} — ${orderPayLabel(order)}`, C.good, C.goodBg];
+      status = owed > 0 ? { text: `${L("المتبقي عليكم", "Balance due")}: ${money(owed)}`, kind: "bad" } : { text: `✓ ${L("مدفوع بالكامل", "Fully paid")} — ${orderPayLabel(order)}`, kind: "good" };
     }
-    const pkgs = orderPackageLines(order);
-    const footer = [profile.cr ? `${L("س.ت", "CR")}: \u2066${profile.cr}\u2069` : "", profile.vat ? `${L("الرقم الضريبي", "VAT No.")}: \u2066${profile.vat}\u2069` : ""].filter(Boolean).join("   ·   ");
-    const rowH = 30 * S, H = Math.round(150 * S + 110 * S + rows.length * rowH + 20 * S + totals.length * 26 * S + 60 * S + 70 * S + pkgs.length * 24 * S + paidRows.length * 30 * S + 90 * S + (footer ? 20 * S : 0));
-    const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
-    const g = cv.getContext("2d");
-    g.direction = en ? "ltr" : "rtl";
-    const start = en ? pad : W - pad, end = en ? W - pad : pad; // جهة بداية السطر ونهايته
-    const txt = (s0, x, y, font, color, align) => { g.font = font; g.fillStyle = color; g.textAlign = align; g.fillText(s0, x, y); };
-    const fit = (s0, font, max) => { g.font = font; let x = String(s0); while (x.length > 3 && g.measureText(x).width > max) x = x.slice(0, -2); return x === String(s0) ? x : x + "…"; };
-    const rrect = (x, y, w, h, r, color) => { g.fillStyle = color; g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); g.fill(); };
-    const startAlign = en ? "left" : "right", endAlign = en ? "right" : "left";
-    g.fillStyle = "#ffffff"; g.fillRect(0, 0, W, H);
-    // الترويسة
-    g.fillStyle = C.brand; g.fillRect(0, 0, W, 130 * S);
-    const bx = en ? pad : W - pad - 58 * S;
-    rrect(bx, 30 * S, 58 * S, 68 * S, 14 * S, "#ffffff");
-    if (LOGO_IMG.complete && LOGO_IMG.naturalWidth) { const lh = 58 * S, lw = lh * LOGO_IMG.naturalWidth / LOGO_IMG.naturalHeight; g.drawImage(LOGO_IMG, bx + (58 * S - lw) / 2, 35 * S, lw, lh); }
-    else txt("997", bx + 29 * S, 72 * S, FONT(800, 20), "#0C1E42", "center");
-    const nx = en ? pad + 72 * S : W - pad - 72 * S;
-    txt(iso(fit((en ? profile.nameEn : profile.nameAr) || "997 Laundry", FONT(800, 22), W - 150 * S)), nx, 62 * S, FONT(800, 22), "#ffffff", startAlign);
-    const sub = [profile.phone ? iso(profile.phone) : "", profile.address].filter(Boolean).join(" · ") || L("الرفاع · مملكة البحرين · مفتوح 24 ساعة", "Riffa · Bahrain · Open 24 hours");
-    txt(fit(sub, FONT(500, 13), W - 150 * S), nx, 88 * S, FONT(500, 13), "#e3f1f7", startAlign);
-    let y = 166 * S;
-    // رقم الطلب يبقى «#00005» بالترتيب الصحيح داخل السطر العربي، والعنوان لا يتداخل مع التاريخ
-    const dt = fmtDT(order.createdAt); g.font = FONT(500, 13); const dtW = g.measureText(dt).width;
-    txt(fit(`${L("إيصال طلب", "Receipt")} ${iso("#" + order.number)}`, FONT(800, 18), W - 2 * pad - dtW - 16 * S), start, y, FONT(800, 18), C.ink, startAlign);
-    txt(dt, end, y, FONT(500, 13), C.muted, endAlign);
-    y += 28 * S;
-    if (cust) { txt(fit(cust.name, FONT(700, 15), W * 0.55), start, y, FONT(700, 15), C.ink, startAlign); txt(iso(cust.phone || ""), end, y, FONT(500, 13), C.muted, endAlign); }
-    y += 22 * S;
-    g.fillStyle = C.line; g.fillRect(pad, y, W - 2 * pad, 2 * S); y += 30 * S;
-    // القطع
-    txt(L("القطعة / الخدمة", "Item / service"), start, y, FONT(700, 12), C.muted, startAlign);
-    txt(L("الكمية", "Qty"), W / 2 + (en ? 60 : -60) * S, y, FONT(700, 12), C.muted, "center");
-    txt(L("المبلغ", "Amount"), end, y, FONT(700, 12), C.muted, endAlign);
-    y += 12 * S;
-    rows.forEach((r, i) => {
-      if (i % 2 === 0) { g.fillStyle = C.soft; g.fillRect(pad - 6 * S, y, W - 2 * pad + 12 * S, rowH); }
-      const ty = y + 20 * S;
-      txt(fit(r.a, FONT(500, 14), W * 0.5), start, ty, FONT(500, 14), C.ink, startAlign);
-      txt(String(r.q), W / 2 + (en ? 60 : -60) * S, ty, FONT(700, 14), C.ink, "center");
-      txt(r.v, end, ty, FONT(600, 14), C.ink, endAlign);
-      y += rowH;
-    });
-    y += 22 * S;
-    txt(`${L("عدد القطع", "Pieces")}: ${piecesOf(order)}`, start, y, FONT(600, 12), C.muted, startAlign);
-    y += 32 * S;
-    totals.forEach(([k, v]) => { txt(k, start, y, FONT(500, 14), C.muted, startAlign); txt(v, end, y, FONT(600, 14), C.ink, endAlign); y += 26 * S; });
-    g.fillStyle = C.line; g.fillRect(pad, y - 8 * S, W - 2 * pad, 2 * S);
-    y += 26 * S;
-    txt(L("الإجمالي", "Total"), start, y, FONT(800, 20), C.ink, startAlign);
-    txt(money(p.total), end, y, FONT(800, 22), C.brand, endAlign);
-    y += 24 * S;
-    paidRows.forEach(([k, v]) => { y += 6 * S; txt(k, start, y, FONT(600, 14), C.good, startAlign); txt(v, end, y, FONT(700, 14), C.good, endAlign); y += 22 * S; });
-    rrect(pad, y, W - 2 * pad, 44 * S, 12 * S, status[2]);
-    txt(fit(status[0], FONT(800, 15), W - 4 * pad), W / 2, y + 28 * S, FONT(800, 15), status[1], "center");
-    y += 66 * S;
-    pkgs.forEach((l) => { txt(fit("🎟 " + l, FONT(500, 13), W - 2 * pad), start, y, FONT(500, 13), C.good, startAlign); y += 24 * S; });
-    y += 10 * S;
-    txt(L(`شكراً لتعاملكم مع ${iso("997 Laundry")} 💙`, "Thank you for choosing 997 Laundry 💙"), W / 2, y, FONT(700, 15), C.ink, "center");
-    y += 24 * S;
-    if (footer) { txt(footer, W / 2, y, FONT(500, 11), C.muted, "center"); y += 20 * S; }
-    // قصّ الفراغ الزائد أسفل الإيصال
-    const out = document.createElement("canvas"); out.width = W; out.height = Math.min(H, Math.round(y + 14 * S));
-    const og = out.getContext("2d"); og.fillStyle = "#ffffff"; og.fillRect(0, 0, W, out.height); og.drawImage(cv, 0, 0);
-    return out;
+    if (order.status === "delivered" && order.deliveredAt) status.note = `${L("تم التسليم", "Delivered")}: ${fmtDT(order.deliveredAt)}`;
+    const footer = [profile.cr ? `${L("س.ت", "CR")}: ${iso(profile.cr)}` : "", profile.vat ? `${L("الرقم الضريبي", "VAT No.")}: ${iso(profile.vat)}` : ""].filter(Boolean).join("   ·   ");
+    return {
+      v: 1, en, number: order.number,
+      shopName: iso((en ? profile.nameEn : profile.nameAr) || "997 Laundry"),
+      sub: [profile.phone ? iso(profile.phone) : "", profile.address].filter(Boolean).join(" · ") || L("الرفاع · مملكة البحرين · مفتوح 24 ساعة", "Riffa · Bahrain · Open 24 hours"),
+      title: `${L("إيصال طلب", "Receipt")} ${iso("#" + order.number)}`, dt: fmtDT(order.createdAt),
+      custName: cust ? cust.name : "", custPhone: cust ? iso(cust.phone || "") : "",
+      heads: [L("القطعة / الخدمة", "Item / service"), L("الكمية", "Qty"), L("المبلغ", "Amount")],
+      rows, pieces: `${L("عدد القطع", "Pieces")}: ${piecesOf(order)}`, totals,
+      totalLabel: L("الإجمالي", "Total"), total: money(p.total), paidRows, status,
+      pkgs: orderPackageLines(order), thanks: L(`شكراً لتعاملكم مع ${iso("997 Laundry")} 💙`, "Thank you for choosing 997 Laundry 💙"), footer,
+    };
+  }
+  function receiptCanvas(order, cust) { return window.L997Receipt.draw(receiptModel(order, cust), LOGO_IMG); }
+  // رابط الإيصال للعميل (يحتاج الربط بالسحابة): نسخة من الإيصال تُحفظ مع الطلب برمز سري، وتُفتح من r.html
+  function receiptToken() {
+    const b = new Uint8Array(16); (window.crypto || {}).getRandomValues ? window.crypto.getRandomValues(b) : b.forEach((_, i) => { b[i] = Math.floor(Math.random() * 256); });
+    return window.btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function receiptPageBase() {
+    // نفس الموقع الذي يعمل عليه النظام؛ نسخة الملف الواحد المفتوحة من الجهاز تستخدم موقع المحل
+    return /^https?:$/.test(location.protocol) ? location.origin + location.pathname.replace(/[^/]*$/, "") : "https://997-laundry.github.io/";
+  }
+  const receiptLinksOn = () => cloudOn() && !!(window.L997Cloud && window.L997Cloud.status && window.L997Cloud.status().receiptLinks);
+  function publishReceipt(order, cust) {
+    if (!receiptLinksOn() || !cust) return "";
+    const m = receiptModel(order, cust);
+    const ph = toLatinDigits(cust.phone || "").replace(/\D/g, "").replace(/^973/, "");
+    m.custPhone = ph.length >= 6 ? "\u2066" + ph.slice(0, 2) + "••••" + ph.slice(-2) + "\u2069" : ""; // الرابط قد يُعاد إرساله — لا يظهر الرقم كاملاً
+    const token = (order.receiptPub && order.receiptPub.token) || receiptToken();
+    order.receiptPub = { token, at: new Date().toISOString(), model: m };
+    persistAll();
+    return receiptPageBase() + "r.html?t=" + token;
   }
   // صفحة PDF واحدة تحتوي صورة الإيصال (JPEG) — بدون مكتبات خارجية
   function pdfFromCanvas(cv) {
@@ -4461,7 +4434,11 @@
           logActivity(`${t("dlg_advance_to", statusLabel("delivered"))} — #${order.number}${v.receiver ? " — المستلم: " + v.receiver : ""}`);
           refreshAfterOrderChange();
           toast(t("toast_status_updated"));
-          showDeliveredPrompt(order, cust);
+          // تلقائياً بنفس ضغطة «تأكيد التسليم»: واتساب يفتح على محادثة العميل وفيها رسالة الشكر + رابط الإيصال — الموظف يضغط «إرسال» فقط
+          if (cust && receiptLinksOn() && settings.autoReceiptOnDelivery !== false && validLocalPhone(cust.phone)) {
+            sendDeliveredMessage(order, cust, true);
+            logActivity(`إرسال رسالة التسليم + رابط الإيصال واتساب — طلب #${order.number}`);
+          } else showDeliveredPrompt(order, cust);
         };
         if (needPay) return applyOrderPayment(order, cust, v, `تسليم طلب #${order.number}`, deliver);
         deliver();
@@ -4623,6 +4600,7 @@
         <button class="whatsapp-btn" id="dialogWhatsappBtn">${t("dlg_send_whatsapp")}</button>
         <button class="whatsapp-btn" id="dialogReceiptPdfBtn">📄 ${lang === "en" ? "PDF receipt (WhatsApp)" : "إيصال PDF (واتساب)"}</button>
         <button class="secondary-btn" id="dialogReceiptImgBtn">🖼 ${lang === "en" ? "Receipt image" : "صورة الإيصال"}</button>
+        ${cust && receiptLinksOn() && order.status !== "cancelled" ? `<button class="whatsapp-btn" id="dialogReceiptLinkBtn">🔗 ${lang === "en" ? "Receipt link on WhatsApp" : "رابط الإيصال على واتساب"}</button>` : ""}
         ${cust ? `<button class="whatsapp-btn" id="dialogReceiptWaBtn">🧾 ${lang === "en" ? "Text receipt on WhatsApp" : "إيصال نصي على واتساب"}</button>` : ""}
         <button class="ghost-btn" id="dialogPrintBtn">${t("dlg_print")}</button>
       </div>
@@ -4743,6 +4721,12 @@
     document.getElementById("dialogReceiptPdfBtn")?.addEventListener("click", () => shareReceiptFile(order, cust, "pdf"));
     document.getElementById("dialogReceiptImgBtn")?.addEventListener("click", () => shareReceiptFile(order, cust, "image"));
     if (document.getElementById("dialogReceiptImgBtn") || document.getElementById("dialogReceiptPdfBtn")) prepareReceiptFiles(order, cust);
+    document.getElementById("dialogReceiptLinkBtn")?.addEventListener("click", () => {
+      const link = publishReceipt(order, cust);
+      if (!link) return;
+      logActivity(`إرسال رابط إيصال الطلب #${order.number} على واتساب بواسطة ${me ? me.name : ""}`);
+      openWhatsApp(cust.phone, waMsg("receipt", { name: cust.name, number: order.number, link }));
+    });
     document.getElementById("dialogReceiptWaBtn")?.addEventListener("click", () => {
       logActivity(`إرسال إيصال الطلب #${order.number} على واتساب بواسطة ${me ? me.name : ""}`);
       openWhatsApp(cust.phone, receiptText(order, cust));

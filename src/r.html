@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>إيصال 997 Laundry</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <meta property="og:title" content="إيصال طلبك — 997 Laundry" />
+  <meta property="og:description" content="اضغط لعرض إيصال طلبك وحفظه" />
+  <meta property="og:image" content="https://997-laundry.github.io/icon-512.png" />
+  <meta name="theme-color" content="#5587C6" />
+  <link rel="icon" href="icon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@500;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root { --brand: #5587C6; --ink: #132630; --muted: #5d707a; --bg: #eef3f8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: Tajawal, "Geeza Pro", "Segoe UI", Tahoma, Arial, sans-serif; }
+    main { max-width: 440px; margin: 0 auto; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); }
+    .card { background: #fff; border-radius: 18px; box-shadow: 0 6px 24px rgba(19, 38, 48, .08); overflow: hidden; }
+    #rImg { display: block; width: 100%; height: auto; -webkit-touch-callout: default; }
+    .hint { text-align: center; color: var(--muted); font-size: 14px; margin: 12px 4px; }
+    .btns { display: flex; gap: 10px; margin-top: 12px; }
+    .btns button { flex: 1; border: 0; border-radius: 12px; padding: 13px 10px; font: 800 15px Tajawal, sans-serif; cursor: pointer; }
+    #rSave { background: var(--brand); color: #fff; }
+    #rShare { background: #fff; color: var(--brand); border: 2px solid var(--brand) !important; }
+    .msg { background: #fff; border-radius: 18px; padding: 28px 20px; text-align: center; }
+    .msg h1 { font-size: 20px; margin: 10px 0 6px; }
+    .msg p { color: var(--muted); margin: 0; }
+    .spin { width: 34px; height: 34px; border: 4px solid #d6e2f0; border-top-color: var(--brand); border-radius: 50%; margin: 6px auto; animation: s 1s linear infinite; }
+    @keyframes s { to { transform: rotate(360deg); } }
+    img.logo { height: 64px; }
+  </style>
+</head>
+<body>
+  <main id="rMain">
+    <div class="msg" id="rMsg"><img class="logo" id="rLogo" src="__LOGO_997__" alt="997 Laundry" /><div class="spin"></div><p>جارٍ تحميل الإيصال…</p></div>
+  </main>
+    <script src="cloud.js"></script>
+    <script src="receipt.js"></script>
+  <script>
+  (function () {
+    "use strict";
+    var main = document.getElementById("rMain"), logo = document.getElementById("rLogo");
+    var token = new URLSearchParams(location.search).get("t") || "";
+    function fail(title, sub) {
+      main.innerHTML = '<div class="msg"><img class="logo" src="' + logo.src + '" alt="997 Laundry"><h1>' + title + "</h1><p>" + sub + "</p></div>";
+    }
+    if (token.length < 20) { fail("الرابط غير مكتمل", "تأكد من فتح الرابط كاملاً كما وصلك على واتساب."); return; }
+    var load = window.L997Cloud && window.L997Cloud.publicReceipt ? window.L997Cloud.publicReceipt(token) : Promise.resolve({ error: "x" });
+    Promise.all([load, document.fonts && document.fonts.ready ? document.fonts.ready.catch(function () {}) : null]).then(function (r) {
+      var res = r[0];
+      if (res.error === "offline") { fail("لا يوجد اتصال بالإنترنت", "تحقق من الاتصال ثم افتح الرابط مرة أخرى."); return; }
+      if (!res.model) { fail("الإيصال غير متوفر", "قد يكون الرابط قديماً أو غير صحيح — تواصل معنا على واتساب ونرسل لك نسخة جديدة."); return; }
+      var m = res.model;
+      document.documentElement.dir = m.en ? "ltr" : "rtl";
+      var cv = window.L997Receipt.draw(m, logo);
+      var url = cv.toDataURL("image/png"), name = "997-laundry-receipt-" + (m.number || "") + ".png";
+      main.innerHTML = '<div class="card"><img id="rImg" alt="receipt"></div>' +
+        '<p class="hint">' + (m.en ? "Press and hold the receipt to save it, or use the buttons below." : "اضغط مطوّلاً على الإيصال لحفظه، أو استخدم الأزرار.") + "</p>" +
+        '<div class="btns"><button id="rSave" type="button">⬇ ' + (m.en ? "Save image" : "حفظ الصورة") + '</button><button id="rShare" type="button">↗ ' + (m.en ? "Share" : "مشاركة") + "</button></div>";
+      document.getElementById("rImg").src = url;
+      document.getElementById("rSave").onclick = function () { var a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
+      var shareBtn = document.getElementById("rShare");
+      cv.toBlob(function (blob) {
+        var file = null; try { file = new File([blob], name, { type: "image/png" }); } catch (e) { file = null; }
+        var ok = false; try { ok = !!(file && navigator.canShare && navigator.canShare({ files: [file] })); } catch (e) { ok = false; }
+        if (!ok) { shareBtn.style.display = "none"; return; }
+        shareBtn.onclick = function () { navigator.share({ files: [file] }).catch(function () {}); };
+      }, "image/png");
+    });
+  })();
+  </script>
+</body>
+</html>

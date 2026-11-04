@@ -408,8 +408,16 @@
   }
   // أعلى رقم طلب على هذا الجهاز — أول كتلة أرقام من السحابة لا تبدأ تحته
   const localMaxNumber = () => (read("l997_orders", []) || []).reduce((m, o) => Math.max(m, Number(o && o.number) || 0), 0);
+  // هل ميزة «رابط الإيصال» مفعّلة على الخادم (supabase/receipt_link.sql)؟ null = لم يُفحص بعد
+  let receiptLinks = null;
+  function checkReceiptLinks() {
+    if (receiptLinks === true) return;
+    api("/rest/v1/rpc/public_receipt", { method: "POST", auth: false, body: { p_token: "x" } })
+      .then(() => { receiptLinks = true; }, (e) => { if (!e.offline) receiptLinks = false; });
+  }
   function start() {
     stop();
+    checkReceiptLinks();
     // ما تغيّر محلياً ولم يُرفع قبل إعادة تحميل الصفحة (مثلاً بدون إنترنت) — الرفع يقارن بالنسخ المرفوعة فلا يُرسل إلا المختلف
     if (st && st.shopId) storeDirtyAll();
     sync(true);
@@ -562,6 +570,11 @@
       }
     },
     // حساب دخول لموظف جديد (يحتاج إنترنت) — يرجع رقم حسابه في السحابة
+    // صفحة الإيصال العامة: يقرأ إيصالاً واحداً برمزه السري (بدون حساب)
+    async publicReceipt(token) {
+      try { return { model: await api("/rest/v1/rpc/public_receipt", { method: "POST", auth: false, body: { p_token: String(token || "") } }) }; }
+      catch (e) { return { error: e.offline ? "offline" : e.message }; }
+    },
     async createStaff(username, tempPassword, role, displayName, employeeId) {
       try {
         const s = await api("/auth/v1/signup", { method: "POST", auth: false, body: { email: emailOf(username), password: tempPassword } });
@@ -606,7 +619,7 @@
   };
   function status() {
     return {
-      linked: !!(st && st.shopId), signedIn: !!user, needLogin, online,
+      linked: !!(st && st.shopId), signedIn: !!user, needLogin, online, receiptLinks,
       // ما لا يملك المستخدم رفعه (صلاحيات) لا يُعدّ «معلّقاً»
       pending: [...dirty].filter((k) => byKey[k] && canWrite(byKey[k])).length, incoming: staged.size,
       clockSkewMin: clockSkewMs === null ? null : Math.round(clockSkewMs / 60000), lastSyncAt: st ? st.lastSyncAt : null, linkedAt: st ? st.linkedAt : null, lastError,
