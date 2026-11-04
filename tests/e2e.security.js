@@ -137,6 +137,21 @@ const OWNER_PW = "Owner#2026pass", WORKER_PW = "Worker#2026new";
   check("correct code → signed in", !(await a.locked()));
   await tab(A, "sessions");
   check("the owner's session is marked as verified with 🔐", (await rows(A)).some((x) => /هذه الجلسة/.test(x) && /🔐/.test(x)));
+  // «remember this device» (ticked by default): the next sign-in on this device does not ask for the code
+  await logout(A); await login(A, "owner", OWNER_PW); await a.wait(700);
+  check("trusted device: signing in again on this device skips the code", !(await a.locked()) && !(await A.isVisible("#au_code")));
+  check("…and the sign-in is logged as «trusted device»", ((await a.ls("l997_audit")) || []).some((x) => x.meta && x.meta.sec === "login_ok" && /جهاز موثوق/.test(x.text || x.action || JSON.stringify(x))));
+  const ownerRec = ((await a.ls("l997_employees")) || []).find((e) => e.username === "owner");
+  check("the trusted device is recorded on the account (synced, can be revoked remotely)", (ownerRec.mfaTrust || []).length === 1 && ownerRec.mfaTrust[0].until > Date.now() + 29 * 864e5);
+  // a copied local trust without the account record does not work (e.g. another person's browser)
+  await a.closeAll(); await tab(A, "overview"); await a.wait(200);
+  await A.click("[data-forget-trust]"); await a.wait(200); await A.click("#quickFormSubmitBtn"); await a.wait(300);
+  await logout(A); await login(A, "owner", OWNER_PW);
+  check("after the owner revokes trusted devices in the Security Center, the code is asked again", await A.isVisible("#au_code"));
+  await A.uncheck("#au_trust"); await A.fill("#au_code", cloud.totpNow(secret)); await A.click("#au_form button[type=submit]"); await a.wait(800);
+  await logout(A); await login(A, "owner", OWNER_PW);
+  check("unticking «remember this device» keeps asking for the code", await A.isVisible("#au_code"));
+  await A.fill("#au_code", cloud.totpNow(secret)); await A.uncheck("#au_trust"); await A.click("#au_form button[type=submit]"); await a.wait(800);
   // require MFA for admin accounts
   await a.nav("access"); await a.wait(300);
   await A.check("#secMfaReq"); await A.click("#secSaveBtn"); await a.wait(400);

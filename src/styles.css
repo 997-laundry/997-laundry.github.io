@@ -636,3 +636,6 @@ body.auth-locked .top-logout{display:none!important}
 .dlv-picked{padding:10px 12px;border-radius:12px;background:var(--success-soft);color:var(--success);font-weight:700;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .dlv-new{padding:10px 12px;border-radius:12px;background:var(--primary-soft);font-size:13px}
 @media (max-width:900px){.dlv-board{grid-template-columns:1fr}.dlv-book{width:100%}.dlv-hero{flex-direction:column;align-items:stretch}}
+
+.auth-trust{margin:2px 0 10px;font-size:13px;align-items:flex-start}
+.mfa-trust-list{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px;font-size:13px}
