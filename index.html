@@ -10299,13 +10299,13 @@ body.auth-locked .top-logout{display:none!important}
     if (!box) return;
     if (!dlvCfg().on) { box.style.display = "none"; draftDelivery.pickup = draftDelivery.drop = false; return; }
     box.style.display = "";
-    const d = draftDelivery, any = d.pickup || d.drop;
-    box.innerHTML = `<div class="pos-dlv-head">🚚 الاستلام والتوصيل</div>
-      <label class="pos-urgent-toggle pos-extra-toggle"><input type="checkbox" id="dlvPickup" ${d.pickup ? "checked" : ""} /> 📥 استلمناها من بيت العميل</label>
-      <label class="pos-urgent-toggle pos-extra-toggle"><input type="checkbox" id="dlvDrop" ${d.drop ? "checked" : ""} /> 📦 توصيل للبيت بعد التجهيز</label>
+    const d = draftDelivery, any = d.pickup || d.drop, E = lang !== "ar";
+    box.innerHTML = `<div class="pos-dlv-head">🚚 ${E ? "Pickup & delivery" : "الاستلام والتوصيل"}</div>
+      <label class="pos-urgent-toggle pos-extra-toggle"><input type="checkbox" id="dlvPickup" ${d.pickup ? "checked" : ""} /> 📥 ${E ? "Picked up from the customer's home" : "استلمناها من بيت العميل"}</label>
+      <label class="pos-urgent-toggle pos-extra-toggle"><input type="checkbox" id="dlvDrop" ${d.drop ? "checked" : ""} /> 📦 ${E ? "Deliver home when ready" : "توصيل للبيت بعد التجهيز"}</label>
       <div class="pos-dlv-more" style="${any ? "" : "display:none"}">
-        <input id="dlvAddress" type="text" value="${esc(d.address)}" placeholder="📍 العنوان: المنطقة، مجمع، طريق، منزل — أو رابط الموقع" />
-        <div class="pos-dlv-row"><input id="dlvDate" type="date" value="${esc(d.date)}" /><select id="dlvSlot"><option value="">⏰ الوقت</option>${DLV_SLOTS.map((x) => `<option value="${x.v}" ${x.v === d.slot ? "selected" : ""}>${x.ar}</option>`).join("")}</select></div>
+        <input id="dlvAddress" type="text" value="${esc(d.address)}" placeholder="${E ? "📍 Address: area, block, road, house — or a map link" : "📍 العنوان: المنطقة، مجمع، طريق، منزل — أو رابط الموقع"}" />
+        <div class="pos-dlv-row"><input id="dlvDate" type="date" value="${esc(d.date)}" /><select id="dlvSlot"><option value="">⏰ ${E ? "Time" : "الوقت"}</option>${DLV_SLOTS.map((x) => `<option value="${x.v}" ${x.v === d.slot ? "selected" : ""}>${E ? x.en : x.ar}</option>`).join("")}</select></div>
       </div>
       <div class="pos-dlv-quote" id="dlvQuote"></div>`;
     const on = () => { d.pickup = box.querySelector("#dlvPickup").checked; d.drop = box.querySelector("#dlvDrop").checked; box.querySelector(".pos-dlv-more").style.display = d.pickup || d.drop ? "" : "none"; updateSummary(); };
@@ -10318,13 +10318,14 @@ body.auth-locked .top-logout{display:none!important}
   }
   function updateDeliveryQuote() {
     const el = document.getElementById("dlvQuote"); if (!el) return;
-    const cfg = dlvCfg();
-    if (!draftCustomerId) { el.innerHTML = `<span class="section-note">اختر العميل لمعرفة رسوم التوصيل</span>`; return; }
+    const cfg = dlvCfg(), E = lang !== "ar";
+    if (!draftCustomerId) { el.innerHTML = `<span class="section-note">${E ? "Pick the customer to see the delivery fee" : "اختر العميل لمعرفة رسوم التوصيل"}</span>`; return; }
     const b = draftBase(), q = deliveryQuote(draftCustomerId, draftDelivery, round3(b.itemsTotal + extrasTotalOf(b.extras.filter((l) => !String(l.id).startsWith("dlv_")))));
     const head = q.hasPkg
-      ? `🎟 عميل باقة — المشاوير المجانية هذا الشهر: <b>${q.used}</b> من <b>${q.quota}</b>${q.used >= q.quota ? ` · بعدها ${money(cfg.pkgFee)} للمشوار` : ""}`
-      : `رسوم رمزية ${money(cfg.fee)} للمشوار${cfg.freeOver > 0 ? ` · 🎁 مجاني للطلبات من ${money(cfg.freeOver)}` : ""}`;
-    const lines = q.lines.map((l) => `<div class="pos-dlv-line"><span>${esc(extraName(l.id))}</span><b class="${l.free ? "free" : ""}">${l.free ? (l.free === "package" ? "مجاني ✓ (ضمن الباقة)" : "مجاني ✓") : money(l.total)}</b></div>`).join("");
+      ? (E ? `🎟 Package customer — free trips this month: <b>${q.used}</b> of <b>${q.quota}</b>${q.used >= q.quota ? ` · then ${money(cfg.pkgFee)} per trip` : ""}` : `🎟 عميل باقة — المشاوير المجانية هذا الشهر: <b>${q.used}</b> من <b>${q.quota}</b>${q.used >= q.quota ? ` · بعدها ${money(cfg.pkgFee)} للمشوار` : ""}`)
+      : (E ? `Small fee ${money(cfg.fee)} per trip${cfg.freeOver > 0 ? ` · 🎁 free for orders from ${money(cfg.freeOver)}` : ""}` : `رسوم رمزية ${money(cfg.fee)} للمشوار${cfg.freeOver > 0 ? ` · 🎁 مجاني للطلبات من ${money(cfg.freeOver)}` : ""}`);
+    const freeTxt = (f) => (E ? (f === "package" ? "Free ✓ (package)" : "Free ✓") : f === "package" ? "مجاني ✓ (ضمن الباقة)" : "مجاني ✓");
+    const lines = q.lines.map((l) => `<div class="pos-dlv-line"><span>${esc(extraName(l.id))}</span><b class="${l.free ? "free" : ""}">${l.free ? freeTxt(l.free) : money(l.total)}</b></div>`).join("");
     el.innerHTML = `<div class="pos-dlv-info">${head}</div>${lines}`;
   }
 
