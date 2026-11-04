@@ -103,7 +103,7 @@ function check(name, cond, detail) {
   await page.waitForTimeout(900);
   await page.click("#rpWa"); await page.waitForTimeout(200); // the preview's "open customer's chat" button
   await page.evaluate(() => { const d = document.getElementById("receiptPreviewDialog"); if (d && d.open) d.close(); });
-  check("without file sharing: PDF downloaded + customer's WhatsApp chat opened", /receipt-\d{5}\.pdf$/.test(dl.suggestedFilename()) && waUrls.some((u) => /wa\.me\/97333001122/.test(u)), dl.suggestedFilename());
+  check("without file sharing: PDF downloaded + customer's WhatsApp chat opened", /receipt-\d{5}\.pdf$/.test(dl.suggestedFilename()) && waUrls.some((u) => /api\.whatsapp\.com\/send\?phone=97333001122/.test(u)), dl.suggestedFilename());
 
   // Pay cash, deliver: piece count is 1 (add-ons are not pieces)
   await page.click("#advanceStatusBtn");

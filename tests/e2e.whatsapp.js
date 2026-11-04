@@ -24,7 +24,7 @@ const CATALOG = Number((/const CATALOG_VERSION = (\d+)/.exec(fs.readFileSync(pat
   await page.addInitScript(([p, v]) => {
     window.print = () => {};
     // every WhatsApp link opened is recorded (kept across reloads)
-    window.open = (url) => { if (/wa\.me/.test(url)) { const a = JSON.parse(sessionStorage.getItem("__wa") || "[]"); a.push({ to: url.split("?")[0].split("/").pop(), text: decodeURIComponent(url.split("text=")[1] || "") }); sessionStorage.setItem("__wa", JSON.stringify(a)); } return { closed: false }; };
+    window.open = (url) => { if (/api\.whatsapp\.com\/send/.test(url)) { const a = JSON.parse(sessionStorage.getItem("__wa") || "[]"); a.push({ url, to: (/[?&]phone=(\d+)/.exec(url) || [])[1], text: decodeURIComponent(url.split("text=")[1] || "") }); sessionStorage.setItem("__wa", JSON.stringify(a)); } return { closed: false }; };
     if (!localStorage.getItem("l997_settings")) localStorage.setItem("l997_settings", JSON.stringify({ urgentPercent: 100, normalHours: 24, urgentHours: 6, prices: p, orderSeq: 1, catalogVersion: v, garmentActive: {}, serviceActive: { wash: true },
       packageDefs: [{ id: "pk_shirts", name: "باقة قمصان 10", serviceType: "washiron", pieceCount: 10, price: 1.5, bonus: "كوي غترة مجاناً", garments: ["shirt"] }] }));
   }, [prices, CATALOG]);
@@ -59,6 +59,7 @@ const CATALOG = Number((/const CATALOG_VERSION = (\d+)/.exec(fs.readFileSync(pat
   await sendPrompt();
   let m = await last();
   check("order saved → confirmation sent to the customer's number (973…)", m.to === "97333445566", m.to);
+  check("WhatsApp link is api.whatsapp.com/send (wa.me turns emoji into � on some Android phones) and emoji arrive intact", /^https:\/\/api\.whatsapp\.com\/send\?phone=97333445566&text=/.test(m.url) && m.text.includes("🌸") && m.text.includes("💙") && !m.text.includes("\uFFFD"), m.url.slice(0, 60));
   check("confirmation: order number, 5 pieces, value 1.000", m.text.includes(`#${o1.number}`) && /عدد القطع: 5/.test(m.text) && /1\.000/.test(m.text), m.text);
 
   /* 2) ready with a partial payment 0.400 → ready message shows paid + remaining, no "24 hours" claim */

@@ -4230,7 +4230,8 @@ body.auth-locked .top-logout{display:none!important}
   }
   function openWhatsApp(phone, text) {
     if (toLatinDigits(phone || "").replace(/\D/g, "").replace(/^973/, "").length < 8) { toast(lang === "en" ? "This customer has no valid phone number — add it in the customer file first" : "لا يوجد رقم هاتف صحيح لهذا العميل — أضفه في ملف العميل أولاً"); return; }
-    const url = `https://wa.me/${cleanPhone(phone)}?text=${encodeURIComponent(text)}`;
+    // api.whatsapp.com/send (وليس wa.me): رابط wa.me يحوّل الرموز التعبيرية إلى «�» على بعض أجهزة أندرويد
+    const url = `https://api.whatsapp.com/send?phone=${cleanPhone(phone)}&text=${encodeURIComponent(text)}`;
     let newWin = null;
     try { newWin = window.open(url, "_blank"); } catch (e) { newWin = null; }
     // إن حُظرت النافذة الجديدة (حظر منبثقات شائع بمتصفحات الجوال)، ننتقل بنفس الصفحة — طريقة لا يمكن حظرها إطلاقاً
@@ -7213,7 +7214,9 @@ body.auth-locked .top-logout{display:none!important}
     }
     const name = `997-laundry-receipt-${order.number}.png`;
     let file = null; try { file = new File([img.blob], name, { type: "image/png" }); } catch (e) { file = null; }
+    // النسخ غير متاح لكن المشاركة متاحة: قائمة المشاركة بالصورة (للعملاء المحفوظين)، والمعاينة تبقى خلفها لفتح المحادثة
     showReceiptPreview(order, cust, "image", { blob: img.blob, file, name }, text);
+    if (file && imageSendSupport().files) { try { await navigator.share(isApple() ? { files: [file] } : { files: [file], text }); return "shared"; } catch (e) { /* أُلغيت — المعاينة مفتوحة */ } }
     return "preview";
   }
   function publishReceipt(order, cust) {
@@ -7256,6 +7259,19 @@ body.auth-locked .top-logout{display:none!important}
   const receiptCache = new Map();
   const isApple = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
   const isTouch = () => (navigator.maxTouchPoints || 0) > 0 || "ontouchstart" in window;
+  // هل يستطيع متصفح هذا الجهاز إرسال صورة؟ (مشاركة ملفات أو نسخ صورة) — متصفحات الأجهزة المدمجة غالباً لا تستطيع
+  function imageSendSupport() {
+    let files = false;
+    try { const f = new File([new Uint8Array([137, 80, 78, 71])], "t.png", { type: "image/png" }); files = !!(navigator.share && navigator.canShare && navigator.canShare({ files: [f] })); } catch (e) { files = false; }
+    const clip = !!(navigator.clipboard && navigator.clipboard.write && window.ClipboardItem);
+    return { files, clip, any: files || clip };
+  }
+  const isAndroid = () => /Android/i.test(navigator.userAgent);
+  // فتح النظام نفسه في Google Chrome على أندرويد (وإن لم يكن مثبّتاً: صفحته في متجر Google Play)
+  function chromeIntentUrl() {
+    const target = location.host + location.pathname + location.search;
+    return `intent://${target}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent("https://play.google.com/store/apps/details?id=com.android.chrome")};end`;
+  }
   function receiptKey(order, kind) {
     const cust = customers.find((c) => c.id === order.customerId);
     return [kind, order.id, order.status, JSON.stringify(order.payment), order.paymentConfirmed, cust ? cust.balance : "", ledger.filter((tx) => tx.orderId === order.id).length, lang].join("|");
@@ -7302,16 +7318,25 @@ body.auth-locked .top-logout{display:none!important}
     if (!dlg) { dlg = document.createElement("dialog"); dlg.id = "receiptPreviewDialog"; dlg.className = "modal"; document.body.appendChild(dlg); }
     const en = lang === "en";
     const src = kind === "image" ? URL.createObjectURL(r.blob) : r.preview;
+    const sup = imageSendSupport();
+    const weak = isAndroid() && !sup.any;
+    const steps = en
+      ? "<ol style=\"text-align:start;margin:6px 0 10px;padding-inline-start:20px;line-height:1.7\"><li>⬇ <b>Download image</b></li><li>📲 <b>Open customer's chat</b></li><li>In WhatsApp: 📎 → <b>Gallery</b> → choose the receipt → Send</li></ol>"
+      : "<ol style=\"text-align:start;margin:6px 0 10px;padding-inline-start:20px;line-height:1.7\"><li>⬇ <b>حفظ الصورة</b></li><li>📲 <b>فتح محادثة العميل</b></li><li>في واتساب: 📎 ← <b>المعرض</b> ← اختر الإيصال ← إرسال</li></ol>";
+    const weakBox = weak ? `<div style="background:#fff4e0;border:1px solid #f0c27a;border-radius:12px;padding:10px 12px;margin:0 0 10px;text-align:start;font-size:13px">⚠ ${en ? "This device's browser can't send images directly. Open the system in <b>Google Chrome</b> — then the receipt image goes in one step." : "متصفح هذا الجهاز لا يدعم إرسال الصور مباشرة. افتح النظام في <b>Google Chrome</b> — بعدها تُرسل صورة الإيصال بخطوة واحدة."}<br><a class="primary-btn" style="display:inline-block;margin-top:8px;text-decoration:none" href="${esc(chromeIntentUrl())}">🌐 ${en ? "Open in Google Chrome" : "افتح النظام في Google Chrome"}</a></div>` : "";
     dlg.innerHTML = `<div style="padding:16px;max-width:420px;margin:auto;text-align:center">
       <h3 style="margin:0 0 6px">${en ? "Receipt" : "الإيصال"} #${esc(order.number)}</h3>
-      <p class="section-note" style="margin:0 0 10px">${isTouch() ? (en ? "Press and hold the receipt → Save / Share, then send it in the customer's WhatsApp chat." : "اضغط مطوّلاً على الإيصال ← «حفظ» أو «مشاركة»، ثم أرسله في محادثة العميل على واتساب.") : downloaded ? (en ? "The file was downloaded — drag it into the customer's WhatsApp chat (📎)." : "تم تنزيل الملف — اسحبه إلى محادثة العميل على واتساب (📎).") : (en ? "Press Download, then attach the file in the customer's WhatsApp chat (📎)." : "اضغط «تنزيل» ثم أرفق الملف في محادثة العميل على واتساب (📎).")}</p>
+      ${weakBox}${weak ? steps : ""}
+      <p class="section-note" style="margin:0 0 10px${weak ? ";display:none" : ""}">${isTouch() ? (en ? "Press and hold the receipt → Save / Share, then send it in the customer's WhatsApp chat." : "اضغط مطوّلاً على الإيصال ← «حفظ» أو «مشاركة»، ثم أرسله في محادثة العميل على واتساب.") : downloaded ? (en ? "The file was downloaded — drag it into the customer's WhatsApp chat (📎)." : "تم تنزيل الملف — اسحبه إلى محادثة العميل على واتساب (📎).") : (en ? "Press Download, then attach the file in the customer's WhatsApp chat (📎)." : "اضغط «تنزيل» ثم أرفق الملف في محادثة العميل على واتساب (📎).")}</p>
       <img id="rpImg" src="${src}" alt="receipt" style="width:100%;max-height:60vh;object-fit:contain;border:1px solid var(--border);border-radius:12px;background:#fff;-webkit-touch-callout:default;user-select:auto">
       <div class="row-actions" style="justify-content:center;margin-top:12px;flex-wrap:wrap">
         <button class="primary-btn" type="button" id="rpDownload">⬇ ${en ? "Download" : "تنزيل"} ${kind === "image" ? (en ? "image" : "الصورة") : "PDF"}</button>
+        ${sup.files && r.file ? `<button class="secondary-btn" type="button" id="rpShare">↗ ${en ? "Share" : "مشاركة"}</button>` : ""}
         ${cust ? `<button class="whatsapp-btn" type="button" id="rpWa">📲 ${en ? "Open customer's chat" : "فتح محادثة العميل"}</button>` : ""}
         <button class="ghost-btn" type="button" id="rpClose">${en ? "Close" : "إغلاق"}</button>
       </div></div>`;
     dlg.querySelector("#rpDownload").onclick = () => downloadBlob(r.blob, r.name);
+    if (dlg.querySelector("#rpShare")) dlg.querySelector("#rpShare").onclick = () => { navigator.share({ files: [r.file] }).catch(() => {}); };
     if (cust) dlg.querySelector("#rpWa").onclick = () => openWhatsApp(cust.phone, caption);
     dlg.querySelector("#rpClose").onclick = () => { dlg.close(); if (kind === "image") setTimeout(() => URL.revokeObjectURL(src), 1000); };
     if (!dlg.open) dlg.showModal();
@@ -9653,7 +9678,7 @@ body.auth-locked .top-logout{display:none!important}
  function sendOrderWa(supId){
   const sup=sups().find(s=>s.id===supId);if(!sup)return;
   const lines=invs().filter(i=>(i.supplierId||'')===supId&&itemStatus(i)!=='ok').map(i=>`- ${i.name}: ${qtyFmt(itemSuggest(i))} ${i.unit}`).join('\n');
-  window.open(`https://wa.me/${waNum(sup.phone)}?text=${encodeURIComponent(IX('wa_order',sup.name,lines))}`,'_blank','noopener');
+  window.open(`https://api.whatsapp.com/send?phone=${waNum(sup.phone)}&text=${encodeURIComponent(IX('wa_order',sup.name,lines))}`,'_blank','noopener');
  }
  (function initInventoryUI(){
   const root=q('invRoot');if(!root)return;

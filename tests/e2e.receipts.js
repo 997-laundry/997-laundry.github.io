@@ -113,7 +113,7 @@ const UA = {
   let pv = await preview(p);
   check("share refused by the phone → receipt preview opens (long-press to save/share)", pv && pv.img > 0 && pv.dl && pv.wa && /اضغط مطوّلاً/.test(pv.text), JSON.stringify(pv && { img: pv.img, dl: pv.dl, wa: pv.wa }));
   await p.click("#rpWa"); await p.waitForTimeout(200);
-  check("preview: 'open customer chat' opens WhatsApp to the customer", (await p.evaluate(() => window.__wa)).some((u) => /wa\.me\/97333445566/.test(u)));
+  check("preview: 'open customer chat' opens WhatsApp to the customer", (await p.evaluate(() => window.__wa)).some((u) => /api\.whatsapp\.com\/send\?phone=97333445566/.test(u)));
   await p.context().close();
 
   /* phone without file sharing → preview only, no automatic download */
@@ -123,6 +123,19 @@ const UA = {
   check("phone without file sharing: PDF preview shown (image of the receipt), no automatic download", pv && pv.img > 0 && dl === 0, JSON.stringify({ img: pv && pv.img, dl }));
   const [d1] = await Promise.all([p.waitForEvent("download", { timeout: 5000 }).catch(() => null), p.click("#rpDownload")]);
   check("…'Download' button saves the PDF", d1 && /997-laundry-receipt-\d+\.pdf$/.test(d1.suggestedFilename()), d1 && d1.suggestedFilename());
+  await p.context().close();
+
+  /* Android tablet browser that can't send images (no file sharing, no image copy) → clear Chrome guidance */
+  p = await device("android", "none");
+  await p.evaluate(() => { try { delete window.ClipboardItem; } catch (e) { /* ignore */ } window.ClipboardItem = undefined; });
+  await tap(p, "#dialogReceiptImgBtn"); pv = await preview(p);
+  const chrome = await p.evaluate(() => { const a = [...document.querySelectorAll("#receiptPreviewDialog a")].find((x) => /Chrome/.test(x.textContent)); return a ? a.getAttribute("href") : ""; });
+  check("weak Android browser: preview says to open the system in Google Chrome (one-tap link)", /Google Chrome/.test(pv && pv.text) && /^intent:\/\/127\.0\.0\.1:\d+\/.*package=com\.android\.chrome/.test(chrome), chrome.slice(0, 90));
+  check("…and shows the 3 steps: save image → open chat → 📎 Gallery", /حفظ الصورة/.test(pv.text) && /فتح محادثة العميل/.test(pv.text) && /المعرض/.test(pv.text));
+  await p.context().close();
+  p = await device("android", "deny");
+  await tap(p, "#dialogReceiptImgBtn"); pv = await preview(p);
+  check("capable Android (Chrome): no Chrome warning, and a Share button in the preview", pv && !/Google Chrome/.test(pv.text) && await p.isVisible("#rpShare"));
   await p.context().close();
 
   /* computer without sharing → download + preview */
