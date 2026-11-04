@@ -7995,6 +7995,28 @@ body.auth-locked .top-logout{display:none!important}
   }
 
   /* ============================= صفحة العملاء ============================= */
+  // حذف عميل: للمالك أو المدير فقط، ولعميل بلا أي طلب أو حركة مالية أو باقة أو رصيد (مثلاً عميل مكرر أُضيف بالخطأ) — لا يضيع أي سجل مالي
+  function customerDeletable(c) {
+    if (!c || (role !== "owner" && role !== "manager")) return false;
+    if (round3(Number(c.balance) || 0) !== 0 || round3(Number(c.openingBalance) || 0) !== 0) return false;
+    return !orders.some((o) => o.customerId === c.id) && !ledger.some((tx) => tx.customerId === c.id)
+      && !customerPackages.some((p) => p.customerId === c.id) && !suspendedOrders.some((x) => x.customerId === c.id || (x.draft && x.draft.customerId === c.id));
+  }
+  function deleteCustomer(id) {
+    const c = customers.find((x) => x.id === id);
+    if (!c) return;
+    if (role !== "owner" && role !== "manager") { denied(); return; }
+    if (!customerDeletable(c)) { toast("لا يمكن حذف عميل له طلبات أو حركات مالية أو باقات أو رصيد — عدّل بياناته بدلاً من ذلك"); return; }
+    confirmAction(`حذف العميل «${c.name}» (${c.phone || "بدون رقم"}) نهائياً؟ ليس له أي طلب أو حركة مالية.`, () => {
+      customers = customers.filter((x) => x.id !== id);
+      save(KEYS.customers, customers); // حفظ مباشر — الحفظ بالدمج يعيد السجل المحذوف
+      if (draftCustomerId === id) draftCustomerId = null;
+      logActivity(`حذف العميل: ${c.name} — ${c.phone || "بدون رقم"} (بدون طلبات أو حركات مالية) بواسطة ${roleLabel()}`);
+      if (customerProfileDialog.open) customerProfileDialog.close();
+      renderCustomersPage();
+      toast("تم حذف العميل");
+    });
+  }
   function openEditCustomerForm(customerId) {
     if (!can("edit_customer")) { denied(); return; }
     const cust = customers.find((c) => c.id === customerId);
@@ -8192,6 +8214,7 @@ body.auth-locked .top-logout{display:none!important}
           ${can("balance_tx") ? `<button class="secondary-btn" type="button" id="cpSettle">${cs.debt > 0 ? L.settle : en ? "💵 Add deposit" : "💵 إيداع رصيد"}</button>` : ""}
           ${cs.totalOwed > 0 ? `<button class="whatsapp-btn" type="button" id="cpRemind">${L.wa}</button>` : ""}
           ${can("view_balances") ? `<button class="ghost-btn" type="button" id="cpStatement">${L.stmt}</button>` : ""}
+          ${customerDeletable(c) ? `<button class="ghost-btn danger-mini" type="button" id="cpDelete">🗑 ${en ? "Delete customer" : "حذف العميل"}</button>` : ""}
         </div>
         <div class="cp-orders">${rowsHtml || `<div class="empty-state compact">${L.none}</div>`}</div>
         ${paymentsHtml}
@@ -8201,6 +8224,7 @@ body.auth-locked .top-logout{display:none!important}
     q("cpNewOrder").onclick = () => { customerProfileDialog.close(); openPage("new-order"); selectCustomerForOrder(c, true); };
     if (q("cpSettle")) q("cpSettle").onclick = () => balTxForm({ custId: c.id, type: "credit", amount: cs.debt > 0 ? cs.debt : "", note: "", onDone: renderCustomerProfile });
     if (q("cpRemind")) q("cpRemind").onclick = () => sendDueReminder(c);
+    if (q("cpDelete")) q("cpDelete").onclick = () => deleteCustomer(c.id);
     if (q("cpStatement")) q("cpStatement").onclick = () => { customerProfileDialog.close(); bv.stmt = c.id; openPage("balances"); };
     if (q("cpSellPkg")) q("cpSellPkg").onclick = () => requireOverride("balance_tx", "بيع باقة لعميل", () => sellPackageToCustomer(c.id));
     document.querySelectorAll("#customerProfileContent [data-pkg-fix]").forEach((b) => b.addEventListener("click", () => {

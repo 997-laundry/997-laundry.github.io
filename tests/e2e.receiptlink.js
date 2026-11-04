@@ -148,6 +148,17 @@ const OWNER_PW = "Owner#2026pass", WORKER_PW = "Worker#2026new";
   const m3 = await C2.evaluate((t) => window.L997Cloud.publicReceipt(t), new URL(link2).searchParams.get("t"));
   check("…customer opens it: fully paid 0.800", m3.model && /مدفوع بالكامل/.test(m3.model.status.text) && /0\.800/.test(m3.model.total), JSON.stringify(m3.model && m3.model.status));
 
+  /* 5b) owner deletes a duplicate customer → removed in the cloud and on the worker's device */
+  await a.closeAll(); await a.nav("customers"); await A.click("#addCustomerBtn");
+  await A.fill("#customerName", "Boss duplicate"); await A.fill("#customerPhone", "37663707"); await A.click("#saveCustomerBtn"); await a.wait(300);
+  const dupC = (await a.ls("l997_customers")).find((c) => c.name === "Boss duplicate");
+  await until(async () => (await cloud.query("select 1 from public.records where collection='customers' and record_id=$1 and not deleted", [dupC.id])).rowCount === 1);
+  await until(async () => (await b.ls("l997_customers")).some((c) => c.id === dupC.id), 20000);
+  await A.evaluate((id) => window.openCustomerProfile997(id), dupC.id); await a.wait(200);
+  await A.click("#cpDelete"); await A.click("#quickFormSubmitBtn"); await a.wait(300);
+  check("deleted customer is marked deleted in the cloud", await until(async () => (await cloud.query("select 1 from public.records where collection='customers' and record_id=$1 and deleted", [dupC.id])).rowCount === 1));
+  check("…and disappears from the worker's device", await until(async () => !(await b.ls("l997_customers")).some((c) => c.id === dupC.id), 25000));
+
   /* 6) receipt-link SQL not run on the server → no link button (no broken links); delivery image still works */
   require("child_process").execFileSync("su", ["postgres", "-c", `psql -X -q -d ${cloud.db} -c "drop function public.public_receipt(text)"`]);
   await A.reload(); await A.waitForSelector("body:not(.auth-locked)"); await a.wait(2500); await a.closeAll();

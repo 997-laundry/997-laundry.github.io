@@ -84,6 +84,24 @@ function check(name, cond, detail) {
   check("'all customers' shows everyone again (4)", (await page.$$("#customersBody tr")).length === 4);
   check("owner still has the home page and balances", await page.isVisible('.nav-item[data-page="dashboard"]') && await page.isVisible('.nav-item[data-page="balances"]'));
 
+  /* delete a duplicate customer (no orders / payments / balance) — owner only; customers with history cannot be deleted */
+  await closeAll(); await nav("customers"); await page.click("#addCustomerBtn");
+  await page.fill("#customerName", "Duplicate Boss"); await page.fill("#customerPhone", "37663707"); await page.click("#saveCustomerBtn"); await wait(300);
+  const dup = (await ls("l997_customers")).find((c) => c.name === "Duplicate Boss");
+  await page.evaluate((id) => window.openCustomerProfile997(id), dup.id); await wait(200);
+  check("customer with no history: owner sees 'Delete customer'", await page.isVisible("#cpDelete"));
+  await page.click("#cpDelete"); await submit(); await wait(200);
+  check("…deleted after confirming, and the deletion is in the activity log", !(await ls("l997_customers")).some((c) => c.id === dup.id) && (await ls("l997_audit")).some((x) => /حذف العميل: Duplicate Boss/.test(x.action || "")));
+  await page.reload(); await page.waitForSelector("body:not(.auth-locked)"); await wait(300);
+  check("…and stays deleted after a refresh", !(await ls("l997_customers")).some((c) => c.id === dup.id));
+  const withOrders = (await ls("l997_customers")).find((c) => c.name === "Old Debt");
+  await closeAll(); await page.evaluate((id) => window.openCustomerProfile997(id), withOrders.id); await wait(200);
+  check("customer with orders/payments: no delete button (history is never lost)", !(await page.isVisible("#cpDelete")));
+  await closeAll(); await nav("customers"); await page.click("#addCustomerBtn");
+  await page.fill("#customerName", "New Again"); await page.fill("#customerPhone", "37663707"); await page.click("#saveCustomerBtn"); await wait(300);
+  check("the deleted customer's number can be used again", (await ls("l997_customers")).some((c) => c.name === "New Again" && /37663707$/.test(c.phone)));
+  await closeAll();
+
   /* worker */
   await nav("access"); await page.click("#accessAddUserBtn");
   await page.fill("#qf_name", "Worker"); await page.selectOption("#qf_role", "worker"); await page.fill("#qf_username", "worker1");
@@ -101,6 +119,10 @@ function check(name, cond, detail) {
   const c1 = (await ls("l997_customers")).find((c) => c.name === "Old Debt");
   await page.evaluate((id) => window.openCustomerProfile997(id), c1.id); await wait(200);
   check("worker can collect a payment from the customer file; no statement link to balances", await page.isVisible("#cpSettle") && !(await page.isVisible("#cpStatement")));
+  await closeAll();
+  const na = (await ls("l997_customers")).find((c) => c.name === "New Again");
+  await closeAll(); await page.evaluate((id) => window.openCustomerProfile997(id), na.id); await wait(200);
+  check("worker: no delete button even for a customer with no history", !(await page.isVisible("#cpDelete")));
   await closeAll();
   await page.reload(); await page.waitForSelector("body:not(.auth-locked)"); await wait(400);
   check("after refresh the worker is still not on the home page", !(await page.evaluate(() => document.getElementById("page-dashboard").classList.contains("active"))));
