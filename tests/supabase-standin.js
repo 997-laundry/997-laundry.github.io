@@ -40,9 +40,10 @@ async function startStandin(opts = {}) {
   const totp = (secret, step) => { const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(step)); const h = crypto.createHmac("sha1", b32decode(secret)).update(b).digest(); const o = h[h.length - 1] & 15; return String(((h.readUInt32BE(o) & 0x7fffffff) % 1000000)).padStart(6, "0"); };
   const totpOk = (secret, code) => { const st = Math.floor(Date.now() / 30000); return [st - 1, st, st + 1].some((x) => totp(secret, x) === String(code)); };
   const pubFactors = (uid) => (factors.get(uid) || []).map(({ secret, ...f }) => f);
+  const pairs = new Map(); // access token -> its refresh token (one sign-in = one session)
   const issue = (user) => {
     const access = crypto.randomBytes(24).toString("hex"), rt = crypto.randomBytes(24).toString("hex");
-    sessions.set(access, user.id); refresh.set(rt, user.id);
+    sessions.set(access, user.id); refresh.set(rt, user.id); pairs.set(access, rt);
     return { access_token: access, token_type: "bearer", expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: rt, user: { id: user.id, email: user.email, factors: pubFactors(user.id) } };
   };
   async function asUser(uid, fn) {
@@ -142,8 +143,9 @@ async function startStandin(opts = {}) {
         return send(200, { ...r.rows[0], factors: pubFactors(uid) });
       }
       if (u.pathname === "/auth/v1/logout" && req.method === "POST") {
-        // like Supabase: the session and all of the user's refresh tokens stop working
-        if (uid) { for (const [k, v] of sessions) if (v === uid) sessions.delete(k); for (const [k, v] of refresh) if (v === uid) refresh.delete(k); }
+        // like Supabase: scope=local ends this session only; the default (global) ends ALL of the user's sessions on every device
+        if (uid && u.searchParams.get("scope") === "local") { refresh.delete(pairs.get(bearer)); sessions.delete(bearer); pairs.delete(bearer); }
+        else if (uid) { for (const [k, v] of sessions) if (v === uid) sessions.delete(k); for (const [k, v] of refresh) if (v === uid) refresh.delete(k); }
         return send(204);
       }
       if (u.pathname === "/auth/v1/factors" && req.method === "POST") {

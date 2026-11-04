@@ -3058,7 +3058,8 @@ body.auth-locked .top-logout{display:none!important}
     async verifyPassword(username, password) {
       try {
         const s = await passwordToken(username, password);
-        if (s && s.access_token) root.fetch(CFG.url + "/auth/v1/logout", { method: "POST", headers: { apikey: CFG.key, Authorization: "Bearer " + s.access_token } }).catch(() => {});
+        // scope=local: يُنهي جلسة التحقق هذه فقط — بدونها يُنهي Supabase كل جلسات المشرف على كل أجهزته
+        if (s && s.access_token) root.fetch(CFG.url + "/auth/v1/logout?scope=local", { method: "POST", headers: { apikey: CFG.key, Authorization: "Bearer " + s.access_token } }).catch(() => {});
         return { ok: !!(s && s.user), uid: s && s.user ? s.user.id : null };
       } catch (e) { return { error: msgOf(e) }; }
     },
@@ -3207,7 +3208,8 @@ body.auth-locked .top-logout{display:none!important}
     async signOut(uid) {
       const t = uid && tokens[uid];
       if (!t) return { ok: true };
-      try { if (online) await api("/auth/v1/logout", { method: "POST", bearer: t.a, body: {} }); } catch (e) { /* offline / expired: يُحذف محلياً على أي حال */ }
+      // scope=local: جلسة هذا الجهاز فقط (الأجهزة الأخرى لنفس المستخدم تبقى)
+      try { if (online) await api("/auth/v1/logout?scope=local", { method: "POST", bearer: t.a, body: {} }); } catch (e) { /* offline / expired: يُحذف محلياً على أي حال */ }
       delete tokens[uid]; saveTok();
       if (user && user.uid === uid) needLogin = true;
       return { ok: true };
@@ -4780,7 +4782,7 @@ body.auth-locked .top-logout{display:none!important}
       current = secFilter(sessions, (x) => x.at).filter((x) => !secView.type || sessionState(x) === secView.type);
       body = `<div class="table-wrap"><table><thead><tr><th>المستخدم</th><th>الدور</th><th>الجهاز</th><th>بداية الجلسة</th><th>آخر نشاط</th><th>النهاية</th><th>الحالة</th><th></th></tr></thead><tbody>${current.length ? current.slice(0, 300).map((x) => {
         const stt = sessionState(x), mine = x.id === mySessionId;
-        return `<tr><td>${esc(x.name)}${mine ? ' <span class="status-badge status-ready">هذه الجلسة</span>' : ""}${x.mfa ? " 🔐" : ""}</td><td>${esc(ACCESS_ROLE_AR[x.role] || x.role || "")}</td><td>${esc(x.label || "")}</td><td>${fmtDT(x.at)}</td><td>${x.seen ? fmtDT(x.seen) : "—"}</td><td>${x.end ? fmtDT(x.end) : x.revokedAt ? fmtDT(x.revokedAt) + (x.revokedBy ? " — " + esc(x.revokedBy) : "") : "—"}</td><td>${stLabel[stt]}</td><td>${(stt === "active" || stt === "stale") && !mine ? `<button class="mini-btn danger-mini" type="button" data-sess-revoke="${x.id}">إنهاء الجلسة</button>` : ""}</td></tr>`;
+        return `<tr><td>${esc(x.name)}${mine ? ' <span class="status-badge status-ready">هذه الجلسة</span>' : ""}${x.mfa ? " 🔐" : ""}</td><td>${esc(ACCESS_ROLE_AR[x.role] || x.role || "")}</td><td>${esc(x.label || "")}</td><td>${fmtDT(x.at)}</td><td>${x.seen ? fmtDT(x.seen) : "—"}</td><td>${x.revokedAt ? `${fmtDT(x.revokedAt)} — أنهاها ${esc(x.revokedBy || "")}` : x.end ? fmtDT(x.end) : "—"}</td><td>${stLabel[stt]}</td><td>${(stt === "active" || stt === "stale") && !mine ? `<button class="mini-btn danger-mini" type="button" data-sess-revoke="${x.id}">إنهاء الجلسة</button>` : ""}</td></tr>`;
       }).join("") : `<tr><td colspan="8" class="empty-state compact">لا توجد جلسات</td></tr>`}</tbody></table></div>
         ${(CLOUD && CLOUD.status && CLOUD.status().sessionsSync === false) ? `<div class="cloud-warn">⚠ الجلسات تظهر من هذا الجهاز فقط. لعرض جلسات كل الأجهزة وإنهائها عن بُعد: شغّل ملف <b>supabase/security.sql</b> في Supabase ← SQL Editor (مرة واحدة).</div>` : ""}`;
     }

@@ -553,7 +553,8 @@
     async verifyPassword(username, password) {
       try {
         const s = await passwordToken(username, password);
-        if (s && s.access_token) root.fetch(CFG.url + "/auth/v1/logout", { method: "POST", headers: { apikey: CFG.key, Authorization: "Bearer " + s.access_token } }).catch(() => {});
+        // scope=local: يُنهي جلسة التحقق هذه فقط — بدونها يُنهي Supabase كل جلسات المشرف على كل أجهزته
+        if (s && s.access_token) root.fetch(CFG.url + "/auth/v1/logout?scope=local", { method: "POST", headers: { apikey: CFG.key, Authorization: "Bearer " + s.access_token } }).catch(() => {});
         return { ok: !!(s && s.user), uid: s && s.user ? s.user.id : null };
       } catch (e) { return { error: msgOf(e) }; }
     },
@@ -702,7 +703,8 @@
     async signOut(uid) {
       const t = uid && tokens[uid];
       if (!t) return { ok: true };
-      try { if (online) await api("/auth/v1/logout", { method: "POST", bearer: t.a, body: {} }); } catch (e) { /* offline / expired: يُحذف محلياً على أي حال */ }
+      // scope=local: جلسة هذا الجهاز فقط (الأجهزة الأخرى لنفس المستخدم تبقى)
+      try { if (online) await api("/auth/v1/logout?scope=local", { method: "POST", bearer: t.a, body: {} }); } catch (e) { /* offline / expired: يُحذف محلياً على أي حال */ }
       delete tokens[uid]; saveTok();
       if (user && user.uid === uid) needLogin = true;
       return { ok: true };
