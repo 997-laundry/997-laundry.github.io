@@ -523,6 +523,12 @@
           </div>
 
           <div class="panel" data-settings-panel="packages" style="display:none">
+            <div class="panel-header"><div><h3>⚖️ أوزان القطع في الباقات</h3><p>كم قطعة تُخصم من رصيد الباقة لكل قطعة من الصنف — مثال: عباية = 2، لحاف = 5. الرقم 0 = الصنف خارج نظام الباقات (يُحسب بالسعر العادي). الأصناف غير المذكورة = 1</p></div>
+              <div class="row-actions"><button class="secondary-btn" type="button" id="resetPackageWeightsBtn">↺ الافتراضي</button><button class="primary-btn" type="button" id="savePackageWeightsBtn">حفظ الأوزان</button></div></div>
+            <div class="table-wrap"><table><thead><tr><th>الصنف</th><th>غسيل وكوي</th><th>كوي فقط</th></tr></thead><tbody id="packageWeightsBody"></tbody></table></div>
+          </div>
+
+          <div class="panel" data-settings-panel="packages" style="display:none">
             <div class="panel-header"><div><h3>🏷 أكواد الخصم</h3><p>كود من حروف إنجليزية وأرقام أو أرقام فقط، بنسبة خصم تحددها — يكتبه الموظف عند إنشاء الطلب فيُخصم تلقائياً</p></div><button class="primary-btn" id="addDiscountCodeBtn">＋ كود جديد</button></div>
             <div class="table-wrap"><table><thead><tr><th>الكود</th><th>نسبة الخصم</th><th>مرات الاستخدام</th><th>مفعّل</th><th></th></tr></thead><tbody id="discountCodesBody"></tbody></table></div>
           </div>

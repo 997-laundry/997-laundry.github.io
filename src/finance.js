@@ -319,7 +319,7 @@
         const uses = [];
         (orders || []).forEach((o) => {
           if (o.status === "cancelled") return;
-          const qty = (o.items || []).filter((it) => it.fromPackageId === cp.id).reduce((a, it) => a + (Number(it.qty) || 0), 0);
+          const qty = (o.items || []).filter((it) => it.fromPackageId === cp.id).reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.pkgW) > 0 ? Number(it.pkgW) : 1), 0);
           if (qty > 0) uses.push({ orderId: o.id, number: o.number, at: o.createdAt, qty });
         });
         uses.sort((a, b) => String(b.at).localeCompare(String(a.at)));
