@@ -592,6 +592,9 @@ body.auth-locked .top-logout{display:none!important}
   .sidebar-footer .primary-btn,.sidebar-footer .ghost-btn,.sidebar-footer .secondary-btn{min-height:34px;padding:6px 10px;font-size:12.5px}
 }
 
+.qf-checks-search{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font:inherit}
+#discountCodeInfo .mini-btn{margin:2px}
+
 </style>
 </head>
 <body class="auth-locked">
@@ -1104,8 +1107,8 @@ body.auth-locked .top-logout{display:none!important}
           </div>
 
           <div class="panel" data-settings-panel="packages" style="display:none">
-            <div class="panel-header"><div><h3>🏷 أكواد الخصم</h3><p>كود من حروف إنجليزية وأرقام أو أرقام فقط، بنسبة خصم تحددها — يكتبه الموظف عند إنشاء الطلب فيُخصم تلقائياً</p></div><button class="primary-btn" id="addDiscountCodeBtn">＋ كود جديد</button></div>
-            <div class="table-wrap"><table><thead><tr><th>الكود</th><th>نسبة الخصم</th><th>مرات الاستخدام</th><th>مفعّل</th><th></th></tr></thead><tbody id="discountCodesBody"></tbody></table></div>
+            <div class="panel-header"><div><h3>🏷 أكواد الخصم</h3><p>كود بنسبة خصم أو بسعر ثابت للقطعة — لكل العملاء أو لعملاء محددين فقط تختارهم أنت. يكتبه الموظف عند الطلب (أو يضغطه من اقتراح الكود عند اختيار العميل)</p></div><button class="primary-btn" id="addDiscountCodeBtn">＋ كود جديد</button></div>
+            <div class="table-wrap"><table><thead><tr><th>الكود</th><th>الخصم</th><th>العملاء</th><th>مرات الاستخدام</th><th>مفعّل</th><th></th></tr></thead><tbody id="discountCodesBody"></tbody></table></div>
           </div>
 
           <div class="panel" data-settings-panel="admin" style="display:none">
@@ -4212,6 +4215,14 @@ body.auth-locked .top-logout{display:none!important}
     duvet: { washiron: 5, iron: 2 }, bedsheet_double: { washiron: 4, iron: 2 },
     jalabiya: { washiron: 2, iron: 2 }, curtain_per_m: { washiron: 0, iron: 0 }, shoes: { washiron: 0, iron: 0 },
   };
+  // أكواد خصم خاصة بعملاء محددين — تُنشأ مرة واحدة؛ لا تعمل لأي أحد حتى يحدد المالك عملاءها (الإعدادات ← الباقات ← أكواد الخصم)
+  if (!settings.codesSeed997) {
+    const seed = [["NAWAF", 45, "العميل نواف"], ["BMJ11", 35, "العميلة بدور"], ["FAMILY", 35, "الأهل"], ["MYHOME", 75, "أهل بيتي"],
+      ["997CLS", 20, "الربع المقربون"], ["997FAR", 15, "الربع وزملاء العمل"], ["DDOSERI", 35, "العميلة دانة الدوسري"], ["YADATI", 100, "بيت يدتي — الطلب مجاني"]];
+    settings.discountCodes = settings.discountCodes || [];
+    seed.forEach(([code, percent, note]) => { if (!settings.discountCodes.some((x) => x.code === code)) settings.discountCodes.push({ code, type: "percent", percent, scope: "customers", customerIds: [], note, active: true, createdAt: new Date().toISOString(), createdBy: "system" }); });
+    settings.codesSeed997 = 1; save(KEYS.settings, settings);
+  }
   if (!settings.packageWeights) { settings.packageWeights = JSON.parse(JSON.stringify(PACKAGE_WEIGHTS_997)); save(KEYS.settings, settings); }
   if (!settings.garmentActive) { settings.garmentActive = {}; save(KEYS.settings, settings); }
   // خدمات إضافية على مستوى الطلب (تعطير، تغليف): السعر صفر = غير مفعّلة ولا تظهر في شاشة الطلب
@@ -7253,8 +7264,28 @@ body.auth-locked .top-logout{display:none!important}
   // أكواد الخصم (الإعدادات ← الباقات): حروف إنجليزية وأرقام، بنسبة يحددها المالك/المدير — لا تحتاج موافقة مشرف
   const normDiscCode = (v) => toLatinDigits(String(v || "")).toUpperCase().replace(/\s+/g, "");
   const CODE_RE = /^[A-Z0-9]{3,20}$/;
-  let draftCode = null; // { code, percent }
+  let draftCode = null; // { code, type, percent, piecePrice }
   function findCode(v) { const c = normDiscCode(v); return (settings.discountCodes || []).find((x) => x.code === c) || null; }
+  // كود خاص: يعمل فقط للعملاء الذين حددهم المالك؛ كود عام (scope ≠ customers): لكل العملاء
+  const codeRestricted = (c) => c && c.scope === "customers";
+  function codeAllowed(c, custId) { return !codeRestricted(c) || (!!custId && (c.customerIds || []).includes(custId)); }
+  function codesForCustomer(custId) { return (settings.discountCodes || []).filter((c) => c.active !== false && codeRestricted(c) && (c.customerIds || []).includes(custId)); }
+  // وصف الكود: «خصم 45%» أو «سعر القطعة 0.300» أو «الطلب مجاني»
+  function codeDesc(c) {
+    if (!c) return "";
+    if (c.type === "piece") return lang === "en" ? `piece price ${money(c.piecePrice)}` : `سعر القطعة ${money(c.piecePrice)}`;
+    if (Number(c.percent) >= 100) return lang === "en" ? "free order (100%)" : "الطلب مجاني (100%)";
+    return lang === "en" ? `${c.percent}% off` : `خصم ${c.percent}%`;
+  }
+  // خصم الكود على السلة: نسبة من (القطع + الإضافات + الاستعجال)، أو سعر موحّد للقطعة (لا يرفع سعر قطعة أرخص، ولا يمس قطع الباقات)
+  function codeDiscountOf(c, codeBase) {
+    if (!c) return 0;
+    if (c.type === "piece") {
+      const pp = Math.max(0, Number(c.piecePrice) || 0);
+      return round3(draftItems.reduce((s2, it) => (it.fromPackageId ? s2 : s2 + Math.max(0, (Number(it.unit) || 0) - pp) * it.qty), 0));
+    }
+    return round3((codeBase * (Number(c.percent) || 0)) / 100);
+  }
   function discountCapAmount(base) { return role === "owner" ? base : round3((base * sec.maxDiscountPct) / 100); }
   // المجموع الأساسي = القطع + الإضافات؛ رسوم الاستعجال تُحسب على القطع فقط
   function draftBase() {
@@ -7268,7 +7299,7 @@ body.auth-locked .top-logout{display:none!important}
   function currentTotals() {
     const { subtotal, urgentFee, extrasTotal } = draftBase();
     const codeBase = round3(subtotal + urgentFee);
-    if (draftCode) document.getElementById("discountAmount").value = round3((codeBase * draftCode.percent) / 100).toFixed(3);
+    if (draftCode) document.getElementById("discountAmount").value = Math.min(codeBase, codeDiscountOf(draftCode, codeBase)).toFixed(3);
     const rawDiscount = Number(document.getElementById("discountAmount").value) || 0;
     // خصم الكود حدّده المالك مسبقاً: لا يخضع لسقف الموظف (لكن لا يتجاوز قيمة الطلب)
     const discountCap = draftCode ? codeBase : discountCapAmount(codeBase);
@@ -7328,7 +7359,13 @@ body.auth-locked .top-logout{display:none!important}
     const dr = document.getElementById("discountReasonRow");
     if (dr) dr.style.display = t2.discount > 0 && !draftCode ? "" : "none";
     const ci = document.getElementById("discountCodeInfo");
-    if (ci) { ci.style.display = draftCode ? "" : "none"; if (draftCode) ci.innerHTML = `<span>✓ كود <b dir="ltr">${esc(draftCode.code)}</b> — خصم ${draftCode.percent}%</span><button type="button" class="link-btn" id="removeCodeBtn">إزالة</button>`; }
+    const sugg = !draftCode && cust ? codesForCustomer(cust.id) : [];
+    if (ci) {
+      ci.style.display = draftCode || sugg.length ? "" : "none";
+      if (draftCode) ci.innerHTML = `<span>✓ كود <b dir="ltr">${esc(draftCode.code)}</b> — ${esc(codeDesc(draftCode))}</span><button type="button" class="link-btn" id="removeCodeBtn">إزالة</button>`;
+      else if (sugg.length) ci.innerHTML = `<span>🏷 لهذا العميل: ${sugg.map((c) => `<button type="button" class="mini-btn" data-use-code="${esc(c.code)}"><b dir="ltr">${esc(c.code)}</b> · ${esc(codeDesc(c))}</button>`).join(" ")}</span>`;
+      ci.querySelectorAll("[data-use-code]").forEach((b) => (b.onclick = () => { const inp = document.getElementById("discountCode"); if (inp) inp.value = b.dataset.useCode; applyDiscountCode(); }));
+    }
     const rc = document.getElementById("removeCodeBtn"); if (rc) rc.onclick = () => clearDraftCode(true);
     const da = document.getElementById("discountAmount"); if (da) da.readOnly = !!draftCode;
     const chk = document.getElementById("posChecklist");
@@ -7355,10 +7392,17 @@ body.auth-locked .top-logout{display:none!important}
     const c = findCode(raw);
     if (!c) { toast(`الكود «${raw}» غير موجود`); logActivity(`محاولة كود خصم غير صحيح «${raw}»`); return; }
     if (c.active === false) { toast(`الكود «${raw}» غير مفعّل`); return; }
-    draftCode = { code: c.code, percent: Number(c.percent) || 0 };
+    if (codeRestricted(c) && !draftCustomerId) { toast("هذا كود خاص بعملاء محددين — اختر العميل أولاً ثم طبّق الكود"); return; }
+    if (!codeAllowed(c, draftCustomerId)) {
+      const cn = (customers.find((x) => x.id === draftCustomerId) || {}).name || "";
+      toast(`الكود «${c.code}» خاص بعملاء محددين — غير مسموح لـ ${cn}`);
+      logActivity(`محاولة استخدام كود خاص «${c.code}» لعميل غير مسموح: ${cn}`);
+      return;
+    }
+    draftCode = { code: c.code, type: c.type === "piece" ? "piece" : "percent", percent: Number(c.percent) || 0, piecePrice: Number(c.piecePrice) || 0 };
     inp.value = c.code;
     updateSummary();
-    toast(`✓ تم تطبيق خصم ${draftCode.percent}%`);
+    toast(`✓ تم تطبيق ${codeDesc(draftCode)}`);
   }
   document.getElementById("applyCodeBtn")?.addEventListener("click", applyDiscountCode);
   document.getElementById("discountCode")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); applyDiscountCode(); } });
@@ -7386,6 +7430,7 @@ body.auth-locked .top-logout{display:none!important}
     });
     if (converted) { toast(`تم تغيير العميل — ${converted} قطعة كانت من باقة العميل السابق أصبحت بالسعر العادي`); renderOrderItemsTable(); }
     draftCustomerId = cust.id;
+    if (draftCode && !codeAllowed(findCode(draftCode.code), cust.id)) { toast(`أُزيل الكود «${draftCode.code}» — خاص بعملاء آخرين`); clearDraftCode(false); }
     const card = document.getElementById("selectedCustomerCard");
     card.classList.remove("empty-state", "compact");
     card.innerHTML = `
@@ -7501,9 +7546,10 @@ body.auth-locked .top-logout{display:none!important}
       payment: { method: "unpaid", ...tt, paid: 0, balanceUse: 0, outstanding: tt.total },
       paymentConfirmed: false,
       createdBy: me ? me.name : "", createdById: me ? me.id : "",
-      discountReason: tt.discount > 0 ? (draftCode ? `كود خصم ${draftCode.code} (${draftCode.percent}%)` : opts.discountReason || "") : "",
+      discountReason: tt.discount > 0 ? (draftCode ? `كود خصم ${draftCode.code} (${draftCode.type === "piece" ? `سعر القطعة ${money(draftCode.piecePrice)}` : draftCode.percent + "%"})` : opts.discountReason || "") : "",
       discountCode: tt.discount > 0 && draftCode ? draftCode.code : undefined,
-      discountPercent: tt.discount > 0 && draftCode ? draftCode.percent : undefined,
+      discountPercent: tt.discount > 0 && draftCode && draftCode.type !== "piece" ? draftCode.percent : undefined,
+      discountPiecePrice: tt.discount > 0 && draftCode && draftCode.type === "piece" ? draftCode.piecePrice : undefined,
       discountApprovedBy: tt.discount > 0 && opts.approver ? opts.approver.name : "",
       createdAt: now, readyAt: null, deliveredAt: null,
     };
@@ -7556,6 +7602,7 @@ body.auth-locked .top-logout{display:none!important}
     if (tt.discount > 0 && draftCode) {
       const c = findCode(draftCode.code);
       if (!c || c.active === false) { toast("كود الخصم لم يعد صالحاً — أزله أو اكتب كوداً آخر"); return; }
+      if (!codeAllowed(c, draftCustomerId)) { toast(`الكود «${c.code}» غير مسموح لهذا العميل — أزله`); return; }
       proceed(null, false);
     } else if (tt.discount > 0) {
       if (!reason) { toast("اكتب سبب الخصم (إلزامي)"); document.getElementById("discountReason").focus(); return; }
@@ -7845,7 +7892,7 @@ body.auth-locked .top-logout{display:none!important}
       }
       if (f.type === "checks") {
         const sel = new Set(f.value || []);
-        return `<div class="qf-checks" id="${id}"><span class="qf-checks-label">${esc(f.label)}</span>
+        return `<div class="qf-checks" id="${id}"><span class="qf-checks-label">${esc(f.label)}</span>${f.search ? `<input type="search" class="qf-checks-search" placeholder="🔍 ${lang === "en" ? "Search" : "بحث"}" autocomplete="off" />` : ""}
           ${f.groups ? `<div class="qf-checks-tools">${f.groups.map((g) => `<button type="button" class="mini-btn" data-qf-group="${esc(g.value)}">${esc(g.label)}</button>`).join("")}<button type="button" class="mini-btn" data-qf-group="__all">${lang === "en" ? "All" : "الكل"}</button><button type="button" class="mini-btn" data-qf-group="__none">${lang === "en" ? "None" : "إلغاء الكل"}</button></div>` : ""}
           <div class="qf-checks-grid">${f.options.map((o) => `<label class="qf-check"><input type="checkbox" value="${esc(o.value)}" data-group="${esc(o.group || "")}" ${sel.has(o.value) ? "checked" : ""}><span>${esc(o.label)}</span></label>`).join("")}</div></div>`;
       }
@@ -7854,6 +7901,10 @@ body.auth-locked .top-logout{display:none!important}
       }
       return `<label><span>${esc(f.label)}</span><input id="${id}" type="${f.type === "number" ? "text" : (f.type || "text")}" ${f.type === "number" ? 'inputmode="decimal" autocomplete="off"' : f.type === "password" ? `autocomplete="${f.autocomplete || "current-password"}"` : f.autocomplete ? `autocomplete="${f.autocomplete}"` : ""} ${f.step ? `step="${esc(f.step)}"` : ""} ${f.min !== undefined ? `min="${esc(f.min)}"` : ""} value="${esc(f.value ?? "")}" placeholder="${esc(f.placeholder)}" /></label>`;
     }).join("");
+    wrap.querySelectorAll(".qf-checks-search").forEach((inp) => inp.addEventListener("input", () => {
+      const q2 = normDigits(inp.value.trim().toLowerCase()).replace(/\s+/g, "");
+      inp.closest(".qf-checks").querySelectorAll(".qf-check").forEach((l) => { l.style.display = !q2 || normDigits(l.textContent.toLowerCase()).replace(/\s+/g, "").includes(q2) ? "" : "none"; });
+    }));
     wrap.querySelectorAll("[data-qf-group]").forEach((b) => b.addEventListener("click", () => {
       const g = b.dataset.qfGroup, boxes = b.closest(".qf-checks").querySelectorAll("input[type=checkbox]");
       if (g === "__none") boxes.forEach((x) => { x.checked = false; });
@@ -8511,7 +8562,10 @@ body.auth-locked .top-logout{display:none!important}
     const extrasTotal = extrasTotalOf(order.extras);
     const subtotal = round3(itemsTotal + extrasTotal);
     const urgentFee = order.priority === "urgent" ? urgentFeeOf(order.items) : 0;
-    const discount = order.discountCode && order.discountPercent ? round3(((subtotal + urgentFee) * order.discountPercent) / 100) : round3(Math.min(Number(p.discount) || 0, subtotal + urgentFee));
+    const ppc = Number(order.discountPiecePrice);
+    const discount = order.discountCode && order.discountPercent ? round3(((subtotal + urgentFee) * order.discountPercent) / 100)
+      : order.discountCode && order.discountPiecePrice !== undefined && ppc >= 0 ? round3(Math.min(subtotal + urgentFee, order.items.reduce((a, it) => (it.fromPackageId ? a : a + Math.max(0, (Number(it.unit) || 0) - ppc) * it.qty), 0)))
+      : round3(Math.min(Number(p.discount) || 0, subtotal + urgentFee));
     const preVat = Math.max(0, round3(subtotal + urgentFee - discount));
     const vatPercent = p.vatPercent !== undefined ? Number(p.vatPercent) || 0 : Number(loadProfile().vatPercent) || 0;
     const vat = vatPercent > 0 ? round3((preVat * vatPercent) / 100) : 0;
@@ -9017,8 +9071,10 @@ body.auth-locked .top-logout{display:none!important}
           ${card(L.cnt[0], cs.counts.open)}${card(L.cnt[1], cs.counts.ready)}${card(L.cnt[2], cs.counts.delivered)}${card(L.cnt[3], cs.counts.cancelled)}
         </div>
         ${packagesHtml}
+        ${codesForCustomer(c.id).length ? `<p class="section-note" style="margin:10px 0 0">🏷 ${en ? "Customer codes" : "أكواد العميل"}: ${codesForCustomer(c.id).map((x) => `<b dir="ltr">${esc(x.code)}</b> (${esc(codeDesc(x))})`).join(" · ")}</p>` : ""}
         <div class="row-actions" style="margin:14px 0;flex-wrap:wrap">
           <button class="primary-btn" type="button" id="cpNewOrder">${L.neworder}</button>
+          ${can("edit_pricing") && (settings.discountCodes || []).some(codeRestricted) ? `<button class="secondary-btn" type="button" id="cpCodes">🏷 ${en ? "Discount codes" : "أكواد الخصم"}</button>` : ""}
           ${settings.packageDefs.length ? `<button class="secondary-btn" type="button" id="cpSellPkg">🎟 ${en ? "Sell package" : "بيع باقة"}</button>` : ""}
           ${can("balance_tx") ? `<button class="secondary-btn" type="button" id="cpSettle">${cs.debt > 0 ? L.settle : en ? "💵 Add deposit" : "💵 إيداع رصيد"}</button>` : ""}
           ${cs.totalOwed > 0 ? `<button class="whatsapp-btn" type="button" id="cpRemind">${L.wa}</button>` : ""}
@@ -9035,6 +9091,25 @@ body.auth-locked .top-logout{display:none!important}
     if (q("cpRemind")) q("cpRemind").onclick = () => sendDueReminder(c);
     if (q("cpDelete")) q("cpDelete").onclick = () => deleteCustomer(c.id);
     if (q("cpStatement")) q("cpStatement").onclick = () => { customerProfileDialog.close(); bv.stmt = c.id; openPage("balances"); };
+    if (q("cpCodes")) q("cpCodes").onclick = () => {
+      const list = (settings.discountCodes || []).filter(codeRestricted);
+      openQuickForm({
+        title: `🏷 أكواد ${c.name}`, sub: "اختر الأكواد الخاصة التي يحق لهذا العميل استخدامها",
+        fields: [{ id: "codes", label: "الأكواد", type: "checks", value: list.filter((x) => (x.customerIds || []).includes(c.id)).map((x) => x.code), options: list.map((x) => ({ value: x.code, label: `${x.code} — ${codeDesc(x)}${x.note ? " — " + x.note : ""}` })) }],
+        submitLabel: "حفظ",
+        onSubmit: (v) => {
+          const on = new Set(v.codes), changes = [];
+          list.forEach((x) => {
+            const ids = new Set(x.customerIds || []), had = ids.has(c.id);
+            if (on.has(x.code) && !had) { ids.add(c.id); changes.push("+" + x.code); }
+            if (!on.has(x.code) && had) { ids.delete(c.id); changes.push("−" + x.code); }
+            x.customerIds = [...ids];
+          });
+          if (changes.length) { save(KEYS.settings, settings); logActivity(`أكواد الخصم للعميل ${c.name}: ${changes.join(" ")}`); }
+          toast("تم حفظ أكواد العميل"); setTimeout(renderCustomerProfile, 150);
+        },
+      });
+    };
     if (q("cpSellPkg")) q("cpSellPkg").onclick = () => requireOverride("balance_tx", "بيع باقة لعميل", () => sellPackageToCustomer(c.id));
     document.querySelectorAll("#customerProfileContent [data-pkg-fix]").forEach((b) => b.addEventListener("click", () => {
       const u = pu.find((x) => x.pkg.id === b.dataset.pkgFix); if (!u) return;
@@ -9694,15 +9769,21 @@ body.auth-locked .top-logout{display:none!important}
     if (!can("edit_pricing")) document.querySelectorAll("#packageWeightsBody input, #savePackageWeightsBtn, #resetPackageWeightsBtn").forEach((el) => (el.disabled = true));
     renderDiscountCodes();
   }
+  function codeCustomersLabel(c) {
+    if (!codeRestricted(c)) return `<span class="section-note">كل العملاء</span>`;
+    const names = (c.customerIds || []).map((id) => (customers.find((x) => x.id === id) || {}).name).filter(Boolean);
+    if (!names.length) return `<span class="status-badge status-cancelled">⚠ لم تحدد العملاء — الكود لا يعمل بعد</span>`;
+    return esc(names.length > 3 ? names.slice(0, 3).join("، ") + ` (+${names.length - 3})` : names.join("، "));
+  }
   function renderDiscountCodes() {
     const body = document.getElementById("discountCodesBody"); if (!body) return;
     const list = settings.discountCodes || [];
     const uses = (code) => orders.filter((o) => o.discountCode === code && o.status !== "cancelled").length;
     const edit = can("edit_pricing");
-    body.innerHTML = list.length ? list.map((c) => `<tr style="${c.active === false ? "opacity:.5" : ""}"><td><b dir="ltr">${esc(c.code)}</b></td><td>${c.percent}%</td><td>${uses(c.code)}</td>
+    body.innerHTML = list.length ? list.map((c) => `<tr style="${c.active === false ? "opacity:.5" : ""}"><td><b dir="ltr">${esc(c.code)}</b>${c.note ? `<div class="pos-cart-row-sub">${esc(c.note)}</div>` : ""}</td><td>${esc(codeDesc(c))}</td><td>${codeCustomersLabel(c)}</td><td>${uses(c.code)}</td>
       <td style="text-align:center"><input type="checkbox" data-code-active="${esc(c.code)}" ${c.active === false ? "" : "checked"} ${edit ? "" : "disabled"} /></td>
-      <td>${edit ? `<button class="mini-btn" data-code-edit="${esc(c.code)}">تعديل النسبة</button> <button class="mini-btn danger-mini" data-code-del="${esc(c.code)}">حذف</button>` : ""}</td></tr>`).join("")
-      : `<tr><td colspan="5" class="empty-state compact">لا توجد أكواد بعد</td></tr>`;
+      <td>${edit ? `${codeRestricted(c) ? `<button class="mini-btn" data-code-cust="${esc(c.code)}">👥 العملاء</button> ` : ""}<button class="mini-btn" data-code-edit="${esc(c.code)}">تعديل</button> <button class="mini-btn danger-mini" data-code-del="${esc(c.code)}">حذف</button>` : ""}</td></tr>`).join("")
+      : `<tr><td colspan="6" class="empty-state compact">لا توجد أكواد بعد</td></tr>`;
     const saveCodes = (msg) => { save(KEYS.settings, settings); renderDiscountCodes(); if (msg) logActivity(msg); };
     body.querySelectorAll("[data-code-active]").forEach((cb) => cb.addEventListener("change", () => {
       const c = findCode(cb.dataset.codeActive); if (!c) return; c.active = cb.checked;
@@ -9716,35 +9797,66 @@ body.auth-locked .top-logout{display:none!important}
       });
     }));
     body.querySelectorAll("[data-code-edit]").forEach((b) => b.addEventListener("click", () => openDiscountCodeForm(findCode(b.dataset.codeEdit))));
+    body.querySelectorAll("[data-code-cust]").forEach((b) => b.addEventListener("click", () => openCodeCustomersForm(findCode(b.dataset.codeCust))));
+  }
+  // اختيار عملاء الكود الخاص — مع بحث بالاسم أو الرقم
+  function openCodeCustomersForm(c, after) {
+    if (!c || !can("edit_pricing")) { denied(); return; }
+    const sel = new Set(c.customerIds || []);
+    const opts = customers.slice().sort((a, b) => (sel.has(b.id) ? 1 : 0) - (sel.has(a.id) ? 1 : 0) || String(a.name).localeCompare(String(b.name), "ar"))
+      .map((x) => ({ value: x.id, label: `${x.name} — ${fmtPhone(x.phone)}` }));
+    openQuickForm({
+      title: `👥 عملاء الكود ${c.code}`, sub: `${codeDesc(c)}${c.note ? " — " + c.note : ""}. الكود يعمل فقط للعملاء المختارين.`,
+      fields: [{ id: "ids", label: "ابحث بالاسم أو الرقم واختر العملاء", type: "checks", search: true, value: [...sel], options: opts }],
+      submitLabel: "حفظ العملاء",
+      onSubmit: (v) => {
+        const before = (c.customerIds || []).length;
+        c.customerIds = v.ids;
+        save(KEYS.settings, settings);
+        const names = v.ids.map((id) => (customers.find((x) => x.id === id) || {}).name).filter(Boolean);
+        logActivity(`تحديد عملاء كود الخصم ${c.code} (${codeDesc(c)}): ${names.join("، ") || "لا أحد"} (كان ${before})`);
+        renderDiscountCodes(); if (after) after();
+        toast(`تم — الكود ${c.code} لـ ${v.ids.length} عميل`);
+      },
+    });
   }
   function openDiscountCodeForm(existing) {
     if (!can("edit_pricing")) { denied(); return; }
     openQuickForm({
       title: existing ? `تعديل الكود ${existing.code}` : "🏷 كود خصم جديد",
-      sub: "حروف إنجليزية وأرقام أو أرقام فقط (3 إلى 20 خانة، بدون مسافات). الموظف يكتبه عند إنشاء الطلب فيُخصم تلقائياً.",
+      sub: "حروف إنجليزية وأرقام (3 إلى 20 خانة، بدون مسافات — لا فرق بين الحروف الكبيرة والصغيرة). الموظف يكتبه عند إنشاء الطلب فيُخصم تلقائياً.",
       fields: [
         { id: "code", label: "الكود", type: "text", value: existing ? existing.code : "" },
-        { id: "percent", label: "نسبة الخصم %", type: "number", step: "1", min: 1, value: existing ? existing.percent : 10 },
+        { id: "note", label: "لمن؟ (ملاحظة لك — مثال: العميل نواف)", type: "text", value: existing ? existing.note || "" : "" },
+        { id: "type", label: "نوع الخصم", type: "select", value: existing && existing.type === "piece" ? "piece" : "percent", options: [{ value: "percent", label: "نسبة % من الطلب (100% = الطلب مجاني)" }, { value: "piece", label: "سعر ثابت للقطعة (د.ب)" }] },
+        { id: "percent", label: "نسبة الخصم % (لنوع النسبة)", type: "number", step: "1", min: 1, value: existing ? existing.percent || "" : 10 },
+        { id: "piecePrice", label: "سعر القطعة د.ب (لنوع السعر الثابت — مثال 0.300)", type: "number", step: "0.001", min: 0, value: existing && existing.type === "piece" ? existing.piecePrice : "" },
+        { id: "scope", label: "من يستخدمه؟", type: "select", value: existing && existing.scope === "customers" ? "customers" : "all", options: [{ value: "all", label: "كل العملاء" }, { value: "customers", label: "عملاء محددين فقط (تختارهم بعد الحفظ)" }] },
       ],
       submitLabel: "حفظ",
       onSubmit: (v) => {
-        const code = normDiscCode(v.code), pct = Number(normDigits(String(v.percent)));
+        const code = normDiscCode(v.code), pct = Number(normDigits(String(v.percent))), pp = round3(Number(normDigits(String(v.piecePrice))) || 0);
         if (!CODE_RE.test(code)) { toast("الكود: حروف إنجليزية وأرقام فقط، من 3 إلى 20 خانة"); return false; }
-        if (!(pct > 0 && pct <= 100)) { toast("النسبة بين 1% و 100%"); return false; }
+        if (v.type === "percent" && !(pct > 0 && pct <= 100)) { toast("النسبة بين 1% و 100%"); return false; }
+        if (v.type === "piece" && !(pp >= 0 && String(v.piecePrice).trim() !== "")) { toast("أدخل سعر القطعة (مثال 0.300)"); return false; }
         settings.discountCodes = settings.discountCodes || [];
         const dup = settings.discountCodes.find((x) => x.code === code);
+        const data = { code, type: v.type, percent: v.type === "percent" ? round3(pct) : 0, piecePrice: v.type === "piece" ? pp : undefined, scope: v.scope, note: v.note };
+        let target = existing;
         if (existing) {
           if (code !== existing.code && dup) { toast("هذا الكود موجود"); return false; }
-          const before = `${existing.code} ${existing.percent}%`;
-          existing.code = code; existing.percent = round3(pct);
-          logActivity(`تعديل كود الخصم ${before} → ${code} ${existing.percent}%`);
+          const before = `${existing.code} ${codeDesc(existing)}`;
+          Object.assign(existing, data); if (!existing.customerIds) existing.customerIds = [];
+          logActivity(`تعديل كود الخصم ${before} → ${code} ${codeDesc(existing)}${v.scope === "customers" ? " (عملاء محددين)" : " (كل العملاء)"}`);
         } else {
           if (dup) { toast("هذا الكود موجود"); return false; }
-          settings.discountCodes.push({ code, percent: round3(pct), active: true, createdAt: new Date().toISOString(), createdBy: me ? me.name : "" });
-          logActivity(`إضافة كود خصم ${code} بنسبة ${round3(pct)}%`);
+          target = { ...data, customerIds: [], active: true, createdAt: new Date().toISOString(), createdBy: me ? me.name : "" };
+          settings.discountCodes.push(target);
+          logActivity(`إضافة كود خصم ${code} — ${codeDesc(target)}${v.scope === "customers" ? " (عملاء محددين)" : " (كل العملاء)"}`);
         }
         save(KEYS.settings, settings); renderDiscountCodes();
         toast("تم حفظ الكود");
+        if (target.scope === "customers" && !(target.customerIds || []).length) setTimeout(() => openCodeCustomersForm(target), 250);
       },
     });
   }
