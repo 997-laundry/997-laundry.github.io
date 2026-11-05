@@ -3426,12 +3426,167 @@
     return { byMonth, rows: Object.keys(src).sort().slice(-maxBars).map((k) => ({ label: k.slice(5), value: src[k] })) };
   }
 
+  /* ===================== 🧭 لوحة القرار (الصفحة الرئيسية) =====================
+     أرقام الفترة مقارنة بالفترة السابقة بنفس الطول + توصيات مرتبة بالأولوية مبنية على البيانات الفعلية
+     (نفس دالة FIN.summarize المستخدمة في التقارير والمالية — الأرقام متطابقة في كل الشاشات). */
+  const DD = (ar, en) => (lang === "ar" ? ar : en);
+  const pctChange = (cur, prev) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : cur > 0 ? null : 0);
+  const bhHour = (iso) => Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: "Asia/Bahrain" }).format(new Date(iso)));
+  function renderCockpit(from, to) {
+    const root = document.getElementById("dashCockpit"); if (!root) return;
+    const fin = can("view_reports"), today = FIN.todayStr(), now = Date.now();
+    const span = from && to ? Math.round((new Date(to) - new Date(from)) / 864e5) + 1 : 30;
+    const pFrom = FIN.addDays(from, -span), pTo = FIN.addDays(from, -1);
+    const data = finData(), s = FIN.summarize(data, from, to), sp = FIN.summarize(data, pFrom, pTo), snap = FIN.snapshot(data);
+    const inP = (iso) => FIN.inRange(iso, from, to);
+    const custName = (id) => (customers.find((c) => c.id === id) || {}).name || "—";
+
+    // ---------- العمليات ----------
+    const hoursLimit = (o) => (o.priority === "urgent" ? settings.urgentHours : settings.normalHours) * 3600e3;
+    const received = orders.filter((o) => o.status === "received");
+    const late = received.filter((o) => now - new Date(o.createdAt).getTime() > hoursLimit(o));
+    const urgent = received.filter((o) => o.priority === "urgent");
+    const ready = orders.filter((o) => o.status === "ready");
+    const readyOld = ready.filter((o) => now - new Date(FIN.orderPaidAt(o) || o.readyAt || o.createdAt).getTime() > 3 * 864e5);
+    const deliveredToday = orders.filter((o) => o.deliveredAt && FIN.localDay(o.deliveredAt) === today).length;
+    const readyOldValue = round3(readyOld.reduce((a, o) => a + (Number(o.payment && o.payment.total) || 0), 0));
+
+    // ---------- العملاء ----------
+    const pOrders = orders.filter((o) => o.status !== "cancelled" && inP(o.createdAt));
+    const pCust = [...new Set(pOrders.map((o) => o.customerId))];
+    const firstOrder = {};
+    orders.forEach((o) => { if (o.status === "cancelled") return; const t0 = String(o.createdAt); if (!firstOrder[o.customerId] || t0 < firstOrder[o.customerId]) firstOrder[o.customerId] = t0; });
+    const newCust = pCust.filter((id) => inP(firstOrder[id])).length, returning = pCust.length - newCust;
+    const salesByCust = {};
+    s.salesList.forEach((o) => { salesByCust[o.customerId] = round3((salesByCust[o.customerId] || 0) + (Number(o.payment.total) || 0)); });
+    const topCust = Object.entries(salesByCust).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const lastOrder = {}, orderCount = {};
+    orders.forEach((o) => { if (o.status === "cancelled") return; orderCount[o.customerId] = (orderCount[o.customerId] || 0) + 1; if (!lastOrder[o.customerId] || String(o.createdAt) > lastOrder[o.customerId]) lastOrder[o.customerId] = String(o.createdAt); });
+    const inactive = Object.keys(orderCount).filter((id) => orderCount[id] >= 2 && now - new Date(lastOrder[id]).getTime() > 30 * 864e5 && customers.some((c) => c.id === id));
+
+    // ---------- الأصناف والخدمات وطرق الدفع والموظفين ----------
+    const topItems = Object.entries(s.piecesByGarment).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    const totalPieces = Object.values(s.piecesByGarment).reduce((a, v) => a + v, 0);
+    const svc = Object.entries(s.piecesByService).sort((a, b) => b[1] - a[1]);
+    const pay = Object.entries(s.collectedBy).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    const byEmp = {};
+    pOrders.forEach((o) => { const k = o.createdBy || "—"; byEmp[k] = byEmp[k] || { n: 0, v: 0 }; byEmp[k].n++; byEmp[k].v = round3(byEmp[k].v + (Number(o.payment && o.payment.total) || 0)); });
+    const emps2 = Object.entries(byEmp).sort((a, b) => b[1].n - a[1].n).slice(0, 6);
+    const wd = [0, 0, 0, 0, 0, 0, 0], hr = new Array(24).fill(0);
+    pOrders.forEach((o) => { wd[new Date(FIN.localDay(o.createdAt) + "T12:00:00").getDay()]++; hr[bhHour(o.createdAt)]++; });
+    const busyDay = wd.indexOf(Math.max(...wd)), busyHour = hr.indexOf(Math.max(...hr));
+
+    // ---------- الديون والالتزامات ----------
+    const owedOrders = orders.filter((o) => o.status === "delivered" && orderOwedNow(o) > 0);
+    const oldDebt = owedOrders.filter((o) => now - new Date(o.deliveredAt || o.createdAt).getTime() > 14 * 864e5);
+    const oldDebtValue = round3(oldDebt.reduce((a, o) => a + orderOwedNow(o), 0));
+    const activePk = customerPackages.filter((cp) => cp.remainingPieces > 0 && !pkgExpired(cp));
+    const pkgLiability = round3(activePk.reduce((a, cp) => a + (cp.totalPieces ? (Number(cp.price) || 0) * cp.remainingPieces / cp.totalPieces : 0), 0));
+    const pkgSoon = activePk.filter((cp) => (cp.expiresAt && daysLeft(cp.expiresAt) <= 7) || cp.remainingPieces <= Math.max(2, Math.round(cp.totalPieces * 0.1)));
+    const stockLow = (window.L997Enterprise ? window.L997Enterprise.data.inventory : []).filter((i) => Number(i.qty) <= Number(i.minQty || 0));
+    const unclosed = can("approve_closing") && window.L997Enterprise ? FIN.unclosedDays(data, window.L997Enterprise.data.closures, FIN.addDays(today, -7), FIN.addDays(today, -1)) : [];
+    const dlvLegs = pOrders.flatMap((o) => (o.extras || []).filter((l) => String(l.id).startsWith("dlv_")));
+    const dlvIncome = round3(dlvLegs.reduce((a, l) => a + (Number(l.total) || 0), 0)), dlvFree = dlvLegs.filter((l) => l.free).length;
+    const margin = s.netRevenue > 0 ? Math.round((s.profit / s.netRevenue) * 100) : null;
+    const discPct = s.grossOrderSales + s.discounts > 0 ? Math.round((s.discounts / (s.grossOrderSales + s.discounts)) * 100) : 0;
+    const topExp = Object.entries(s.expensesByGroup || {}).sort((a, b) => b[1] - a[1])[0];
+
+    // ---------- التوصيات (مرتبة: 1 عاجل، 2 مهم، 3 فرصة) ----------
+    const tips = [];
+    const tip = (lvl, icon, title, body, act, page) => tips.push({ lvl, icon, title, body, act, page });
+    if (late.length) tip(1, "⏰", DD(`${late.length} طلب متأخر عن موعده`, `${late.length} orders are past their due time`), DD("العملاء ينتظرون — قدّمها في التشغيل الآن، وأرسل للعميل رسالة اعتذار مع الموعد الجديد.", "Customers are waiting — move them up now and message the customer with a new time."), DD("عرض الطلبات", "Open orders"), "orders");
+    if (readyOld.length) tip(1, "📦", DD(`${readyOld.length} طلب جاهز لم يُستلم منذ أكثر من 3 أيام (${money(readyOldValue)})`, `${readyOld.length} ready orders uncollected for 3+ days (${money(readyOldValue)})`), DD("أموال ومساحة مجمّدة — أرسل تذكيراً على واتساب أو اعرض التوصيل للبيت.", "Money and shelf space are stuck — send a WhatsApp reminder or offer home delivery."), DD("عرض الطلبات", "Open orders"), "orders");
+    if (fin && oldDebt.length) tip(1, "💳", DD(`ديون أقدم من 14 يوماً: ${money(oldDebtValue)} على ${new Set(oldDebt.map((o) => o.customerId)).size} عميل`, `Debts older than 14 days: ${money(oldDebtValue)} from ${new Set(oldDebt.map((o) => o.customerId)).size} customers`), DD("ابدأ بالأكبر قيمة: تذكير لطيف اليوم، ثم اتصال. لا تقبل طلباً آجلاً جديداً قبل السداد.", "Start with the largest: a friendly reminder today, then a call. Avoid new credit until they pay."), DD("الأرصدة", "Balances"), "balances");
+    const unc = unclosed.slice(-3).map((x) => x.slice(5)).join(lang === "ar" ? "، " : ", ") + (unclosed.length > 3 ? (lang === "ar" ? ` و${unclosed.length - 3} أيام أخرى` : ` +${unclosed.length - 3} more`) : "");
+    if (unclosed.length) tip(1, "📅", DD(`${unclosed.length} أيام لم يُعتمد إغلاقها: ${unc}`, `${unclosed.length} days not closed: ${unc}`), DD("أغلق كل يوم بعدّ النقد — هذا يكشف أي فرق في الصندوق مبكراً.", "Close each day by counting the cash — it catches any till difference early."), DD("الإغلاقات", "Closures"), "closures");
+    if (stockLow.length) tip(2, "🧴", DD(`مخزون منخفض: ${stockLow.slice(0, 3).map((i) => i.name).join("، ")}${stockLow.length > 3 ? ` و${stockLow.length - 3} غيرها` : ""}`, `Low stock: ${stockLow.slice(0, 3).map((i) => i.name).join(", ")}${stockLow.length > 3 ? ` +${stockLow.length - 3}` : ""}`), DD("اطلبها الآن قبل أن يتوقف العمل.", "Order now before work stops."), DD("المخزون", "Inventory"), "inventory");
+    if (fin && sp.salesTotal > 0) {
+      const ch = pctChange(s.salesTotal, sp.salesTotal);
+      if (ch !== null && ch <= -10) tip(2, "📉", DD(`المبيعات أقل بـ ${Math.abs(ch)}% من الفترة السابقة`, `Sales are ${Math.abs(ch)}% lower than the previous period`), DD(`أرسل عرضاً للعملاء غير النشطين${inactive.length ? ` (${inactive.length} عميل)` : ""} أو كوداً لمدة محدودة لتنشيط الطلب.`, `Send an offer to inactive customers${inactive.length ? ` (${inactive.length})` : ""} or a time-limited code to lift demand.`), DD("العملاء", "Customers"), "customers");
+      else if (ch !== null && ch >= 15) tip(3, "📈", DD(`المبيعات أعلى بـ ${ch}% من الفترة السابقة 👏`, `Sales are up ${ch}% on the previous period 👏`), DD("حافظ على الزخم: راقب مدة التسليم حتى لا تتأخر الطلبات مع زيادة الضغط.", "Keep the momentum: watch turnaround times so busy days don't cause delays."));
+    }
+    if (fin && margin !== null && margin < 20 && s.netRevenue > 0) tip(2, "⚖️", DD(`هامش الربح ${margin}% فقط`, `Profit margin is only ${margin}%`), DD(`أكبر بند مصروفات: ${topExp ? `${FX(topExp[0]) || topExp[0]} (${money(topExp[1])})` : "—"}. راجعه، أو ارفع أسعار الأصناف الأكثر طلباً قليلاً.`, `Largest expense: ${topExp ? `${topExp[0]} (${money(topExp[1])})` : "—"}. Review it, or raise the price of top items slightly.`), DD("المالية", "Finance"), "finance");
+    if (fin && discPct >= 12) tip(2, "🏷", DD(`الخصومات ${discPct}% من المبيعات (${money(s.discounts)})`, `Discounts are ${discPct}% of sales (${money(s.discounts)})`), DD("راجع أكواد الخصم والعملاء المستفيدين — ضع تاريخ انتهاء أو حداً للاستخدام.", "Review discount codes and who uses them — add an expiry date or a use limit."), DD("الإعدادات", "Settings"), "settings");
+    if (inactive.length) tip(3, "👋", DD(`${inactive.length} عميل متكرر لم يطلب منذ أكثر من 30 يوماً`, `${inactive.length} regular customers haven't ordered in 30+ days`), DD("رسالة «اشتقنا لك» مع خصم بسيط ترجع أغلبهم — العميل الحالي أرخص من عميل جديد.", "A “we miss you” message with a small discount brings most back — cheaper than finding new customers."), DD("العملاء", "Customers"), "customers");
+    if (pkgSoon.length) tip(3, "🎟", DD(`${pkgSoon.length} باقة قاربت على الانتهاء (مدة أو قطع)`, `${pkgSoon.length} packages are about to run out (time or pieces)`), DD("اعرض التجديد الآن مع هدية صغيرة — التجديد أسهل بيع ممكن.", "Offer renewal now with a small gift — renewals are the easiest sale."), DD("العملاء", "Customers"), "customers");
+    if (topItems.length && totalPieces >= 10) {
+      const [gid, n] = topItems[0], share = Math.round((n / totalPieces) * 100);
+      if (share >= 25) tip(3, "⭐", DD(`«${clothingName(gid)}» = ${share}% من القطع`, `“${clothingName(gid)}” is ${share}% of all pieces`), DD(`صمّم باقة خاصة بـ«${clothingName(gid)}» — أكثر صنف يطلبه عملاؤك.`, `Create a package just for “${clothingName(gid)}” — it's what your customers order most.`), DD("الإعدادات", "Settings"), "settings");
+    }
+    if (pOrders.length >= 10 && Math.max(...wd) > 0) tip(3, "👥", DD(`أكثر الأيام ضغطاً: ${weekdayName(busyDay)} — وأكثر ساعة: ${busyHour}:00`, `Busiest day: ${weekdayName(busyDay)} — busiest hour: ${busyHour}:00`), DD("رتّب الورديات بحيث يكون أكبر عدد من الموظفين في هذا اليوم والوقت.", "Plan shifts so most staff are on at this day and time."), DD("الموظفون", "Employees"), "employees");
+    if (fin && dlvFree > 0 && dlvFree > dlvLegs.length - dlvFree && dlvLegs.length >= 6) tip(3, "🚚", DD(`${dlvFree} من ${dlvLegs.length} مشوار مجاني هذه الفترة`, `${dlvFree} of ${dlvLegs.length} trips were free this period`), DD("المشاوير المجانية تكلفة عليك — تأكد أن عدد المشاوير في كل باقة مناسب لسعرها.", "Free trips cost you — check each package's trip allowance suits its price."), DD("التوصيل", "Delivery"), "delivery");
+    tips.sort((a, b) => a.lvl - b.lvl);
+
+    // ---------- الرسم ----------
+    const delta = (cur, prev, goodUp) => {
+      const ch = pctChange(cur, prev);
+      if (ch === null) return `<span class="ck-delta up">${DD("جديد", "new")}</span>`;
+      if (ch === 0) return `<span class="ck-delta">= ${DD("نفس السابق", "same as before")}</span>`;
+      const up = ch > 0, good = goodUp ? up : !up;
+      return `<span class="ck-delta ${good ? "up" : "down"}">${up ? "▲" : "▼"} ${Math.abs(ch)}% <small>${DD("عن الفترة السابقة", "vs previous")}</small></span>`;
+    };
+    const hero = (icon, label, value, d, note, neg) => `<div class="ck-hero"><div class="ck-hero-top"><span>${icon} ${label}</span></div><div class="ck-hero-val" style="${neg ? "color:var(--danger)" : ""}">${value}</div>${d || ""}${note ? `<div class="ck-note">${note}</div>` : ""}</div>`;
+    const bar = (label, v, max, txt, color) => `<div class="ck-bar"><span class="ck-bar-l">${label}</span><div class="ck-bar-t"><div style="width:${max ? Math.max(3, Math.round((v / max) * 100)) : 0}%;${color ? `background:${color}` : ""}"></div></div><span class="ck-bar-v">${txt}</span></div>`;
+    const lvlName = { 1: DD("عاجل", "Urgent"), 2: DD("مهم", "Important"), 3: DD("فرصة", "Opportunity") };
+    const pipe = (n, label, cls, page) => `<button type="button" class="ck-pipe ${cls || ""}" data-ck-go="${page}"><b>${n}</b><span>${label}</span></button>`;
+    const panel = (title, sub, body) => `<div class="panel ck-panel"><div class="ck-head"><h3>${title}</h3>${sub ? `<p>${sub}</p>` : ""}</div>${body}</div>`;
+    const empty = `<div class="empty-state compact">${DD("لا توجد بيانات في هذه الفترة", "No data in this period")}</div>`;
+    const maxWd = Math.max(1, ...wd);
+
+    root.innerHTML = `
+      ${fin ? `<div class="ck-heroes">
+        ${hero("💰", DD("المبيعات", "Sales"), money(s.salesTotal), delta(s.salesTotal, sp.salesTotal, true), DD(`${s.salesOrders} طلب مدفوع${s.packageCount ? ` + ${s.packageCount} باقة` : ""}`, `${s.salesOrders} paid orders${s.packageCount ? ` + ${s.packageCount} packages` : ""}`))}
+        ${hero("Σ", DD("صافي الربح", "Net profit"), money(s.profit), delta(s.profit, sp.profit, true), margin !== null ? DD(`هامش الربح ${margin}% · المصروفات ${money(s.expenses)}`, `Margin ${margin}% · expenses ${money(s.expenses)}`) : DD(`المصروفات ${money(s.expenses)}`, `Expenses ${money(s.expenses)}`), s.profit < 0)}
+        ${hero("💵", DD("المحصّل فعلياً", "Cash collected"), money(s.collected), delta(s.collected, sp.collected, true), DD(`المتوقع في الصندوق نقداً ${money(s.expectedCash)}`, `Expected cash in till ${money(s.expectedCash)}`))}
+        ${hero("🧾", DD("الطلبات", "Orders"), pOrders.length, delta(pOrders.length, orders.filter((o) => o.status !== "cancelled" && FIN.inRange(o.createdAt, pFrom, pTo)).length, true), DD(`متوسط الطلب ${money(s.avgOrder)} · ${totalPieces} قطعة`, `Avg order ${money(s.avgOrder)} · ${totalPieces} pieces`))}
+      </div>` : ""}
+
+      <div class="ck-grid">
+        <div class="panel ck-panel ck-tips"><div class="ck-head"><h3>💡 ${DD("قرارات اليوم", "Today's decisions")}</h3><p>${DD("توصيات مبنية على أرقامك الفعلية — الأهم أولاً", "Recommendations from your real numbers — most important first")}</p></div>
+          ${tips.length ? tips.slice(0, 8).map((x) => `<div class="ck-tip l${x.lvl}"><span class="ck-tip-ic">${x.icon}</span><div class="ck-tip-body"><div class="ck-tip-top"><b>${esc(x.title)}</b><span class="ck-lvl l${x.lvl}">${lvlName[x.lvl]}</span></div><p>${esc(x.body)}</p>${x.page ? `<button type="button" class="mini-btn" data-ck-go="${x.page}">${esc(x.act)} ←</button>` : ""}</div></div>`).join("")
+            : `<div class="ck-allgood">✅ ${DD("كل شيء تحت السيطرة — لا توجد تنبيهات الآن.", "Everything is under control — nothing needs attention now.")}</div>`}
+        </div>
+        ${panel(`⚙️ ${DD("التشغيل الآن", "Operations now")}`, DD("اضغط أي رقم لفتح الطلبات", "Tap a number to open the orders"), `<div class="ck-pipes">
+          ${pipe(received.length, DD("قيد التنظيف", "In progress"), "", "orders")}${pipe(late.length, DD("متأخرة", "Late"), late.length ? "bad" : "", "orders")}${pipe(urgent.length, DD("مستعجلة", "Urgent"), urgent.length ? "warn" : "", "orders")}
+          ${pipe(ready.length, DD("جاهزة للاستلام", "Ready"), "", "orders")}${pipe(readyOld.length, DD("جاهزة +3 أيام", "Ready 3+ days"), readyOld.length ? "warn" : "", "orders")}${pipe(deliveredToday, DD("سُلّمت اليوم", "Delivered today"), "good", "orders")}
+        </div>${fin ? `<div class="ck-mini">
+          <div><span>${DD("ديون العملاء", "Customer debts")}</span><b style="color:${snap.receivables > 0 ? "var(--danger)" : ""}">${money(snap.receivables)}</b><small>${snap.debtorsCount} ${DD("عميل", "customers")}</small></div>
+          <div><span>${DD("أرصدة مدفوعة مقدماً", "Prepaid balances")}</span><b>${money(snap.prepaid)}</b><small>${DD("التزام عليك", "you owe in service")}</small></div>
+          <div><span>${DD("قطع باقات لم تُستخدم", "Unused package pieces")}</span><b>${money(pkgLiability)}</b><small>${activePk.reduce((a, cp) => a + cp.remainingPieces, 0)} ${DD("قطعة", "pcs")}</small></div>
+          <div><span>${DD("قيمة الطلبات المفتوحة", "Open orders value")}</span><b>${money(snap.openValue)}</b><small>${snap.openCount} ${DD("طلب", "orders")}</small></div>
+        </div>` : ""}`)}
+      </div>
+
+      ${fin ? `<div class="ck-grid3">
+        ${panel(`👥 ${DD("العملاء", "Customers")}`, DD("خلال الفترة", "In this period"), `<div class="ck-mini three">
+            <div><span>${DD("عملاء طلبوا", "Ordering customers")}</span><b>${pCust.length}</b></div>
+            <div><span>${DD("جدد", "New")}</span><b style="color:var(--success)">${newCust}</b></div>
+            <div><span>${DD("عائدون", "Returning")}</span><b>${pCust.length ? Math.round((returning / pCust.length) * 100) : 0}%</b></div></div>
+          <div class="ck-sub">${DD("أعلى العملاء إنفاقاً", "Top customers by spend")}</div>
+          ${topCust.length ? topCust.map(([id, v], i) => `<button type="button" class="ck-row" data-ck-cust="${id}"><span>${i + 1}. ${esc(custName(id))}</span><b>${money(v)}</b></button>`).join("") : empty}`)}
+        ${panel(`⭐ ${DD("الأصناف الأكثر طلباً", "Top items")}`, DD("حسب عدد القطع", "By number of pieces"), topItems.length ? topItems.map(([gid, n]) => `<div class="ck-item"><span class="cart-icon">${gIcon(gid, 26)}</span>${bar(esc(clothingName(gid)), n, topItems[0][1], `${n} · ${Math.round((n / Math.max(1, totalPieces)) * 100)}%`)}</div>`).join("") +
+            `<div class="ck-sub">${DD("حسب الخدمة", "By service")}</div>` + svc.map(([k, v]) => bar(esc(serviceName(k)), v, svc[0][1], v, "var(--success)")).join("") : empty)}
+        ${panel(`💳 ${DD("طرق الدفع", "Payment methods")}`, DD("المحصّل في الفترة", "Collected in this period"), (pay.length ? pay.map(([k, v]) => bar(esc(paymentLabel(k)), v, pay[0][1], money(v), "var(--warning)")).join("") : empty) +
+            (dlvLegs.length ? `<div class="ck-sub">🚚 ${DD("التوصيل", "Delivery")}</div><div class="ck-mini three"><div><span>${DD("مشاوير", "Trips")}</span><b>${dlvLegs.length}</b></div><div><span>${DD("مجانية", "Free")}</span><b>${dlvFree}</b></div><div><span>${DD("الإيراد", "Income")}</span><b>${money(dlvIncome)}</b></div></div>` : ""))}
+      </div>
+      <div class="ck-grid">
+        ${panel(`🧑‍💼 ${DD("إنتاجية الموظفين", "Staff productivity")}`, DD("الطلبات التي أدخلها كل موظف بالفترة", "Orders entered by each employee in this period"), emps2.length ? emps2.map(([nm, x]) => bar(esc(nm), x.n, emps2[0][1].n, `${x.n} · ${money(x.v)}`)).join("") : empty)}
+        ${panel(`📆 ${DD("أوقات الضغط", "Busy times")}`, DD(`أكثر يوم: ${pOrders.length ? weekdayName(busyDay) : "—"} · أكثر ساعة: ${pOrders.length ? busyHour + ":00" : "—"}`, `Busiest day: ${pOrders.length ? weekdayName(busyDay) : "—"} · busiest hour: ${pOrders.length ? busyHour + ":00" : "—"}`),
+          pOrders.length ? `<div class="ck-week">${wd.map((n, i) => `<div class="ck-day ${i === busyDay ? "top" : ""}"><div class="ck-col"><div style="height:${Math.round((n / maxWd) * 100)}%"></div></div><b>${n}</b><span>${(lang === "ar" ? ["أحد", "إثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"] : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"])[i]}</span></div>`).join("")}</div>` : empty)}
+      </div>` : ""}`;
+    root.querySelectorAll("[data-ck-go]").forEach((b) => (b.onclick = () => openPage(b.dataset.ckGo)));
+    root.querySelectorAll("[data-ck-cust]").forEach((b) => (b.onclick = () => window.openCustomerProfile997 && window.openCustomerProfile997(b.dataset.ckCust)));
+  }
   function renderDashboard() {
     if (!document.getElementById("dashFromDate").value) applyDashPreset("month");
     const c = computeCounts();
     const fromInput = document.getElementById("dashFromDate").value, toInput = document.getElementById("dashToDate").value;
     const s = FIN.summarize(finData(), fromInput, toInput);
     const snap = FIN.snapshot(finData());
+    try { renderCockpit(fromInput, toInput); } catch (e) { console.error(e); }
+    { const det = document.getElementById("dashDetails"), tt = document.querySelector("#dashDetails .ck-det-t");
+      if (tt) tt.textContent = DD("التفاصيل: البطاقات، المخططات، الطلبات التي تحتاج انتباه، وحركة اليوم", "Details: cards, charts, orders needing attention and today's activity");
+      if (det && !det.dataset.bound) { det.dataset.bound = "1"; try { det.open = localStorage.getItem("l997_dash_details") === "1"; } catch (e) { /* ignore */ } det.addEventListener("toggle", () => { try { localStorage.setItem("l997_dash_details", det.open ? "1" : "0"); } catch (e) { /* ignore */ } }); } }
 
     const grid = document.getElementById("metricsGrid");
     const cards = [
@@ -3514,7 +3669,7 @@
     const actList = document.getElementById("activityList");
     actList.innerHTML = activity.length === 0
       ? `<div class="empty-state compact">${t("empty_activity")}</div>`
-      : activity.slice(0, 10).map((a) => `<div class="timeline-item"><strong>${esc(a.text)}</strong><small>${fmtDT(a.at)}</small></div>`).join("");
+      : activity.slice(0, 6).map((a) => `<div class="timeline-item"><strong>${esc(a.text)}</strong><small>${fmtDT(a.at)}</small></div>`).join("");
   }
 
   /* ============================= طلب جديد ============================= */
