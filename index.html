@@ -3054,7 +3054,9 @@ body.auth-locked .top-logout{display:none!important}
     if (localChanged && !staged.size && h && h.refresh && !h.busy()) { localChanged = false; try { h.refresh(); } catch (e) { reloadNow(); } return; }
     if (!staged.size) { showUpdateChip(false); return; }
     const soft = h && h.refresh && [...staged.values()].every((r) => SOFT.has(r.collection) || harmless(r));
-    if (soft && !(h.softBusy ? h.softBusy() : h.busy()) && Date.now() - lastInput > CFG.softIdleMs) {
+    if (soft && !(h.softBusy ? h.softBusy() : h.busy())) {
+      // تحديث هادئ ممكن: ننتظر لحظة توقف المستخدم عن الحركة ثم نطبّقه — لا نلجأ لإعادة تحميل الصفحة أبداً في هذه الحالة
+      if (Date.now() - lastInput <= CFG.softIdleMs) return;
       applyStaged(false); localChanged = false;
       try { h.refresh(); } catch (e) { reloadNow(); return; }
       showUpdateChip(false); renderChip();
