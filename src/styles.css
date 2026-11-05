@@ -639,3 +639,6 @@ body.auth-locked .top-logout{display:none!important}
 
 .auth-trust{margin:2px 0 10px;font-size:13px;align-items:flex-start}
 .mfa-trust-list{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px;font-size:13px}
+
+.cp-pkg-terms{font-size:12.5px;margin:4px 0;color:var(--text);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cp-pkg-terms.expired{color:var(--danger);font-weight:700}

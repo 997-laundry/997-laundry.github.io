@@ -514,7 +514,7 @@
                 <label class="check-line"><input id="dlvOnSetting" type="checkbox" /> <span data-en="Turn on home pickup & delivery">تفعيل خدمة الاستلام والتوصيل</span></label>
                 <div class="dlv-settings-grid">
                   <label><span data-en="Trip fee — customer without a package (BD)">رسوم المشوار — عميل بدون باقة (د.ب)</span><input id="dlvFeeSetting" type="text" inputmode="decimal" /></label>
-                  <label><span data-en="Free trips a month — package customer">مشاوير مجانية شهرياً — عميل الباقة</span><input id="dlvPkgFreeSetting" type="text" inputmode="numeric" /></label>
+                  <label><span data-en="Free trips a month — default for packages (each package can override)">مشاوير مجانية شهرياً — الافتراضي للباقات (يمكن تغييره لكل باقة)</span><input id="dlvPkgFreeSetting" type="text" inputmode="numeric" /></label>
                   <label><span data-en="Package trip fee after the free ones (BD)">رسوم المشوار للباقة بعد المجاني (د.ب)</span><input id="dlvPkgFeeSetting" type="text" inputmode="decimal" /></label>
                   <label><span data-en="Free delivery for orders from (BD) — 0 = off">توصيل مجاني للطلب من (د.ب) — 0 = لا يوجد</span><input id="dlvFreeOverSetting" type="text" inputmode="decimal" /></label>
                 </div>
@@ -532,7 +532,7 @@
 
           <div class="panel" data-settings-panel="packages" style="display:none">
             <div class="panel-header"><div><h3>الباقات</h3><p>تعريف باقات مسبقة الدفع (عدد قطع بسعر ثابت) — أدخل أسعارك الخاصة</p></div><button class="primary-btn" id="addPackageDefBtn">＋ باقة جديدة</button></div>
-            <div class="table-wrap"><table><thead><tr><th>اسم الباقة</th><th>نوع الخدمة</th><th>عدد القطع</th><th>السعر</th><th>هدية مجانية</th><th></th></tr></thead><tbody id="packageDefsBody"></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>اسم الباقة</th><th>نوع الخدمة</th><th>عدد القطع</th><th>السعر</th><th>الصلاحية</th><th>مشاوير مجانية</th><th>هدية مجانية</th><th></th></tr></thead><tbody id="packageDefsBody"></tbody></table></div>
           </div>
 
           <div class="panel" data-settings-panel="packages" style="display:none">
