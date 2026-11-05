@@ -133,6 +133,18 @@ const CATALOG = Number((/const CATALOG_VERSION = (\d+)/.exec(fs.readFileSync(pat
   if (sb) { await sb.click(); m = await last(); }
   check("statement: balance in words, and a debt payment is labelled 'payment' (not 'deposit')", !!sb && /المتبقي عليك: 0\.300/.test(m.text) && /دفعة سداد: \+0\.300/.test(m.text) && !/💳 -/.test(m.text), m.text);
 
+  /* WhatsApp Business API errors from Meta → clear Arabic instructions */
+  const hints = await page.evaluate(() => [
+    window.waErrHint997({ error: "send failed — Error validating access token: Session has expired on Friday" }),
+    window.waErrHint997({ error: "image upload failed — Unsupported post request. Object with ID '123' does not exist" }),
+    window.waErrHint997({ error: "send failed — (#132001) Template name does not exist in the translation" }),
+    window.waErrHint997({ error: "send failed — (#131030) Recipient phone number not in allowed list" }),
+    window.waErrHint997({ error: "whatsapp not configured", status: 503 }),
+    window.waErrHint997({ error: "x", status: 404 }),
+  ]);
+  check("Meta errors become clear instructions (token, phone ID, template, test mode, secrets, missing function)",
+    /WA_TOKEN/.test(hints[0]) && /Phone number ID/.test(hints[1]) && /order_delivered/.test(hints[2]) && /وضع التجربة/.test(hints[3]) && /Secrets/.test(hints[4]) && /غير موجودة/.test(hints[5]), hints.join(" | "));
+
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();
   console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL WHATSAPP CHECKS PASSED");
