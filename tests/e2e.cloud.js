@@ -185,7 +185,8 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   const liveNum = (await b.ls("l997_orders"))[0].number, t0 = Date.now();
   const shown = await until(async () => (await A.textContent("#ordersBody")).includes("#" + liveNum), 15000);
   const kept = await A.evaluate(() => window.__noReload === true).catch(() => false);
-  check("new order shows on the other device's open screen within seconds, without a page reload", shown && kept, `${Date.now() - t0} ms, no reload: ${kept}`);
+  const why = await A.evaluate(() => JSON.stringify((JSON.parse(localStorage.getItem("l997_cloud") || "{}").reloads || []).slice(0, 3))).catch(() => "");
+  check("new order shows on the other device's open screen within seconds, without a page reload", shown && kept, `${Date.now() - t0} ms, no reload: ${kept} ${kept ? "" : why}`);
 
   // offline on A: work continues, uploads later
   cloud.setOffline(true);
