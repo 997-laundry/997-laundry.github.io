@@ -1683,7 +1683,7 @@
           <td><span class="status-badge ${e.active === false ? "status-cancelled" : "status-ready"}">${e.active === false ? "معطّل" : "نشط"}</span>${locked ? ' <span class="lock-tag">مقفل</span>' : ""}</td>
           <td class="row-actions">${manage ? `
             <button class="mini-btn" data-uact="edit" data-id="${e.id}">تعديل</button>
-            ${!self && e.role !== "owner" && e.passHash ? `<button class="mini-btn" data-uact="perms" data-id="${e.id}">صلاحيات</button>` : ""}
+            ${!self && e.role !== "owner" && hasLoginAccount(e) ? `<button class="mini-btn" data-uact="perms" data-id="${e.id}">🔑 ${lang === "ar" ? "الصفحات والصلاحيات" : "Pages & permissions"}</button>` : ""}
             ${!self ? `<button class="mini-btn" data-uact="reset" data-id="${e.id}">${e.passHash ? "إعادة تعيين كلمة المرور" : "🔑 إنشاء حساب دخول"}</button>` : ""}
             ${locked ? `<button class="mini-btn" data-uact="unlock" data-id="${e.id}">فك القفل</button>` : ""}
             ${!self ? `<button class="mini-btn" data-uact="toggle" data-id="${e.id}">${e.active === false ? "تفعيل" : "تعطيل"}</button>` : ""}` : ""}
@@ -1895,7 +1895,7 @@
       if (canGrant) options.push({ value: "allow", label: "السماح" });
       options.push({ value: "deny", label: "المنع" });
       const cur = ov[p.id] === true ? "allow" : ov[p.id] === false ? "deny" : "";
-      return { id: "p_" + p.id, label: p.label, type: "select", value: options.some((o) => o.value === cur) ? cur : "", options };
+      return { id: "p_" + p.id, label: `${p.grp === "page" ? "📄" : "⚙️"} ${permLabel(p)}`, type: "select", value: options.some((o) => o.value === cur) ? cur : "", options };
     });
     openQuickForm({
       title: `صلاحيات خاصة — ${e.name}`, sub: `الدور: ${ACCESS_ROLE_AR[e.role]} — اختر «افتراضي الدور» ليتبع المصفوفة، أو استثنِ هذا المستخدم بالسماح/المنع`,
@@ -1918,29 +1918,34 @@
   }
 
   /* -------------------------- مصفوفة الصلاحيات -------------------------- */
+  // grp: page = صفحة في القائمة (تظهر/تختفي) · action = إجراء داخل الصفحات
   const PERM_DEFS = [
-    { id: "create_order", label: "إنشاء طلب جديد", worker: true, accountant: false, manager: true },
-    { id: "cancel_order", label: "إلغاء الطلب بدون موافقة مشرف / إرجاعه من التسليم", worker: false, accountant: false, manager: true },
-    { id: "give_discount", label: "منح خصم يدوي على الطلب بدون موافقة مشرف (ضمن الحد الأقصى)", worker: true, accountant: true, manager: true, rev: 2 },
-    { id: "edit_customer", label: "تعديل بيانات العملاء (الاسم والجوال)", worker: false, accountant: true, manager: true },
-    { id: "balance_tx", label: "استلام دفعة وإيداع رصيد للعميل", worker: true, accountant: true, manager: true },
-    { id: "balance_adjust", label: "ردّ نقدي / خصم / تسوية رصيد / عكس حركة", worker: false, accountant: true, manager: true },
-    { id: "edit_pricing", label: "تعديل الأسعار والخدمات", worker: false, accountant: false, manager: true },
-    { id: "view_reports", label: "عرض التقارير والمالية", worker: false, accountant: true, manager: true },
-    { id: "view_dashboard", label: "الصفحة الرئيسية (لوحة الأرقام)", worker: false, accountant: true, manager: true },
-    { id: "view_balances", label: "صفحة الأرصدة وكشوف الحساب", worker: false, accountant: true, manager: true },
-    { id: "view_closures", label: "عرض الإغلاقات", worker: false, accountant: true, manager: true },
-    { id: "approve_closing", label: "اعتماد الإغلاق اليومي/الشهري", worker: false, accountant: false, manager: true },
-    { id: "add_expense", label: "المخزون والمشتريات (عرض وإضافة)", worker: false, accountant: true, manager: true },
-    { id: "delete_records", label: "حذف/إلغاء مشتريات ومواد وموردين", worker: false, accountant: false, manager: true },
-    { id: "payroll", label: "الموظفون والرواتب", worker: false, accountant: true, manager: true },
-    { id: "audit_log", label: "سجل النشاط", worker: false, accountant: true, manager: true },
-    { id: "security_center", label: "مركز الأمان (محاولات الدخول، الجلسات، التنبيهات)", worker: false, accountant: false, manager: true },
-    { id: "export_data", label: "تصدير نسخة احتياطية", worker: false, accountant: true, manager: true },
-    { id: "restore_backup", label: "استعادة نسخة احتياطية (يستبدل كل البيانات)", worker: false, accountant: false, manager: false },
-    { id: "admin_settings", label: "ملف المنشأة والإعدادات", worker: false, accountant: false, manager: true },
-    { id: "manage_users", label: "المستخدمون وكلمات المرور (للأدنى رتبةً فقط)", worker: false, accountant: false, manager: true },
+    { id: "view_dashboard", grp: "page", label: "الصفحة الرئيسية (لوحة القرار والأرقام)", en: "Home (decision dashboard)", worker: false, accountant: true, manager: true },
+    { id: "create_order", grp: "page", label: "طلب جديد (إنشاء الطلبات)", en: "New order (create orders)", worker: true, accountant: false, manager: true },
+    { id: "view_orders", grp: "page", label: "الطلبات", en: "Orders", worker: true, accountant: true, manager: true },
+    { id: "view_customers", grp: "page", label: "العملاء", en: "Customers", worker: true, accountant: true, manager: true },
+    { id: "delivery", grp: "page", label: "التوصيل والاستلام من البيوت", en: "Pickup & delivery", worker: true, accountant: true, manager: true },
+    { id: "view_balances", grp: "page", label: "الأرصدة وكشوف الحساب", en: "Balances & statements", worker: false, accountant: true, manager: true },
+    { id: "view_reports", grp: "page", label: "التقارير والمالية", en: "Reports & finance", worker: false, accountant: true, manager: true },
+    { id: "add_expense", grp: "page", label: "المخزون والمشتريات (عرض وإضافة)", en: "Inventory & purchases (view and add)", worker: false, accountant: true, manager: true },
+    { id: "payroll", grp: "page", label: "الموظفون والرواتب", en: "Employees & payroll", worker: false, accountant: true, manager: true },
+    { id: "view_closures", grp: "page", label: "الإغلاقات", en: "Closures", worker: false, accountant: true, manager: true },
+    { id: "audit_log", grp: "page", label: "سجل النشاط", en: "Activity log", worker: false, accountant: true, manager: true },
+    { id: "security_center", grp: "page", label: "مركز الأمان (محاولات الدخول، الجلسات، التنبيهات)", en: "Security center (logins, sessions, alerts)", worker: false, accountant: false, manager: true },
+    { id: "admin_settings", grp: "page", label: "ملف المنشأة والإعدادات", en: "Company profile & settings", worker: false, accountant: false, manager: true },
+    { id: "manage_users", grp: "page", label: "المستخدمون والصلاحيات (للأدنى رتبةً فقط)", en: "Users & permissions (lower roles only)", worker: false, accountant: false, manager: true },
+    { id: "cancel_order", grp: "action", label: "إلغاء الطلب بدون موافقة مشرف / إرجاعه من التسليم", en: "Cancel an order without supervisor approval / undo a hand-over", worker: false, accountant: false, manager: true },
+    { id: "give_discount", grp: "action", label: "منح خصم يدوي على الطلب بدون موافقة مشرف (ضمن الحد الأقصى)", en: "Give a manual discount without approval (within the limit)", worker: true, accountant: true, manager: true, rev: 2 },
+    { id: "edit_customer", grp: "action", label: "تعديل بيانات العملاء (الاسم والجوال)", en: "Edit customer details (name, phone)", worker: false, accountant: true, manager: true },
+    { id: "balance_tx", grp: "action", label: "استلام دفعة وإيداع رصيد للعميل / بيع باقة", en: "Take a payment, deposit balance / sell a package", worker: true, accountant: true, manager: true },
+    { id: "balance_adjust", grp: "action", label: "ردّ نقدي / خصم / تسوية رصيد / عكس حركة", en: "Cash refund / deduct / adjust / reverse", worker: false, accountant: true, manager: true },
+    { id: "edit_pricing", grp: "action", label: "تعديل الأسعار والخدمات والباقات والأكواد", en: "Edit prices, services, packages and codes", worker: false, accountant: false, manager: true },
+    { id: "approve_closing", grp: "action", label: "اعتماد الإغلاق اليومي/الشهري", en: "Approve daily/monthly closing", worker: false, accountant: false, manager: true },
+    { id: "delete_records", grp: "action", label: "حذف/إلغاء مشتريات ومواد وموردين", en: "Delete purchases, materials and suppliers", worker: false, accountant: false, manager: true },
+    { id: "export_data", grp: "action", label: "تصدير نسخة احتياطية", en: "Export a backup", worker: false, accountant: true, manager: true },
+    { id: "restore_backup", grp: "action", label: "استعادة نسخة احتياطية (يستبدل كل البيانات)", en: "Restore a backup (replaces all data)", worker: false, accountant: false, manager: false },
   ];
+  const permLabel = (p) => (lang === "ar" ? p.label : p.en || p.label);
   const DEFAULT_PERM_MATRIX = PERM_DEFS.map((p) => ({ ...p, owner: true }));
   function loadPermMatrix() {
     let saved = null;
@@ -1961,12 +1966,14 @@
     const body = document.getElementById("permMatrixBody");
     const isOwner = role === "owner";
     document.getElementById("resetPermMatrixBtn").style.display = isOwner ? "" : "none";
-    body.innerHTML = permMatrix.map((row) => `
+    const sec = (g) => `<tr class="perm-group"><td colspan="5">${g === "page" ? (lang === "ar" ? "📄 الصفحات — ما يظهر في القائمة لكل دور" : "📄 Pages — what each role sees in the menu") : (lang === "ar" ? "⚙️ الإجراءات — ما يُسمح بفعله داخل الصفحات" : "⚙️ Actions — what each role may do inside the pages")}</td></tr>`;
+    const rowsOf = (g) => permMatrix.filter((r) => (r.grp || "action") === g);
+    body.innerHTML = ["page", "action"].map((g) => sec(g) + rowsOf(g).map((row) => `
       <tr>
-        <td>${row.label}</td>
+        <td>${esc(permLabel(row))}</td>
         ${["worker", "accountant", "manager"].map((r) => `<td style="text-align:center"><input type="checkbox" data-perm="${row.id}" data-role="${r}" ${row[r] ? "checked" : ""} ${isOwner ? "" : "disabled"} /></td>`).join("")}
         <td style="text-align:center"><input type="checkbox" checked disabled title="المالك يملك كل الصلاحيات دائماً" /></td>
-      </tr>`).join("");
+      </tr>`).join("")).join("");
     body.querySelectorAll("[data-perm]").forEach((cb) => {
       cb.addEventListener("change", () => {
         if (role !== "owner") { cb.checked = !cb.checked; denied(); return; }
@@ -2473,8 +2480,13 @@
     return permAllows(permId, r);
   }
   // الصفحة الأولى لكل مستخدم: الرئيسية لمن يملكها، وإلا شاشة الطلب الجديد (الموظف)
-  function homePage() { return can("view_dashboard") ? "dashboard" : can("create_order") ? "new-order" : "orders"; }
-  const PAGE_NEED = { dashboard: "view_dashboard", balances: "view_balances", "new-order": "create_order", reports: "view_reports", finance: "view_reports", inventory: "add_expense", employees: "payroll", closures: "view_closures", audit: "audit_log", security: "security_center", profile: "admin_settings", settings: "admin_settings", access: "manage_users" };
+  function homePage() {
+    const order = [["dashboard", "view_dashboard"], ["new-order", "create_order"], ["orders", "view_orders"], ["customers", "view_customers"], ["delivery", "delivery"], ["balances", "view_balances"], ["reports", "view_reports"]];
+    const hit = order.find(([, perm]) => can(perm));
+    return hit ? hit[0] : "orders";
+  }
+  const goOrders = () => openPage(can("view_orders") ? "orders" : homePage());
+  const PAGE_NEED = { orders: "view_orders", customers: "view_customers", delivery: "delivery", dashboard: "view_dashboard", balances: "view_balances", "new-order": "create_order", reports: "view_reports", finance: "view_reports", inventory: "add_expense", employees: "payroll", closures: "view_closures", audit: "audit_log", security: "security_center", profile: "admin_settings", settings: "admin_settings", access: "manage_users" };
   function denied() { toast(AX("e_noperm")); }
   window.L997Auth = { can: (p) => can(p), user: () => me, role: () => role };
 
@@ -4436,7 +4448,7 @@
       const cust = customers.find((c) => c.id === order.customerId);
       resetDraft();
       if (andPrint) printOrder(order.id);
-      openPage("orders");
+      goOrders();
       showOrderSavedPrompt(order, cust);
     };
     if (tt.discount > 0 && draftCode) {
@@ -4691,7 +4703,7 @@
         </div>
       </div>`;
     }).join(""));
-    list.querySelectorAll("[data-view-order]").forEach((btn) => btn.addEventListener("click", () => { recentTransactionsDialog.close(); openPage("orders"); openOrderDialog(btn.dataset.viewOrder); }));
+    list.querySelectorAll("[data-view-order]").forEach((btn) => btn.addEventListener("click", () => { recentTransactionsDialog.close(); goOrders(); openOrderDialog(btn.dataset.viewOrder); }));
     list.querySelectorAll("[data-print-order]").forEach((btn) => btn.addEventListener("click", () => printOrder(btn.dataset.printOrder)));
   }
 

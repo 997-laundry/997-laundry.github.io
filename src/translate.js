@@ -875,6 +875,10 @@
 "مصروف مسبقاً": "already paid",
 "مصروفات": "expenses",
 "مصفوفة الصلاحيات": "Permission matrix",
+"الصفحات والصلاحيات": "Pages & permissions",
+"🛡 الصفحات والصلاحيات": "🛡 Pages & permissions",
+"اختر الصفحات التي تظهر لكل دور والإجراءات المسموحة — تُحفظ تلقائياً. ولاستثناء موظف واحد: زر «صلاحيات» بجانب اسمه في جدول المستخدمين": "Choose which pages each role sees and which actions it may take — saved automatically. To make an exception for one employee: the “Permissions” button next to their name in the users table",
+
 "مطابقة المبيعات والصندوق والمصروفات والفروقات": "Reconcile sales, cash drawer, expenses and differences",
 "مطلوب فقط إن كان يستخدم النظام": "required only if they use the system",
 "معطر": "Fragrance",

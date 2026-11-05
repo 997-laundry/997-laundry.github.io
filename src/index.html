@@ -64,9 +64,9 @@
       <nav class="nav-list">
         <button type="button" class="nav-item active" data-need="view_dashboard" data-page="dashboard">⌂ <span data-i18n="nav_dashboard">الرئيسية</span></button>
         <button type="button" class="nav-item" data-need="create_order" data-page="new-order">＋ <span data-i18n="nav_neworder">طلب جديد</span></button>
-        <button type="button" class="nav-item" data-page="orders">▦ <span data-i18n="nav_orders">الطلبات</span></button>
-        <button type="button" class="nav-item" data-page="customers">◉ <span data-i18n="nav_customers">العملاء</span></button>
-        <button type="button" class="nav-item" data-page="delivery">🚚 <span data-i18n="nav_delivery">التوصيل</span></button>
+        <button type="button" class="nav-item" data-need="view_orders" data-page="orders">▦ <span data-i18n="nav_orders">الطلبات</span></button>
+        <button type="button" class="nav-item" data-need="view_customers" data-page="customers">◉ <span data-i18n="nav_customers">العملاء</span></button>
+        <button type="button" class="nav-item" data-need="delivery" data-page="delivery">🚚 <span data-i18n="nav_delivery">التوصيل</span></button>
         <button type="button" class="nav-item" data-need="view_balances" data-page="balances">◈ <span data-i18n="nav_balances">الأرصدة</span></button>
         <button type="button" class="nav-item" data-need="view_reports" data-page="reports">▥ <span data-i18n="nav_reports">التقارير</span></button>
 
@@ -472,14 +472,14 @@
         <div class="access-jump" id="accessJump">
           <button type="button" class="secondary-btn" data-jump="usersPanel">👥 المستخدمون</button>
           <button type="button" class="secondary-btn" data-jump="securityPanel">🔐 إعدادات الأمان</button>
-          <button type="button" class="primary-btn" data-jump="permMatrixPanel">🛡 مصفوفة الصلاحيات</button>
+          <button type="button" class="primary-btn" data-jump="permMatrixPanel">🛡 الصفحات والصلاحيات</button>
         </div>
         <div class="content-grid" style="grid-template-columns:1fr">
           <div class="panel" id="usersPanel"><div class="panel-header"><div><h3>المستخدمون</h3><p>بيانات الدخول والتفاصيل الشخصية لكل موظف</p></div><button class="primary-btn" id="accessAddUserBtn">＋ مستخدم</button></div><div class="table-wrap"><table><thead><tr><th>الرقم الوظيفي</th><th>المستخدم</th><th>اسم الدخول</th><th>الدور</th><th>آخر دخول</th><th>تاريخ الانتهاء</th><th>الحالة</th><th></th></tr></thead><tbody id="accessUsersBody"></tbody></table></div></div>
           <div class="panel" id="securityPanel"></div>
         </div>
         <div class="panel" id="permMatrixPanel" style="margin-top:18px">
-          <div class="panel-header"><div><h3>مصفوفة الصلاحيات</h3><p>فعّل أو عطّل كل صلاحية لكل دور — تُحفظ تلقائياً</p></div><button class="secondary-btn" type="button" id="resetPermMatrixBtn">استعادة الافتراضي</button></div>
+          <div class="panel-header"><div><h3>الصفحات والصلاحيات</h3><p>اختر الصفحات التي تظهر لكل دور والإجراءات المسموحة — تُحفظ تلقائياً. ولاستثناء موظف واحد: زر «صلاحيات» بجانب اسمه في جدول المستخدمين</p></div><button class="secondary-btn" type="button" id="resetPermMatrixBtn">استعادة الافتراضي</button></div>
           <div class="table-wrap"><table class="permission-table" id="permMatrixTable"><thead><tr><th>الصلاحية</th><th>عامل</th><th>محاسب</th><th>مدير</th><th>مالك</th></tr></thead><tbody id="permMatrixBody"></tbody></table></div>
         </div>
       </section>
