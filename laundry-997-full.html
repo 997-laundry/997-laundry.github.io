@@ -5127,7 +5127,7 @@ body.auth-locked .top-logout{display:none!important}
           ${chain ? (chain.bad.length || chain.gaps.length ? `<div class="cloud-warn">⚠ <b>${chain.bad.length}</b> قيد معدّل و<b>${chain.gaps.length}</b> فجوة (قيود محذوفة) — ${chain.bad.slice(0, 5).map((a) => `${fmtDT(a.at)}: ${esc(a.action.slice(0, 60))}`).join(" · ")}</div>` : `<p style="color:var(--success);font-weight:700">✓ السجل سليم — ${chain.checked} قيد من ${chain.devices} جهاز، بلا تعديل أو حذف.${chain.unsigned ? ` (${chain.unsigned} قيد قديم قبل تفعيل البصمات)` : ""}</p>`) : `<p class="section-note">اضغط «فحص سلامة السجل».</p>`}
         </div>
         <div class="panel" style="margin-top:14px"><div class="panel-header"><div><h3>🔐 حسابات الإدارة</h3></div></div>
-          <div class="table-wrap"><table><thead><tr><th>الحساب</th><th>الدور</th><th>التحقق بخطوتين</th><th>أجهزة موثوقة</th><th>آخر دخول</th></tr></thead><tbody>${admins.map((e) => { const tr = (e.mfaTrust || []).filter((x) => x.until > Date.now()); return `<tr><td>${esc(e.name)}</td><td>${esc(ACCESS_ROLE_AR[validRole(e.role)] || e.role)}</td><td>${e.mfaOn ? '<span class="status-badge status-ready">مفعّل</span>' : '<span class="status-badge status-cancelled">غير مفعّل</span>'}</td><td>${tr.length ? `${tr.map((x) => esc(x.label || "جهاز")).join("، ")} ${role === "owner" ? `<button class="mini-btn danger-mini" type="button" data-forget-trust="${e.id}">إلغاء</button>` : ""}` : "—"}</td><td>${e.lastLogin ? fmtDT(e.lastLogin) : "—"}</td></tr>`; }).join("")}</tbody></table></div>
+          <div class="table-wrap"><table><thead><tr><th>الحساب</th><th>الدور</th><th>التحقق بخطوتين</th><th>أجهزة موثوقة</th><th>آخر دخول</th></tr></thead><tbody>${admins.map((e) => { const tr = (e.mfaTrust || []).filter((x) => x.until > Date.now() && Date.parse(x.at || 0) > (Number(e.mfaTrustResetAt) || 0)); return `<tr><td>${esc(e.name)}</td><td>${esc(ACCESS_ROLE_AR[validRole(e.role)] || e.role)}</td><td>${e.mfaOn ? '<span class="status-badge status-ready">مفعّل</span>' : '<span class="status-badge status-cancelled">غير مفعّل</span>'}</td><td>${e.mfaOn ? `${tr.length ? tr.map((x) => esc(x.label || "جهاز")).join("، ") : "—"} ${role === "owner" ? `<button class="mini-btn danger-mini" type="button" data-forget-trust="${e.id}">إلغاء الثقة</button>` : ""}` : "—"}</td><td>${e.lastLogin ? fmtDT(e.lastLogin) : "—"}</td></tr>`; }).join("")}</tbody></table></div>
           <p class="section-note">التفعيل لكل حساب: المستخدمون والصلاحيات ← سياسات الأمان ← «تفعيل التحقق بخطوتين».</p></div>
         <div class="panel" style="margin-top:14px"><div class="panel-header"><div><h3>آخر التنبيهات</h3></div></div>${evTable(alerts.slice(0, 8))}</div>`;
     } else if (secView.tab === "logins") {
@@ -5708,7 +5708,7 @@ body.auth-locked .top-logout{display:none!important}
       ${me && isAdminRole(me.role) ? `<div class="wa-api-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft);margin:6px 0 12px">
         <strong>🔐 التحقق بخطوتين لحسابي (${esc(me.name)})</strong>
         <p class="section-note" style="margin:6px 0 8px">${me.mfaOn ? `مفعّل منذ ${me.mfaAt ? fmtDT(me.mfaAt) : "—"} — يُطلب الرمز عند الدخول من جهاز جديد، والأجهزة التي تختار فيها «تذكّر هذا الجهاز» لا يُطلب فيها لمدة ${MFA_TRUST_DAYS} يوماً.` : "غير مفعّل — بعد التفعيل يُطلب رمز من 6 أرقام من تطبيق Google Authenticator أو Microsoft Authenticator عند كل دخول."}</p>
-        ${me.mfaOn && (me.mfaTrust || []).filter((x) => x.until > Date.now()).length ? `<div class="mfa-trust-list"><b>💻 الأجهزة الموثوقة:</b> ${(me.mfaTrust || []).filter((x) => x.until > Date.now()).map((x) => `<span class="status-badge status-ready">${esc(x.label || "جهاز")}${x.dev === deviceId() ? " (هذا الجهاز)" : ""} — حتى ${fmtDT(new Date(x.until).toISOString())}</span>`).join(" ")} <button class="mini-btn danger-mini" type="button" id="secMfaForgetBtn">إلغاء الثقة بكل الأجهزة</button></div>` : ""}
+        ${me.mfaOn ? `<div class="mfa-trust-list"><b>💻 الأجهزة الموثوقة:</b> ${isTrustedDevice(me, null) && !(me.mfaTrust || []).some((x) => x.dev === deviceId() && x.until > Date.now()) ? `<span class="status-badge status-ready">${esc(deviceLabel())} (هذا الجهاز)</span> ` : ""}${(me.mfaTrust || []).filter((x) => x.until > Date.now() && Date.parse(x.at || 0) > (Number(me.mfaTrustResetAt) || 0)).map((x) => `<span class="status-badge status-ready">${esc(x.label || "جهاز")}${x.dev === deviceId() ? " (هذا الجهاز)" : ""} — حتى ${fmtDT(new Date(x.until).toISOString())}</span>`).join(" ")} <button class="mini-btn danger-mini" type="button" id="secMfaForgetBtn">إلغاء الثقة بكل الأجهزة</button></div>` : ""}
         ${cloudOn() ? (me.mfaOn ? `<button class="ghost-btn danger-mini" type="button" id="secMfaOffBtn">إيقاف التحقق بخطوتين</button>` : `<button class="primary-btn" type="button" id="secMfaOnBtn">تفعيل التحقق بخطوتين</button>`) : `<p class="section-note">اربط النظام بالسحابة أولاً (ملف المنشأة ← المزامنة السحابية).</p>`}
       </div>` : ""}
       ${isOwner ? `<button class="primary-btn" id="secSaveBtn">حفظ السياسات</button>` : `<p class="section-note">تعديل السياسات للمالك فقط.</p>`}
@@ -5734,7 +5734,7 @@ body.auth-locked .top-logout{display:none!important}
             for (const x of f.factors) { const ok = await CLOUD.mfaVerify(me.cloudUserId, x.id, v.code); if (ok.error) return { error: "bad-code" }; const del = await CLOUD.mfaRemove(me.cloudUserId, x.id); if (del.error) return del; }
             return { ok: true };
           }, () => {
-            me.mfaOn = false; me.mfaAt = ""; me.mfaTrust = []; persistEmps();
+            me.mfaOn = false; me.mfaAt = ""; me.mfaTrust = []; me.mfaTrustResetAt = Date.now(); persistEmps();
             secLog("mfa_off", `إيقاف التحقق بخطوتين — ${me.name}`, { sev: "warn" });
             toast("تم إيقاف التحقق بخطوتين"); renderAccessPage();
           });
@@ -6546,26 +6546,30 @@ body.auth-locked .top-logout{display:none!important}
   }
   const isAdminRole = (r0) => ["owner", "manager"].includes(validRole(r0));
   /* «تذكّر هذا الجهاز»: بعد رمز صحيح، لا يُطلب الرمز على نفس الجهاز لمدة 30 يوماً.
-     الثقة مسجّلة في مكانين: على الجهاز نفسه + في حساب الموظف (يتزامن) — فيمكن إلغاؤها عن بُعد من مركز الأمان،
-     وتسقط تلقائياً عند إيقاف/إعادة إعداد التحقق بخطوتين (تغيّر معرّف عامل المصادقة) أو انتهاء المدة. */
+     الثقة تُحفظ على الجهاز نفسه (لا تعتمد على قائمة مشتركة كانت تُمسح عند تعارض المزامنة بين جهازين).
+     الإلغاء عن بُعد: «إلغاء الثقة بكل الأجهزة» يسجّل تاريخاً في حساب الموظف (mfaTrustResetAt) — أي ثقة أقدم منه تسقط.
+     وتسقط أيضاً عند إيقاف/إعادة إعداد التحقق بخطوتين (تغيّر معرّف عامل المصادقة) أو انتهاء المدة.
+     قائمة mfaTrust في الحساب للعرض فقط (أي الأجهزة موثوقة). */
   const MFA_TRUST_DAYS = 30, MFA_TRUST_KEY = "l997_mfa_trust";
   function mfaTrustLocal() { try { return JSON.parse(localStorage.getItem(MFA_TRUST_KEY) || "{}") || {}; } catch (e) { return {}; } }
   function isTrustedDevice(emp, factorId) {
     const loc = mfaTrustLocal()[emp.id], now = Date.now();
-    if (!loc || !(loc.until > now) || (factorId && loc.factor !== factorId)) return false;
-    return (emp.mfaTrust || []).some((x) => x.dev === deviceId() && x.tok === loc.tok && x.until > now);
+    if (!loc || !(loc.until > now) || (factorId && loc.factor && loc.factor !== factorId)) return false;
+    const made = Number(loc.at) || (Number(loc.until) - MFA_TRUST_DAYS * 864e5);
+    return made > (Number(emp.mfaTrustResetAt) || 0);
   }
   function trustThisDevice(emp, factorId) {
     const tok = uid(), until = Date.now() + MFA_TRUST_DAYS * 864e5;
-    const all = mfaTrustLocal(); all[emp.id] = { tok, until, factor: factorId || "" };
+    const all = mfaTrustLocal(); all[emp.id] = { tok, until, factor: factorId || "", at: Date.now() };
     try { localStorage.setItem(MFA_TRUST_KEY, JSON.stringify(all)); } catch (e) { return; }
     emp.mfaTrust = (emp.mfaTrust || []).filter((x) => x.dev !== deviceId() && x.until > Date.now()).concat([{ dev: deviceId(), label: deviceLabel(), tok, until, at: new Date().toISOString() }]);
     persistEmps();
     secLog("mfa_trust", `تذكّر الجهاز ${MFA_TRUST_DAYS} يوماً للتحقق بخطوتين — ${emp.name} — ${deviceLabel()}`, { u: emp.username });
   }
   function forgetTrustedDevices(emp, why) {
-    if (!(emp.mfaTrust || []).length) return 0;
-    const n = emp.mfaTrust.length; emp.mfaTrust = []; persistEmps();
+    const n = (emp.mfaTrust || []).length;
+    emp.mfaTrust = []; emp.mfaTrustResetAt = Date.now(); persistEmps();
+    try { const all = mfaTrustLocal(); delete all[emp.id]; localStorage.setItem(MFA_TRUST_KEY, JSON.stringify(all)); } catch (e) { /* ignore */ }
     secLog("mfa_trust", `إلغاء الأجهزة الموثوقة (${n}) — ${emp.name}${why ? " — " + why : ""}`, { u: emp.username, sev: "warn" });
     return n;
   }
@@ -6609,7 +6613,7 @@ body.auth-locked .top-logout{display:none!important}
     const v = await CLOUD.mfaVerify(authCtx.uid, authCtx.factor, code);
     btn.disabled = false;
     if (v.error) return setErr(v.error === "bad-code" ? (lang === "en" ? "Wrong code — check the time on the phone and try the new code" : "الرمز غير صحيح — تأكد من وقت الجوال وجرّب الرمز الجديد") : cloudErr(v.error));
-    e.mfaOn = true; e.mfaAt = new Date().toISOString(); e.mfaTrust = []; persistEmps();
+    e.mfaOn = true; e.mfaAt = new Date().toISOString(); e.mfaTrust = []; e.mfaTrustResetAt = Date.now(); persistEmps();
     secLog("mfa_on", `تفعيل التحقق بخطوتين — ${e.name}`, { u: e.username, sev: "info" });
     e._mfaPassed = true;
     if (authCtx.fromSettings) { pendingUser = null; hideAuth(); toast("✓ تم تفعيل التحقق بخطوتين"); renderAccessPage(); return; }
