@@ -642,3 +642,10 @@ body.auth-locked .top-logout{display:none!important}
 
 .cp-pkg-terms{font-size:12.5px;margin:4px 0;color:var(--text);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .cp-pkg-terms.expired{color:var(--danger);font-weight:700}
+
+/* أيقونات الأصناف SVG */
+.gi{display:block}
+.pos-tile-icon .gi{margin:0 auto}
+.cart-icon{display:inline-flex;vertical-align:middle}
+.qa-icon{display:inline-flex;vertical-align:middle;margin-inline-end:4px}
+.pos-tile-icon .gi{width:80%;height:80%}

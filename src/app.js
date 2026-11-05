@@ -3533,6 +3533,8 @@
     shaila: "🧕", jalabiya: "👗", bdf_uniform: "🪖", hoodie_jacket: "🧥", overcoat_long: "🧥", shoes: "👟", small_towel: "🧻",
   };
 
+  // أيقونة الصنف: رسمة SVG مخصصة (icons.js)، وإلا الإيموجي القديم
+  const gIcon = (id, size) => (window.L997Icons ? window.L997Icons.svg(id, size) : (CLOTHING_ICONS[id] || "🧺"));
   let quickAddClothingId = null;
   let quickAddServiceId = null;
   let quickQty = 1;
@@ -3605,7 +3607,7 @@
       const inCartQty = draftItems.filter((it) => it.clothingId === g.id && !it.fromPackageId).reduce((s, it) => s + it.qty, 0);
       return `<button type="button" class="pos-tile" data-cloth="${g.id}">
         ${inCartQty > 0 ? `<span class="pos-tile-qty-badge">${inCartQty}</span>` : ""}
-        <span class="pos-tile-icon">${CLOTHING_ICONS[g.id] || g.icon || "🧺"}</span>
+        <span class="pos-tile-icon">${gIcon(g.id, 40)}</span>
         <span class="pos-tile-name">${name}</span>
         <span class="pos-tile-price">من ${money(minPrice)}</span>
         <span type="button" class="pos-tile-other-service" data-other-service="${g.id}">خدمة أخرى</span>
@@ -3780,7 +3782,7 @@
     document.getElementById("quickQtyValue").textContent = "1";
     document.getElementById("quickAddNote").value = "";
     const g = allGarments().find((x) => x.id === clothingId);
-    document.getElementById("quickAddTitle").textContent = `${CLOTHING_ICONS[clothingId] || g?.icon || ""} ${g ? (g.key ? t(g.key) : g.name) : clothingId}`;
+    document.getElementById("quickAddTitle").innerHTML = `<span class="qa-icon">${gIcon(clothingId, 30)}</span> ${esc(g ? (g.key ? t(g.key) : g.name) : clothingId)}`;
 
     const wrap = document.getElementById("quickAddServices");
     const availableServices = SERVICES_DEFAULT.filter((s) => offerPrice(clothingId, s.id) > 0);
@@ -3844,7 +3846,7 @@
     if (countLabel) countLabel.textContent = `${draftItems.length} صنف — ${draftItems.reduce((s, it) => s + it.qty, 0)} قطعة`;
     body.innerHTML = draftItems.map((it) => `
       <div class="pos-cart-row">
-        <span style="font-size:20px">${CLOTHING_ICONS[it.clothingId] || "🧺"}</span>
+        <span class="cart-icon">${gIcon(it.clothingId, 28)}</span>
         <div class="pos-cart-row-info">
           <div class="pos-cart-row-title">${clothingName(it.clothingId)}</div>
           <div class="pos-cart-row-sub">
@@ -6802,7 +6804,7 @@
     });
     body.innerHTML = sorted.map((g) => {
       const off = pkgWeight(g.id, "washiron") === 0 && pkgWeight(g.id, "iron") === 0;
-      return `<tr><td>${CLOTHING_ICONS[g.id] || g.icon || ""} <strong>${esc(clothingName(g.id))}</strong>${off ? ` <span class="status-badge status-cancelled">خارج الباقات</span>` : ""}</td><td>${cell(g, "washiron")}</td><td>${cell(g, "iron")}</td></tr>`;
+      return `<tr><td><span class="cart-icon">${gIcon(g.id, 22)}</span> <strong>${esc(clothingName(g.id))}</strong>${off ? ` <span class="status-badge status-cancelled">خارج الباقات</span>` : ""}</td><td>${cell(g, "washiron")}</td><td>${cell(g, "iron")}</td></tr>`;
     }).join("");
   }
   document.getElementById("savePackageWeightsBtn")?.addEventListener("click", () => {
