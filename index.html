@@ -660,6 +660,9 @@ body.auth-locked .top-logout{display:none!important}
 .auth-trust{margin:2px 0 10px;font-size:13px;align-items:flex-start}
 .mfa-trust-list{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px;font-size:13px}
 
+.cp-pkg-terms{font-size:12.5px;margin:4px 0;color:var(--text);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cp-pkg-terms.expired{color:var(--danger);font-weight:700}
+
 </style>
 </head>
 <body class="auth-locked">
@@ -1157,7 +1160,7 @@ body.auth-locked .top-logout{display:none!important}
                 <label class="check-line"><input id="dlvOnSetting" type="checkbox" /> <span data-en="Turn on home pickup & delivery">تفعيل خدمة الاستلام والتوصيل</span></label>
                 <div class="dlv-settings-grid">
                   <label><span data-en="Trip fee — customer without a package (BD)">رسوم المشوار — عميل بدون باقة (د.ب)</span><input id="dlvFeeSetting" type="text" inputmode="decimal" /></label>
-                  <label><span data-en="Free trips a month — package customer">مشاوير مجانية شهرياً — عميل الباقة</span><input id="dlvPkgFreeSetting" type="text" inputmode="numeric" /></label>
+                  <label><span data-en="Free trips a month — default for packages (each package can override)">مشاوير مجانية شهرياً — الافتراضي للباقات (يمكن تغييره لكل باقة)</span><input id="dlvPkgFreeSetting" type="text" inputmode="numeric" /></label>
                   <label><span data-en="Package trip fee after the free ones (BD)">رسوم المشوار للباقة بعد المجاني (د.ب)</span><input id="dlvPkgFeeSetting" type="text" inputmode="decimal" /></label>
                   <label><span data-en="Free delivery for orders from (BD) — 0 = off">توصيل مجاني للطلب من (د.ب) — 0 = لا يوجد</span><input id="dlvFreeOverSetting" type="text" inputmode="decimal" /></label>
                 </div>
@@ -1175,7 +1178,7 @@ body.auth-locked .top-logout{display:none!important}
 
           <div class="panel" data-settings-panel="packages" style="display:none">
             <div class="panel-header"><div><h3>الباقات</h3><p>تعريف باقات مسبقة الدفع (عدد قطع بسعر ثابت) — أدخل أسعارك الخاصة</p></div><button class="primary-btn" id="addPackageDefBtn">＋ باقة جديدة</button></div>
-            <div class="table-wrap"><table><thead><tr><th>اسم الباقة</th><th>نوع الخدمة</th><th>عدد القطع</th><th>السعر</th><th>هدية مجانية</th><th></th></tr></thead><tbody id="packageDefsBody"></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>اسم الباقة</th><th>نوع الخدمة</th><th>عدد القطع</th><th>السعر</th><th>الصلاحية</th><th>مشاوير مجانية</th><th>هدية مجانية</th><th></th></tr></thead><tbody id="packageDefsBody"></tbody></table></div>
           </div>
 
           <div class="panel" data-settings-panel="packages" style="display:none">
@@ -7403,7 +7406,22 @@ body.auth-locked .top-logout{display:none!important}
   // كود خاص: يعمل فقط للعملاء الذين حددهم المالك؛ كود عام (scope ≠ customers): لكل العملاء
   const codeRestricted = (c) => c && c.scope === "customers";
   function codeAllowed(c, custId) { return !codeRestricted(c) || (!!custId && (c.customerIds || []).includes(custId)); }
-  function codesForCustomer(custId) { return (settings.discountCodes || []).filter((c) => c.active !== false && codeRestricted(c) && (c.customerIds || []).includes(custId)); }
+  function codesForCustomer(custId) { return (settings.discountCodes || []).filter((c) => codeProblem(c) === "" && codeRestricted(c) && (c.customerIds || []).includes(custId)); }
+  // صلاحية الكود: تاريخ انتهاء اختياري (فارغ = دائم) وعدد استخدامات أقصى اختياري (0 = بلا حد)
+  const codeUses = (code) => orders.filter((o) => o.discountCode === code && o.status !== "cancelled").length;
+  function codeProblem(c) {
+    if (!c) return "missing";
+    if (c.active === false) return "off";
+    if (c.expiresAt && c.expiresAt < todayStr()) return "expired";
+    if (Number(c.maxUses) > 0 && codeUses(c.code) >= Number(c.maxUses)) return "used_up";
+    return "";
+  }
+  function codeLimitsText(c) {
+    const parts = [];
+    parts.push(c.expiresAt ? (lang === "ar" ? `حتى ${c.expiresAt}` : `until ${c.expiresAt}`) : (lang === "ar" ? "♾ دائم" : "♾ no expiry"));
+    if (Number(c.maxUses) > 0) parts.push(lang === "ar" ? `${codeUses(c.code)}/${c.maxUses} استخدام` : `${codeUses(c.code)}/${c.maxUses} uses`);
+    return parts.join(" · ");
+  }
   // وصف الكود: «خصم 45%» أو «سعر القطعة 0.300» أو «الطلب مجاني»
   function codeDesc(c) {
     if (!c) return "";
@@ -7531,6 +7549,8 @@ body.auth-locked .top-logout{display:none!important}
     const c = findCode(raw);
     if (!c) { toast(`الكود «${raw}» غير موجود`); logActivity(`محاولة كود خصم غير صحيح «${raw}»`); return; }
     if (c.active === false) { toast(`الكود «${raw}» غير مفعّل`); return; }
+    if (codeProblem(c) === "expired") { toast(`الكود «${c.code}» انتهت صلاحيته في ${c.expiresAt}`); logActivity(`محاولة كود منتهي «${c.code}»`); return; }
+    if (codeProblem(c) === "used_up") { toast(`الكود «${c.code}» استُخدم الحد الأقصى (${c.maxUses} مرة)`); return; }
     if (codeRestricted(c) && !draftCustomerId) { toast("هذا كود خاص بعملاء محددين — اختر العميل أولاً ثم طبّق الكود"); return; }
     if (!codeAllowed(c, draftCustomerId)) {
       const cn = (customers.find((x) => x.id === draftCustomerId) || {}).name || "";
@@ -7570,6 +7590,8 @@ body.auth-locked .top-logout{display:none!important}
     if (converted) { toast(`تم تغيير العميل — ${converted} قطعة كانت من باقة العميل السابق أصبحت بالسعر العادي`); renderOrderItemsTable(); }
     draftCustomerId = cust.id;
     if (draftCode && !codeAllowed(findCode(draftCode.code), cust.id)) { toast(`أُزيل الكود «${draftCode.code}» — خاص بعملاء آخرين`); clearDraftCode(false); }
+    const expiredPk = customerPackages.filter((cp) => cp.customerId === cust.id && cp.remainingPieces > 0 && pkgExpired(cp));
+    if (expiredPk.length && !activePackagesForCustomer(cust.id).length && !silent) toast(`⛔ باقة «${expiredPk[0].name}» منتهية الصلاحية منذ ${expiredPk[0].expiresAt} (متبقي ${expiredPk[0].remainingPieces} قطعة) — مددها من ملف العميل إن أردت`);
     if (!draftDelivery.address && (cust.address || cust.area)) draftDelivery.address = [cust.area, cust.address].filter(Boolean).join(" — ");
     renderPosDelivery();
     const card = document.getElementById("selectedCustomerCard");
@@ -7749,7 +7771,7 @@ body.auth-locked .top-logout{display:none!important}
     };
     if (tt.discount > 0 && draftCode) {
       const c = findCode(draftCode.code);
-      if (!c || c.active === false) { toast("كود الخصم لم يعد صالحاً — أزله أو اكتب كوداً آخر"); return; }
+      if (!c || codeProblem(c)) { toast("كود الخصم لم يعد صالحاً (موقوف أو منتهي أو استُنفد) — أزله أو اكتب كوداً آخر"); return; }
       if (!codeAllowed(c, draftCustomerId)) { toast(`الكود «${c.code}» غير مسموح لهذا العميل — أزله`); return; }
       proceed(null, false);
     } else if (tt.discount > 0) {
@@ -9190,6 +9212,7 @@ body.auth-locked .top-logout{display:none!important}
       return `<div class="cp-pkg${u.finished ? " done" : ""}">
         <div class="cp-pkg-top"><strong>${esc(u.pkg.name)}</strong><span>${serviceName(u.pkg.serviceType)}</span><small class="inv-muted">${en ? "Bought" : "شراء"} ${fmtDT(u.pkg.purchasedAt)} · ${money(u.pkg.price)}</small></div>
         <div class="cp-pkg-garments">👕 ${esc(garmentsLabel(u.pkg.garments, 8))}</div>
+        <div class="cp-pkg-terms ${pkgExpired(u.pkg) ? "expired" : ""}">${esc(pkgTermsText(u.pkg))}${role === "owner" || can("admin_settings") ? ` <button class="mini-btn" type="button" data-pkg-edit="${u.pkg.id}">✏️ ${en ? "Edit" : "تعديل"}</button>` : ""}</div>
         <div class="cp-pkg-bar"><div style="width:${pct}%"></div></div>
         <div class="cp-pkg-nums"><span>${en ? "Total" : "الإجمالي"} <b>${u.total}</b></span><span>${en ? "Used" : "المستهلك"} <b>${u.used}</b></span><span>${en ? "Left" : "المتبقي"} <b style="color:${u.finished ? "var(--muted)" : "var(--success)"}">${u.remaining}${u.finished ? (en ? " (finished)" : " (منتهية)") : ""}</b></span></div>
         ${u.consistent ? "" : `<div class="cp-pkg-warn">⚠ ${en ? `Stored balance (${u.stored}) differs from order history (${u.remaining})` : `الرصيد المحفوظ (${u.stored}) لا يطابق سجل الطلبات (${u.remaining})`}${can("admin_settings") ? ` <button class="mini-btn" type="button" data-pkg-fix="${u.pkg.id}">${en ? "Fix" : "تصحيح"}</button>` : ""}</div>`}
@@ -9237,7 +9260,7 @@ body.auth-locked .top-logout{display:none!important}
           ${card(L.cnt[0], cs.counts.open)}${card(L.cnt[1], cs.counts.ready)}${card(L.cnt[2], cs.counts.delivered)}${card(L.cnt[3], cs.counts.cancelled)}
         </div>
         ${packagesHtml}
-        ${dlvCfg().on ? (() => { const q = deliveryQuote(c.id, { pickup: false, drop: false }, 0); return `<p class="section-note" style="margin:10px 0 0">🚚 ${q.hasPkg ? `${en ? "Free trips this month" : "المشاوير المجانية هذا الشهر"}: <b>${q.used}/${q.quota}</b> — ${en ? "left" : "متبقي"} <b>${Math.max(0, q.quota - q.used)}</b>` : `${en ? "Delivery trip fee" : "رسوم المشوار"}: <b>${money(dlvCfg().fee)}</b>${dlvCfg().freeOver > 0 ? ` (${en ? "free over" : "مجاني فوق"} ${money(dlvCfg().freeOver)})` : ""}`}</p>`; })() : ""}
+        ${dlvCfg().on ? (() => { const q = deliveryQuote(c.id, { pickup: false, drop: false }, 0); return `<p class="section-note" style="margin:10px 0 0">🚚 ${q.hasPkg ? `${tripPeriodWord(q.st)}: <b>${q.used}/${q.quota}</b> — ${en ? "left" : "متبقي"} <b>${Math.max(0, q.quota - q.used)}</b>` : `${en ? "Delivery trip fee" : "رسوم المشوار"}: <b>${money(dlvCfg().fee)}</b>${dlvCfg().freeOver > 0 ? ` (${en ? "free over" : "مجاني فوق"} ${money(dlvCfg().freeOver)})` : ""}`}</p>`; })() : ""}
         ${codesForCustomer(c.id).length ? `<p class="section-note" style="margin:10px 0 0">🏷 ${en ? "Customer codes" : "أكواد العميل"}: ${codesForCustomer(c.id).map((x) => `<b dir="ltr">${esc(x.code)}</b> (${esc(codeDesc(x))})`).join(" · ")}</p>` : ""}
         <div class="row-actions" style="margin:14px 0;flex-wrap:wrap">
           <button class="primary-btn" type="button" id="cpNewOrder">${L.neworder}</button>
@@ -9260,6 +9283,7 @@ body.auth-locked .top-logout{display:none!important}
     if (q("cpDelete")) q("cpDelete").onclick = () => deleteCustomer(c.id);
     if (q("cpStatement")) q("cpStatement").onclick = () => { customerProfileDialog.close(); bv.stmt = c.id; openPage("balances"); };
     if (q("cpPickup")) q("cpPickup").onclick = () => { customerProfileDialog.close(); openPickupForm(c.id); };
+    document.querySelectorAll("#customerProfileContent [data-pkg-edit]").forEach((b) => (b.onclick = () => { const cp = customerPackages.find((x) => x.id === b.dataset.pkgEdit); if (cp) editCustomerPackage(cp, () => setTimeout(renderCustomerProfile, 150)); }));
     if (q("cpCodes")) q("cpCodes").onclick = () => {
       const list = (settings.discountCodes || []).filter(codeRestricted);
       openQuickForm({
@@ -9959,7 +9983,7 @@ body.auth-locked .top-logout{display:none!important}
     const list = settings.discountCodes || [];
     const uses = (code) => orders.filter((o) => o.discountCode === code && o.status !== "cancelled").length;
     const edit = can("edit_pricing");
-    body.innerHTML = list.length ? list.map((c) => `<tr style="${c.active === false ? "opacity:.5" : ""}"><td><b dir="ltr">${esc(c.code)}</b>${c.note ? `<div class="pos-cart-row-sub">${esc(c.note)}</div>` : ""}</td><td>${esc(codeDesc(c))}</td><td>${codeCustomersLabel(c)}</td><td>${uses(c.code)}</td>
+    body.innerHTML = list.length ? list.map((c) => `<tr style="${c.active === false ? "opacity:.5" : ""}"><td><b dir="ltr">${esc(c.code)}</b>${c.note ? `<div class="pos-cart-row-sub">${esc(c.note)}</div>` : ""}</td><td>${esc(codeDesc(c))}<div class="pos-cart-row-sub">${esc(codeLimitsText(c))}${codeProblem(c) === "expired" ? ` · <b style="color:var(--danger)">منتهي</b>` : codeProblem(c) === "used_up" ? ` · <b style="color:var(--danger)">استُنفد</b>` : ""}</div></td><td>${codeCustomersLabel(c)}</td><td>${uses(c.code)}</td>
       <td style="text-align:center"><input type="checkbox" data-code-active="${esc(c.code)}" ${c.active === false ? "" : "checked"} ${edit ? "" : "disabled"} /></td>
       <td>${edit ? `${codeRestricted(c) ? `<button class="mini-btn" data-code-cust="${esc(c.code)}">👥 العملاء</button> ` : ""}<button class="mini-btn" data-code-edit="${esc(c.code)}">تعديل</button> <button class="mini-btn danger-mini" data-code-del="${esc(c.code)}">حذف</button>` : ""}</td></tr>`).join("")
       : `<tr><td colspan="6" class="empty-state compact">لا توجد أكواد بعد</td></tr>`;
@@ -10010,6 +10034,8 @@ body.auth-locked .top-logout{display:none!important}
         { id: "type", label: "نوع الخصم", type: "select", value: existing && existing.type === "piece" ? "piece" : "percent", options: [{ value: "percent", label: "نسبة % من الطلب (100% = الطلب مجاني)" }, { value: "piece", label: "سعر ثابت للقطعة (د.ب)" }] },
         { id: "percent", label: "نسبة الخصم % (لنوع النسبة)", type: "number", step: "1", min: 1, value: existing ? existing.percent || "" : 10 },
         { id: "piecePrice", label: "سعر القطعة د.ب (لنوع السعر الثابت — مثال 0.300)", type: "number", step: "0.001", min: 0, value: existing && existing.type === "piece" ? existing.piecePrice : "" },
+        { id: "expiresAt", label: "📅 تاريخ الانتهاء (اتركه فارغاً = دائم)", type: "date", value: existing ? existing.expiresAt || "" : "" },
+        { id: "maxUses", label: "🔢 أقصى عدد استخدامات (0 = بلا حد)", type: "number", step: "1", min: 0, value: existing ? Number(existing.maxUses) || 0 : 0 },
         { id: "scope", label: "من يستخدمه؟", type: "select", value: existing && existing.scope === "customers" ? "customers" : "all", options: [{ value: "all", label: "كل العملاء" }, { value: "customers", label: "عملاء محددين فقط (تختارهم بعد الحفظ)" }] },
       ],
       submitLabel: "حفظ",
@@ -10020,7 +10046,8 @@ body.auth-locked .top-logout{display:none!important}
         if (v.type === "piece" && !(pp >= 0 && String(v.piecePrice).trim() !== "")) { toast("أدخل سعر القطعة (مثال 0.300)"); return false; }
         settings.discountCodes = settings.discountCodes || [];
         const dup = settings.discountCodes.find((x) => x.code === code);
-        const data = { code, type: v.type, percent: v.type === "percent" ? round3(pct) : 0, piecePrice: v.type === "piece" ? pp : undefined, scope: v.scope, note: v.note };
+        if (v.expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(v.expiresAt)) { toast("تاريخ الانتهاء غير صحيح"); return false; }
+        const data = { code, type: v.type, percent: v.type === "percent" ? round3(pct) : 0, piecePrice: v.type === "piece" ? pp : undefined, scope: v.scope, note: v.note, expiresAt: v.expiresAt || "", maxUses: Math.max(0, Math.floor(Number(v.maxUses) || 0)) };
         let target = existing;
         if (existing) {
           if (code !== existing.code && dup) { toast("هذا الكود موجود"); return false; }
@@ -10166,12 +10193,12 @@ body.auth-locked .top-logout{display:none!important}
   function renderPackageDefs() {
     const body = document.getElementById("packageDefsBody");
     if (settings.packageDefs.length === 0) {
-      body.innerHTML = `<tr><td colspan="6" class="empty-state compact">لا توجد باقات معرّفة بعد — أضف باقتك الأولى</td></tr>`;
+      body.innerHTML = `<tr><td colspan="8" class="empty-state compact">لا توجد باقات معرّفة بعد — أضف باقتك الأولى</td></tr>`;
       return;
     }
     body.innerHTML = settings.packageDefs.map((p) => `<tr>
       <td><strong>${esc(p.name)}</strong><div class="pos-cart-row-sub">👕 ${esc(garmentsLabel(p.garments, 6))}</div></td><td>${serviceName(p.serviceType)}</td><td>${p.pieceCount}</td>
-      <td>${money(p.price)}</td><td>${esc(p.bonus) || "—"}</td>
+      <td>${money(p.price)}</td><td>${Number(p.validDays) > 0 ? `${p.validDays} يوم` : "♾ دائمة"}</td><td>${(() => { const t0 = pkgTrips(p); return t0.n > 0 ? `${t0.n} ${t0.period === "total" ? "طوال الباقة" : "شهرياً"}` : "—"; })()}</td><td>${esc(p.bonus) || "—"}</td>
       <td class="row-actions"><button class="mini-btn" data-edit-package="${p.id}">تعديل</button><button class="mini-btn danger-mini" data-del-package="${p.id}">حذف</button></td>
     </tr>`).join("");
     body.querySelectorAll("[data-del-package]").forEach((btn) => {
@@ -10200,6 +10227,7 @@ body.auth-locked .top-logout{display:none!important}
       { id: "pieceCount", label: "عدد القطع", type: "number", value: existing ? existing.pieceCount : 50, min: 1 },
       { id: "price", label: "سعر الباقة الكامل (د.ب)", type: "number", step: "0.001", value: existing ? existing.price : 0, min: 0 },
       { id: "bonus", label: "هدية مجانية (اختياري)", type: "text", value: existing ? existing.bonus || "" : "", placeholder: "مثال: عباءة مجانية" },
+      ...pkgTermsFields(existing, true),
       { id: "garments", label: "👕 الملابس المشمولة بالباقة — اختر الأصناف (أو اضغط فئة لتحديدها كلها)", type: "checks", value: selected,
         options: all.map((g) => ({ value: g.id, label: clothingName(g.id), group: g.cat || "" })),
         groups: [{ value: "men", label: "رجالي" }, { value: "women", label: "نسائي" }, { value: "home", label: "مفروشات" }] },
@@ -10216,7 +10244,8 @@ body.auth-locked .top-logout{display:none!important}
         const covered = v.garments.filter((id) => priceFor(id, v.serviceType) > 0);
         if (!covered.length) { toast("لا يوجد صنف مختار له سعر لهذه الخدمة — غيّر الخدمة أو الأصناف"); return false; }
         const garments = v.garments.length === all.length ? [] : v.garments; // الكل = بدون تقييد
-        const data = { name: v.name, serviceType: v.serviceType, pieceCount: v.pieceCount, price: round3(v.price), bonus: v.bonus, garments };
+        const terms = readPkgTerms(v, true); if (terms.error) { toast(terms.error); return false; }
+        const data = { name: v.name, serviceType: v.serviceType, pieceCount: v.pieceCount, price: round3(v.price), bonus: v.bonus, garments, validDays: terms.validDays, dlvTrips: terms.dlvTrips, dlvPeriod: terms.dlvPeriod };
         if (existing) {
           Object.assign(existing, data);
           if (v.apply === "yes") customerPackages.filter((cp) => cp.defId === existing.id && cp.remainingPieces > 0).forEach((cp) => { cp.garments = [...garments]; });
@@ -10287,11 +10316,85 @@ body.auth-locked .top-logout{display:none!important}
   });
 
   /* --------------------------- باقات العملاء (شراء واستخدام) --------------------------- */
+  // باقة سارية = فيها قطع + لم تنتهِ صلاحيتها (expiresAt فارغ = دائمة)
+  const pkgExpired = (cp) => !!cp.expiresAt && cp.expiresAt < todayStr();
   function activePackagesForCustomer(customerId) {
-    return customerPackages.filter((cp) => cp.customerId === customerId && cp.remainingPieces > 0);
+    return customerPackages.filter((cp) => cp.customerId === customerId && cp.remainingPieces > 0 && !pkgExpired(cp))
+      .sort((a, b) => String(a.expiresAt || "9999").localeCompare(String(b.expiresAt || "9999")));
+  }
+  const daysLeft = (ymd) => Math.round((new Date(ymd + "T12:00:00") - new Date(todayStr() + "T12:00:00")) / 864e5);
+  function pkgExpiryText(cp) {
+    if (!cp.expiresAt) return lang === "ar" ? "♾ دائمة بدون تاريخ انتهاء" : "♾ No expiry";
+    const d = daysLeft(cp.expiresAt);
+    if (d < 0) return lang === "ar" ? `⛔ انتهت صلاحيتها في ${cp.expiresAt}` : `⛔ Expired on ${cp.expiresAt}`;
+    return lang === "ar" ? `⏳ صالحة حتى ${cp.expiresAt} (${d === 0 ? "آخر يوم" : `متبقي ${d} يوم`})` : `⏳ Valid until ${cp.expiresAt} (${d === 0 ? "last day" : `${d} days left`})`;
+  }
+  const WEEKDAYS = { ar: ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"], en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] };
+  const weekdayName = (i) => (lang === "ar" ? WEEKDAYS.ar : WEEKDAYS.en)[Number(i)] || "";
+  const todayWeekday = () => new Date(todayStr() + "T12:00:00").getDay();
+  // حقول مشتركة: صلاحية الباقة + مشاوير التوصيل + الموعد الثابت (عند البيع وعند التعديل)
+  function pkgTermsFields(src, forDef) {
+    const cfg = dlvCfg();
+    const f = [];
+    if (forDef) f.push({ id: "validDays", label: "⏳ مدة الصلاحية بالأيام (0 = دائمة بدون انتهاء)", type: "number", step: "1", min: 0, value: src ? Number(src.validDays) || 0 : 0 });
+    else f.push({ id: "expiresAt", label: "⏳ تاريخ انتهاء الباقة (اتركه فارغاً = دائمة)", type: "date", value: src ? src.expiresAt || "" : "" });
+    f.push({ id: "dlvTrips", label: `🚚 مشاوير الاستلام/التوصيل المجانية (فارغ = الافتراضي ${cfg.pkgFree} شهرياً من الإعدادات، 0 = بدون مشاوير مجانية)`, type: "text", value: src && src.dlvTrips !== undefined && src.dlvTrips !== null && src.dlvTrips !== "" ? String(src.dlvTrips) : "" });
+    f.push({ id: "dlvPeriod", label: "🔁 المشاوير المجانية تُحسب", type: "select", value: src && src.dlvPeriod === "total" ? "total" : "month", options: [{ value: "month", label: "كل شهر (تتجدد أول كل شهر)" }, { value: "total", label: "مرة واحدة طوال مدة الباقة" }] });
+    if (!forDef) {
+      f.push({ id: "schedDay", label: "📅 موعد استلام ثابت أسبوعياً (اختياري)", type: "select", value: src && src.schedule && src.schedule.day !== undefined && src.schedule.day !== "" ? String(src.schedule.day) : "", options: [{ value: "", label: "— بدون موعد ثابت —" }].concat(WEEKDAYS.ar.map((d, i) => ({ value: String(i), label: d }))) });
+      f.push({ id: "schedSlot", label: "⏰ وقت الموعد الثابت", type: "select", value: src && src.schedule ? src.schedule.slot || "evening" : "evening", options: DLV_SLOTS.map((x) => ({ value: x.v, label: x.ar })) });
+    }
+    return f;
+  }
+  function readPkgTerms(v, forDef) {
+    const raw = String(v.dlvTrips || "").trim();
+    const trips = raw === "" ? undefined : Math.max(0, Math.floor(Number(normDigits(raw)) || 0));
+    if (raw !== "" && !/^\d+$/.test(normDigits(raw))) return { error: "عدد المشاوير: رقم صحيح أو اتركه فارغاً" };
+    const out = { dlvTrips: trips, dlvPeriod: v.dlvPeriod === "total" ? "total" : "month" };
+    if (forDef) out.validDays = Math.max(0, Math.floor(Number(v.validDays) || 0));
+    else {
+      if (v.expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(v.expiresAt)) return { error: "تاريخ الانتهاء غير صحيح" };
+      out.expiresAt = v.expiresAt || "";
+      out.schedule = v.schedDay !== "" && v.schedDay !== undefined ? { day: Number(v.schedDay), slot: v.schedSlot || "evening" } : null;
+    }
+    return out;
+  }
+  function pkgTermsText(cp) {
+    const t0 = pkgTrips(cp), parts = [pkgExpiryText(cp)];
+    parts.push(t0.n > 0 ? (lang === "ar" ? `🚚 ${t0.n} مشاوير مجانية ${t0.period === "total" ? "طوال الباقة" : "كل شهر"}` : `🚚 ${t0.n} free trips ${t0.period === "total" ? "for the whole package" : "a month"}`) : (lang === "ar" ? "🚚 بدون مشاوير مجانية" : "🚚 no free trips"));
+    if (cp.schedule && cp.schedule.day !== undefined && cp.schedule.day !== null) parts.push(`📅 ${weekdayName(cp.schedule.day)} · ${slotLabel(cp.schedule.slot)}`);
+    return parts.join(" · ");
+  }
+  function editCustomerPackage(cp, after) {
+    if (!can("admin_settings") && role !== "owner") { denied(); return; }
+    openQuickForm({
+      title: `✏️ ${cp.name}`, sub: "تاريخ الانتهاء، المشاوير المجانية، والموعد الثابت لهذه الباقة فقط",
+      fields: pkgTermsFields(cp, false), submitLabel: "حفظ",
+      onSubmit: (v) => {
+        const r = readPkgTerms(v, false); if (r.error) { toast(r.error); return false; }
+        const before = pkgTermsText(cp);
+        Object.assign(cp, r); if (r.dlvTrips === undefined) delete cp.dlvTrips;
+        persistAll();
+        logActivity(`تعديل باقة العميل «${cp.name}»: ${before} → ${pkgTermsText(cp)}`);
+        toast("تم حفظ شروط الباقة"); if (after) after();
+      },
+    });
   }
 
+  // شروط الباقة الافتراضية من تعريفها: تاريخ الانتهاء = اليوم + مدة الصلاحية (0 = دائمة)
+  function defTerms(def) {
+    if (!def) return {};
+    return { expiresAt: Number(def.validDays) > 0 ? FIN.addDays(todayStr(), Number(def.validDays)) : "", dlvTrips: def.dlvTrips, dlvPeriod: def.dlvPeriod, schedule: null };
+  }
   function sellPackageToCustomer(customerId) {
+    setTimeout(() => {
+      const sel = document.getElementById("qf_defId"); if (!sel) return;
+      sel.addEventListener("change", () => {
+        const t0 = defTerms(settings.packageDefs.find((p) => p.id === sel.value));
+        const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+        set("qf_expiresAt", t0.expiresAt || ""); set("qf_dlvTrips", t0.dlvTrips !== undefined && t0.dlvTrips !== null && t0.dlvTrips !== "" ? String(t0.dlvTrips) : ""); set("qf_dlvPeriod", t0.dlvPeriod === "total" ? "total" : "month");
+      });
+    }, 0);
     const cust = customers.find((c) => c.id === customerId);
     if (!cust) return;
     if (!shiftGuard()) return;
@@ -10304,19 +10407,22 @@ body.auth-locked .top-logout{display:none!important}
           { value: "cash", label: "نقداً" }, { value: "card", label: "بطاقة" },
           { value: "benefitpay", label: "Benefit Pay" }, { value: "bank_transfer", label: "تحويل بنكي" },
         ] },
+        ...pkgTermsFields(defTerms(settings.packageDefs[0]), false),
       ],
       onSubmit: (v) => {
         const def = settings.packageDefs.find((p) => p.id === v.defId);
         if (!def) return;
+        const terms = readPkgTerms(v, false); if (terms.error) { toast(terms.error); return false; }
         const now = new Date().toISOString();
-        const cp = { id: uid(), customerId, defId: def.id, name: def.name, serviceType: def.serviceType, garments: Array.isArray(def.garments) ? [...def.garments] : [], totalPieces: def.pieceCount, remainingPieces: def.pieceCount, price: def.price, purchasedAt: now };
+        const cp = { id: uid(), customerId, defId: def.id, name: def.name, serviceType: def.serviceType, garments: Array.isArray(def.garments) ? [...def.garments] : [], totalPieces: def.pieceCount, remainingPieces: def.pieceCount, price: def.price, purchasedAt: now, ...terms };
+        if (cp.dlvTrips === undefined) delete cp.dlvTrips;
         customerPackages.unshift(cp);
         ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId, type: "package_purchase", amount: 0, price: round3(def.price), packageId: cp.id, balanceAfter: cust.balance, method: v.method, note: `شراء باقة: ${def.name} — ${money(def.price)}`, orderId: null, at: now });
         persistAll();
         logActivity(`${cust.name} اشترى باقة «${def.name}» (${def.pieceCount} قطعة، ${money(def.price)})`, def.price);
         toast(`تم تفعيل باقة «${def.name}» للعميل — ${def.pieceCount} قطعة متاحة`);
         waPrompt(`✓ تم تفعيل باقة «${def.name}»`, `هل ترسل تأكيد الباقة للعميل على واتساب؟`, "📲 إرسال تأكيد الباقة", () => {
-          openWhatsApp(cust.phone, waMsg("package", { name: cust.name, pkg: def.name, pieces: def.pieceCount, garments: garmentsLabel(def.garments, 6), price: money(def.price), method: paymentLabel(v.method), bonus: def.bonus || "", rules: pkgRulesText(def), dlv: dlvCfg().on && dlvCfg().pkgFree > 0 ? (lang === "ar" ? `${dlvCfg().pkgFree} مشاوير استلام/توصيل مجانية كل شهر طوال فترة الباقة` : `${dlvCfg().pkgFree} free pickup/delivery trips every month while the package is active`) : "" }));
+          openWhatsApp(cust.phone, waMsg("package", { name: cust.name, pkg: def.name, pieces: def.pieceCount, garments: garmentsLabel(def.garments, 6), price: money(def.price), method: paymentLabel(v.method), bonus: def.bonus || "", rules: pkgRulesText(def), dlv: [dlvCfg().on && pkgTrips(cp).n > 0 ? (lang === "ar" ? `${pkgTrips(cp).n} مشاوير استلام/توصيل مجانية ${pkgTrips(cp).period === "total" ? "طوال مدة الباقة" : "كل شهر"}` : `${pkgTrips(cp).n} free pickup/delivery trips ${pkgTrips(cp).period === "total" ? "for the whole package" : "every month"}`) : "", cp.expiresAt ? (lang === "ar" ? `⏳ الباقة صالحة حتى ${cp.expiresAt}` : `⏳ Valid until ${cp.expiresAt}`) : "", cp.schedule ? (lang === "ar" ? `📅 موعد استلامك الثابت: كل ${weekdayName(cp.schedule.day)} · ${slotLabel(cp.schedule.slot)}` : `📅 Your regular pickup: every ${weekdayName(cp.schedule.day)} · ${slotLabel(cp.schedule.slot)}`) : ""].filter(Boolean).join("\n") }));
           logActivity(`إرسال تأكيد باقة واتساب — ${cust.name} — ${def.name}`);
         });
         renderCustomersPage();
@@ -10344,22 +10450,40 @@ body.auth-locked .top-logout{display:none!important}
     return orders.filter((o) => o.customerId === custId && o.status !== "cancelled" && o.id !== excludeOrderId && monthOf(o.createdAt) === month)
       .reduce((n, o) => n + (o.extras || []).filter((l) => String(l.id).startsWith("dlv_") && l.free === "package").length, 0);
   }
+  // حصة المشاوير المجانية لكل باقة: من الباقة نفسها (أو الافتراضي من الإعدادات)، شهرياً أو مرة واحدة طوال الباقة
+  function pkgTrips(cp) {
+    const n = cp && cp.dlvTrips !== undefined && cp.dlvTrips !== null && cp.dlvTrips !== "" ? Math.max(0, Math.floor(Number(cp.dlvTrips) || 0)) : dlvCfg().pkgFree;
+    return { n, period: cp && cp.dlvPeriod === "total" ? "total" : "month" };
+  }
+  function pkgTripsUsed(cp, excludeOrderId) {
+    const t0 = pkgTrips(cp), month = todayStr().slice(0, 7);
+    return orders.filter((o) => o.customerId === cp.customerId && o.status !== "cancelled" && o.id !== excludeOrderId
+      && (t0.period === "total" ? String(o.createdAt) >= String(cp.purchasedAt || "") : monthOf(o.createdAt) === month))
+      .reduce((n, o) => n + (o.extras || []).filter((l) => String(l.id).startsWith("dlv_") && l.free === "package" && (l.pkgId ? l.pkgId === cp.id : true)).length, 0);
+  }
+  // حالة مشاوير العميل: مجموع الحصص المتاحة من باقاته السارية
+  function tripState(custId) {
+    const pk = custId ? activePackagesForCustomer(custId) : [];
+    const per = pk.map((cp) => { const t0 = pkgTrips(cp), used = pkgTripsUsed(cp); return { cp, n: t0.n, period: t0.period, used: Math.min(used, t0.n), left: Math.max(0, t0.n - used) }; });
+    return { hasPkg: pk.length > 0, per, quota: per.reduce((a, x) => a + x.n, 0), used: per.reduce((a, x) => a + x.used, 0), left: per.reduce((a, x) => a + x.left, 0), period: per.length && per.every((x) => x.period === "total") ? "total" : "month" };
+  }
+  const tripPeriodWord = (st) => (st.period === "total" ? DL("المشاوير المجانية في الباقة", "Free trips in the package") : DL("المشاوير المجانية هذا الشهر", "Free trips this month"));
   // تسعير مشاوير الطلب: لكل رحلة (استلام/توصيل) — مجاني ضمن حصة الباقة، أو مجاني فوق الحد، وإلا الرسوم
   function deliveryQuote(custId, legs, orderValue) {
     const cfg = dlvCfg(), lines = [];
-    const hasPkg = !!custId && activePackagesForCustomer(custId).length > 0;
-    const used = custId ? freeTripsUsed(custId, todayStr().slice(0, 7)) : 0;
-    let left = hasPkg ? Math.max(0, cfg.pkgFree - used) : 0;
-    if (!cfg.on || !legs) return { lines, hasPkg, used, quota: cfg.pkgFree, cfg };
+    const st = tripState(custId), hasPkg = st.hasPkg;
+    const pool = st.per.map((x) => ({ id: x.cp.id, left: x.left }));
+    if (!cfg.on || !legs) return { lines, hasPkg, used: st.used, quota: st.quota, left: st.left, st, cfg };
     ["pickup", "drop"].forEach((leg) => {
       if (!legs[leg]) return;
-      let free = null, unit = hasPkg ? cfg.pkgFee : cfg.fee;
-      if (hasPkg && left > 0) { free = "package"; left--; unit = 0; }
+      let free = null, unit = hasPkg ? cfg.pkgFee : cfg.fee, pkgId;
+      const src = pool.find((x) => x.left > 0);
+      if (hasPkg && src) { free = "package"; src.left--; unit = 0; pkgId = src.id; }
       else if (cfg.freeOver > 0 && orderValue >= cfg.freeOver) { free = "threshold"; unit = 0; }
       else if (!(unit > 0)) free = "threshold";
-      lines.push({ id: "dlv_" + leg, per: "order", qty: 1, unit: round3(unit), total: round3(unit), free: free || undefined });
+      lines.push({ id: "dlv_" + leg, per: "order", qty: 1, unit: round3(unit), total: round3(unit), free: free || undefined, pkgId });
     });
-    return { lines, hasPkg, used, quota: cfg.pkgFree, left, cfg };
+    return { lines, hasPkg, used: st.used, quota: st.quota, left: pool.reduce((a, x) => a + x.left, 0), st, cfg };
   }
   function dlvStatusText(order) {
     const d = order.delivery || {}, en = lang !== "ar";
@@ -10407,7 +10531,7 @@ body.auth-locked .top-logout{display:none!important}
     if (!draftCustomerId) { el.innerHTML = `<span class="section-note">${E ? "Pick the customer to see the delivery fee" : "اختر العميل لمعرفة رسوم التوصيل"}</span>`; return; }
     const b = draftBase(), q = deliveryQuote(draftCustomerId, draftDelivery, round3(b.itemsTotal + extrasTotalOf(b.extras.filter((l) => !String(l.id).startsWith("dlv_")))));
     const head = q.hasPkg
-      ? (E ? `🎟 Package customer — free trips this month: <b>${q.used}</b> of <b>${q.quota}</b>${q.used >= q.quota ? ` · then ${money(cfg.pkgFee)} per trip` : ""}` : `🎟 عميل باقة — المشاوير المجانية هذا الشهر: <b>${q.used}</b> من <b>${q.quota}</b>${q.used >= q.quota ? ` · بعدها ${money(cfg.pkgFee)} للمشوار` : ""}`)
+      ? (E ? `🎟 Package customer — ${tripPeriodWord(q.st).toLowerCase()}: <b>${q.used}</b> of <b>${q.quota}</b>${q.used >= q.quota ? ` · then ${money(cfg.pkgFee)} per trip` : ""}` : `🎟 عميل باقة — ${tripPeriodWord(q.st)}: <b>${q.used}</b> من <b>${q.quota}</b>${q.used >= q.quota ? ` · بعدها ${money(cfg.pkgFee)} للمشوار` : ""}`)
       : (E ? `Small fee ${money(cfg.fee)} per trip${cfg.freeOver > 0 ? ` · 🎁 free for orders from ${money(cfg.freeOver)}` : ""}` : `رسوم رمزية ${money(cfg.fee)} للمشوار${cfg.freeOver > 0 ? ` · 🎁 مجاني للطلبات من ${money(cfg.freeOver)}` : ""}`);
     const freeTxt = (f) => (E ? (f === "package" ? "Free ✓ (package)" : "Free ✓") : f === "package" ? "مجاني ✓ (ضمن الباقة)" : "مجاني ✓");
     const lines = q.lines.map((l) => `<div class="pos-dlv-line"><span>${esc(extraName(l.id))}</span><b class="${l.free ? "free" : ""}">${l.free ? freeTxt(l.free) : money(l.total)}</b></div>`).join("");
@@ -10419,7 +10543,7 @@ body.auth-locked .top-logout{display:none!important}
   const nowSlot = () => { const h = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: "Asia/Bahrain" }).format(new Date())); return h < 10 ? "morning" : h < 14 ? "noon" : h < 18 ? "evening" : "night"; };
   function pkgBadge(custId) {
     if (!custId || !activePackagesForCustomer(custId).length) return "";
-    const cfg = dlvCfg(), left = Math.max(0, cfg.pkgFree - freeTripsUsed(custId, todayStr().slice(0, 7)));
+    const cfg = dlvCfg(), left = tripState(custId).left;
     return `<span class="dlv-pkg">🎟 ${DL("باقة", "Package")} · ${left > 0 ? DL(`${left} مشاوير مجانية متبقية`, `${left} free trips left`) : DL(`انتهت المجانية — ${money(cfg.pkgFee)}`, `free trips used — ${money(cfg.pkgFee)}`)}</span>`;
   }
   const tripFeeText = (custId) => {
@@ -10533,6 +10657,18 @@ body.auth-locked .top-logout{display:none!important}
     const monthOrders = orders.filter((o) => o.status !== "cancelled" && monthOf(o.createdAt) === month);
     const legs = monthOrders.flatMap((o) => (o.extras || []).filter((l) => String(l.id).startsWith("dlv_")));
     const deliveredMonth = dropOrders.filter((o) => o.status === "delivered" && monthOf(o.deliveredAt) === month).length;
+    // المواعيد الثابتة (أسبوعية) لباقات سارية — اليوم وبكرة، ما لم يُحجز لها موعد بنفس اليوم
+    const regular = [];
+    [0, 1].forEach((plus) => {
+      const date = FIN.addDays(todayStr(), plus), wd = new Date(date + "T12:00:00").getDay();
+      customerPackages.filter((cp) => cp.schedule && Number(cp.schedule.day) === wd && cp.remainingPieces > 0 && !pkgExpired(cp)).forEach((cp) => {
+        const c = customers.find((x) => x.id === cp.customerId); if (!c) return;
+        if (reqs.some((r) => r.customerId === c.id && (r.date || todayStr()) === date)) return;
+        if (orders.some((o) => o.customerId === c.id && o.delivery && o.delivery.pickup && FIN.localDay(o.createdAt) === date)) return;
+        if (regular.some((x) => x.c.id === c.id && x.date === date)) return;
+        regular.push({ c, cp, date });
+      });
+    });
     const onwayN = reqs.filter((r) => r.status === "onway").length + toDeliver.filter((o) => o.delivery.dropStatus === "onway").length;
     const kpi = (ic, lbl, v, color, note) => `<div class="metric-card"><div class="metric-top"><span>${lbl}</span><span class="metric-icon">${ic}</span></div><div class="metric-value" style="${color ? `color:${color}` : ""}">${v}</div>${note ? `<div class="metric-note">${note}</div>` : ""}</div>`;
     const icons = (phone, address, orderId, delId) => `<div class="dlv-icons">
@@ -10581,6 +10717,10 @@ body.auth-locked .top-logout{display:none!important}
         ${kpi("🛵", DL("في الطريق الآن", "On the way now"), onwayN)}
         ${kpi("📅", DL("وُصّلت هذا الشهر", "Delivered this month"), deliveredMonth, "var(--success)", `${DL("إيراد", "Income")} ${money(legs.reduce((a, l) => a + (Number(l.total) || 0), 0))} · ${legs.filter((l) => l.free).length} ${DL("مشوار مجاني", "free trips")}`)}
       </div>
+      ${regular.length ? `<div class="panel dlv-regular"><div class="dlv-col-head"><h3>📅 ${DL("المواعيد الثابتة لعملاء الباقات", "Regular package pickups")} <span class="nav-count">${regular.length}</span></h3><p>${DL("عملاء لهم موعد استلام أسبوعي اليوم أو بكرة — احجز بضغطة", "Customers with a weekly pickup today or tomorrow — book with one tap")}</p></div>
+        <div class="dlv-list dlv-list-row">${regular.map((x) => `<div class="dlv-card"><div class="dlv-card-top"><b>${esc(x.c.name)}</b>${pkgBadge(x.c.id)}</div>
+          <div class="dlv-line">⏰ <b>${esc(whenLabel(x.date, x.cp.schedule.slot))}</b> · ${esc(x.cp.name)}</div><div class="dlv-line">📍 ${esc([x.c.area, x.c.address].filter(Boolean).join(" — ") || "—")}</div>
+          <button type="button" class="primary-btn dlv-main" data-reg-book="${x.cp.id}|${x.date}">📥 ${DL("احجز الموعد", "Book this pickup")}</button></div>`).join("")}</div></div>` : ""}
       <div class="dlv-board">
         ${col(`📥 ${DL("للاستلام من البيوت", "Pickups to collect")}`, DL("المندوب يطلع ← يستلم ← تدخل القطع", "Driver leaves → collects → add items"), reqs.length, reqs.map(reqCard).join(""), DL("لا توجد مواعيد — اضغط «حجز استلام من البيت»", "No bookings — press “Book a home pickup”"))}
         ${col(`📦 ${DL("للتوصيل للبيوت", "Orders to deliver")}`, DL("الطلبات الجاهزة التي يريد أصحابها التوصيل", "Ready orders the customer wants delivered"), toDeliver.length, toDeliver.map(dropCard).join(""), DL("لا توجد طلبات جاهزة للتوصيل", "No ready orders to deliver"))}
@@ -10599,6 +10739,21 @@ body.auth-locked .top-logout{display:none!important}
       renderDeliveryPage();
     }));
     q("[data-req-done]").forEach((b) => (b.onclick = () => convertPickup(b.dataset.reqDone)));
+    q("[data-reg-book]").forEach((b) => (b.onclick = () => {
+      const [cpId, date] = b.dataset.regBook.split("|"), cp = customerPackages.find((x) => x.id === cpId); if (!cp) return;
+      const c = customers.find((x) => x.id === cp.customerId); if (!c) return;
+      const address = [c.area, c.address].filter(Boolean).join(" — ");
+      if (!address) { openPickupForm(c.id); return; }
+      const now = new Date().toISOString();
+      suspendedOrders.unshift({ id: uid(), kind: "pickup", customerId: c.id, customerName: c.name, address, date, slot: cp.schedule.slot, drop: true, notes: "", status: "new", regular: true, items: [], extras: [], createdAt: now, suspendedAt: now, createdBy: me ? me.name : "" });
+      save("l997_suspended_orders", suspendedOrders);
+      logActivity(`🚚 حجز موعد ثابت — ${c.name} — ${whenLabel(date, cp.schedule.slot)}`);
+      const fee = tripFeeText(c.id);
+      waPrompt(DL("✓ تم حجز الموعد الثابت", "✓ Regular pickup booked"), DL(`${c.name} — ${whenLabel(date, cp.schedule.slot)}. ترسل التذكير للعميل؟`, `${c.name} — ${whenLabel(date, cp.schedule.slot)}. Send the reminder to the customer?`), DL("📲 إرسال على واتساب", "📲 Send on WhatsApp"), () => {
+        openWhatsApp(c.phone, waMsg("pickup_booked", { name: c.name, when: whenLabel(date, cp.schedule.slot), address, fee }));
+      });
+      renderDeliveryPage(); updateDeliveryBadge();
+    }));
     q("[data-req-del]").forEach((b) => (b.onclick = () => {
       const r = suspendedOrders.find((x) => x.id === b.dataset.reqDel); if (!r) return;
       confirmAction(DL(`إلغاء موعد استلام ${r.customerName}؟`, `Cancel ${r.customerName}'s pickup booking?`), () => {
