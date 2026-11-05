@@ -143,7 +143,12 @@ const OWNER_PW = "Owner#2026pass", WORKER_PW = "Worker#2026new";
   check("…and the sign-in is logged as «trusted device»", ((await a.ls("l997_audit")) || []).some((x) => x.meta && x.meta.sec === "login_ok" && /جهاز موثوق/.test(x.text || x.action || JSON.stringify(x))));
   const ownerRec = ((await a.ls("l997_employees")) || []).find((e) => e.username === "owner");
   check("the trusted device is recorded on the account (synced, can be revoked remotely)", (ownerRec.mfaTrust || []).length === 1 && ownerRec.mfaTrust[0].until > Date.now() + 29 * 864e5);
-  // a copied local trust without the account record does not work (e.g. another person's browser)
+  // another device's sync overwrote the account's trusted-device list (what happened on the shop Mac) → still trusted
+  await A.evaluate(() => { const em = JSON.parse(localStorage.getItem("l997_employees")); em.find((e) => e.username === "owner").mfaTrust = []; localStorage.setItem("l997_employees", JSON.stringify(em)); });
+  await A.reload(); await A.waitForSelector("#au_user, body:not(.auth-locked)");
+  if (!(await a.locked())) await logout(A);
+  await login(A, "owner", OWNER_PW); await a.wait(700);
+  check("trust survives another device overwriting the account's device list (no code asked)", !(await a.locked()) && !(await A.isVisible("#au_code")));
   await a.closeAll(); await tab(A, "overview"); await a.wait(200);
   await A.click("[data-forget-trust]"); await a.wait(200); await A.click("#quickFormSubmitBtn"); await a.wait(300);
   await logout(A); await login(A, "owner", OWNER_PW);
