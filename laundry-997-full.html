@@ -8592,6 +8592,24 @@ body.auth-locked .top-logout{display:none!important}
     return owed > 0 ? (en ? `Remaining: ${money(owed)}` : `المتبقي: ${money(owed)}`) : (en ? "Fully paid ✅" : "مدفوع بالكامل ✅");
   }
   // تلقائي عبر WhatsApp Business API: تصل صورة الإيصال للعميل بدون أي ضغطة — وعند الفشل يُعرض الإرسال اليدوي
+  // أخطاء Meta / الدالة → ماذا تفعل بالضبط (بدل رسالة تقنية بالإنجليزية)
+  function waErrHint(r) {
+    const e = String((r && r.error) || "").toLowerCase(), st = r && r.status;
+    const H = (ar, en) => (lang === "ar" ? ar : en);
+    if (st === 404 || /not found|function.*not/.test(e)) return H("دالة whatsapp-send غير موجودة في Supabase — أنشئها من Edge Functions.", "The whatsapp-send function is missing in Supabase — create it under Edge Functions.");
+    if (/not configured/.test(e)) return H("أضف WA_TOKEN و WA_PHONE_ID في Supabase ← Edge Functions ← Secrets.", "Add WA_TOKEN and WA_PHONE_ID in Supabase → Edge Functions → Secrets.");
+    if (/sign in|no-session|not a member/.test(e)) return H("سجّل الدخول بحساب مرتبط بالسحابة (ملف المنشأة ← المزامنة السحابية) ثم أعد المحاولة.", "Sign in with an account linked to the cloud (Company profile → Cloud sync), then try again.");
+    if (/offline/.test(e)) return H("لا يوجد اتصال بالإنترنت.", "No internet connection.");
+    if (/access token|oauth|session has expired|token.*(invalid|expired)|error validating/.test(e)) return H("رمز Meta (WA_TOKEN) غير صحيح أو منتهي — أنشئ رمز System user بمدة «Never» وضعه من جديد في Secrets.", "The Meta token (WA_TOKEN) is wrong or expired — create a System-user token that never expires and put it in Secrets again.");
+    if (/template|translation/.test(e) && /not exist|does not|paused|disabled|pending|rejected|translation/.test(e)) return H("نموذج الرسالة order_delivered غير معتمد بعد أو لغته ليست العربية — راجع WhatsApp Manager ← Message templates.", "The order_delivered template isn't approved yet or isn't in Arabic — check WhatsApp Manager → Message templates.");
+    if (/object with id|does not exist|unsupported (post|get) request|invalid parameter.*phone/.test(e)) return H("WA_PHONE_ID غير صحيح — انسخ «Phone number ID» (وليس رقم الهاتف) من Meta ← WhatsApp ← API Setup.", "WA_PHONE_ID is wrong — copy the “Phone number ID” (not the phone number) from Meta → WhatsApp → API Setup.");
+    if (/parameter|number of (params|parameters)|format mismatch|header/.test(e)) return H("شكل النموذج لا يطابق: Header = صورة، والنص فيه {{1}} {{2}} {{3}} فقط.", "Template layout doesn't match: header = image, body with {{1}} {{2}} {{3}} only.");
+    if (/allowed list|not in allowed|recipient/.test(e)) return H("الحساب ما زال في وضع التجربة — أكمل توثيق الأعمال وأضف طريقة دفع، أو أضف رقمك في API Setup ← To للتجربة.", "The account is still in test mode — finish business verification and add a payment method, or add your number under API Setup → To for testing.");
+    if (/payment|billing|credit line|account.*(restricted|disabled)/.test(e)) return H("أضف بطاقة دفع في WhatsApp Manager ← Payment settings.", "Add a payment card in WhatsApp Manager → Payment settings.");
+    if (/re-?engagement|24 hours/.test(e)) return H("Meta رفض الرسالة لأن العميل لم يراسلك مؤخراً — النموذج يجب أن يكون من فئة Utility ومعتمد.", "Meta refused because the customer hasn't messaged you recently — the template must be an approved Utility template.");
+    if (/bad phone/.test(e)) return H("رقم العميل غير صحيح.", "The customer's phone number is invalid.");
+    return "";
+  }
   async function autoSendReceipt(order, cust) {
     const img = receiptPngNow(order, cust);
     const r = await CLOUD.waSend({ to: cleanPhone(cust.phone), name: cust.name, orderNo: String(order.number), line: receiptPayLine(order), image: img.b64 });
@@ -8601,7 +8619,7 @@ body.auth-locked .top-logout{display:none!important}
       toast(lang === "en" ? `✓ Receipt sent to ${cust.name} on WhatsApp automatically` : `✓ أُرسلت صورة الإيصال إلى ${cust.name} على واتساب تلقائياً`);
       return true;
     }
-    logActivity(`تعذّر الإرسال التلقائي لإيصال الطلب #${order.number}: ${(r && r.error) || "خطأ"}`);
+    logActivity(`تعذّر الإرسال التلقائي لإيصال الطلب #${order.number}: ${(r && r.error) || "خطأ"}${waErrHint(r) ? " — " + waErrHint(r) : ""}`);
     toast(lang === "en" ? `Automatic WhatsApp failed (${(r && r.error) || "error"}) — send it manually` : `تعذّر الإرسال التلقائي (${(r && r.error) || "خطأ"}) — أرسله يدوياً`);
     waPrompt(`إرسال إيصال الطلب #${order.number} يدوياً`, "الإرسال التلقائي لم يتم — اضغط لنسخ صورة الإيصال وفتح محادثة العميل.", "📲 نسخ الإيصال وفتح واتساب", () => sendReceiptImageManual(order, cust));
     return false;
@@ -10542,7 +10560,7 @@ body.auth-locked .top-logout{display:none!important}
     waStatus("… جارٍ الفحص");
     const r = await CLOUD.waSend({ ping: true });
     if (r && r.ok) waStatus(r.configured ? `✓ الربط جاهز — النموذج «${r.template}» (${r.lang}). فعّل الخيار واحفظ، ثم جرّب «إرسال إيصال تجريبي».` : "⚠ الدالة موجودة لكن رمز Meta غير مُضاف — أضف WA_TOKEN و WA_PHONE_ID في Supabase ← Edge Functions ← Secrets.");
-    else waStatus(r && r.status === 404 ? "⚠ دالة whatsapp-send غير موجودة في Supabase بعد — أنشئها من Edge Functions (الملف supabase/functions/whatsapp-send/index.ts)." : `⚠ تعذّر الفحص: ${(r && r.error) || "خطأ"}`);
+    else waStatus(r && r.status === 404 ? "⚠ دالة whatsapp-send غير موجودة في Supabase بعد — أنشئها من Edge Functions (الملف supabase/functions/whatsapp-send/index.ts)." : `⚠ تعذّر الفحص: ${waErrHint(r) || (r && r.error) || "خطأ"}`);
   });
   document.getElementById("waApiTestBtn")?.addEventListener("click", () => {
     if (!cloudOn()) { waStatus("⚠ اربط النظام بالسحابة أولاً."); return; }
@@ -10557,7 +10575,7 @@ body.auth-locked .top-logout{display:none!important}
         const cust = customers.find((c) => c.id === o.customerId) || { name: "Test", phone: v.phone, balance: 0 };
         waStatus("… جارٍ الإرسال");
         CLOUD.waSend({ to: cleanPhone(v.phone), name: cust.name, orderNo: String(o.number), line: receiptPayLine(o), image: receiptPngNow(o, cust).b64 })
-          .then((r) => waStatus(r && r.ok ? "✓ أُرسل — تحقق من واتساب على الرقم." : `⚠ لم يُرسل: ${(r && r.error) || "خطأ"}`));
+          .then((r) => waStatus(r && r.ok ? "✓ أُرسل — تحقق من واتساب على الرقم." : `⚠ لم يُرسل: ${waErrHint(r) || (r && r.error) || "خطأ"}${waErrHint(r) ? `  (${(r && r.error) || ""})` : ""}`));
       },
     });
   });
@@ -11146,6 +11164,7 @@ body.auth-locked .top-logout{display:none!important}
     updateDeliveryBadge();
   }
   window.renderDeliveryPage997 = renderDeliveryPage;
+  window.waErrHint997 = (r) => waErrHint(r);
 
   /* ============================= الورديات (حضور وانصراف + عهدة الصندوق) =============================
      كل موظف يبدأ ورديته عند الدخول (= حضور) بعدّ النقد المستلم، وكل حركة مالية يقوم بها تُسجَّل باسمه،
