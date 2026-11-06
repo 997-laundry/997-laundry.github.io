@@ -67,6 +67,7 @@
         <button type="button" class="nav-item" data-need="view_orders" data-page="orders">▦ <span data-i18n="nav_orders">الطلبات</span></button>
         <button type="button" class="nav-item" data-need="view_customers" data-page="customers">◉ <span data-i18n="nav_customers">العملاء</span></button>
         <button type="button" class="nav-item" data-need="delivery" data-page="delivery">🚚 <span data-i18n="nav_delivery">التوصيل</span></button>
+        <button type="button" class="nav-item" data-need="whatsapp_inbox" data-page="whatsapp">💬 <span data-i18n="nav_whatsapp">واتساب</span></button>
         <button type="button" class="nav-item" data-need="view_balances" data-page="balances">◈ <span data-i18n="nav_balances">الأرصدة</span></button>
         <button type="button" class="nav-item" data-need="view_reports" data-page="reports">▥ <span data-i18n="nav_reports">التقارير</span></button>
 
@@ -434,6 +435,7 @@
       <section class="page" id="page-audit"><div id="auditRoot"></div></section>
       <section class="page" id="page-security"><div id="securityRoot"></div></section>
       <section class="page" id="page-delivery"><div id="deliveryRoot"></div></section>
+      <section class="page" id="page-whatsapp"><div id="waRoot"></div></section>
 
       
 
@@ -511,6 +513,19 @@
               <label><span data-i18n="lbl_normal_hours">مدة الطلب العادي بالساعات</span><input id="normalHoursSetting" type="number" min="1" /></label>
               <label><span data-i18n="lbl_urgent_hours">مدة الطلب المستعجل بالساعات</span><input id="urgentHoursSetting" type="number" min="1" /></label>
               <label class="check-line"><input id="shiftsRequiredSetting" type="checkbox" /> <span>إلزام الموظفين ببدء وردية (عهدة صندوق) قبل استلام المبالغ</span></label>
+              <div class="wa-bot-box dlv-settings-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft)">
+                <strong data-en="💬 WhatsApp AI assistant">💬 مساعد واتساب الذكي</strong>
+                <p class="section-note" style="margin:6px 0 8px" data-en="Answers customers on the shop's WhatsApp number from your real prices, packages and delivery policy, books pickup requests (you confirm them), and hands the chat to a person on request. Needs the whatsapp-bot function in Supabase.">يرد على العملاء في رقم واتساب المحل من أسعارك وباقاتك وسياسة التوصيل الفعلية، ويستقبل طلبات الاستلام (وأنت تؤكدها)، ويحوّل المحادثة لموظف عند الطلب. يحتاج دالة whatsapp-bot في Supabase.</p>
+                <label class="check-line"><input id="waBotOn" type="checkbox" /> <span data-en="Turn the assistant on">تشغيل المساعد الذكي</span></label>
+                <label class="check-line"><input id="waBotStaffOn" type="checkbox" /> <span data-en="Staff can take chats over (hand-off on request)">الموظفون متاحون لاستلام المحادثات (التحويل عند الطلب)</span></label>
+                <div class="dlv-settings-grid">
+                  <label><span data-en="Staff available from">الموظفون متاحون من</span><input id="waBotFrom" type="time" /></label>
+                  <label><span data-en="until">إلى</span><input id="waBotTo" type="time" /></label>
+                  <label><span data-en="Opening hours (as the assistant says them)">ساعات العمل (كما يقولها المساعد)</span><input id="waBotHours" type="text" placeholder="مفتوح 24 ساعة" /></label>
+                  <label><span data-en="Delivery areas (empty = staff confirm)">مناطق التوصيل (فارغ = الموظف يؤكد)</span><input id="waBotAreas" type="text" placeholder="الرفاع، عسكر، عالي، سند…" /></label>
+                </div>
+                <label style="display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:12.5px"><span data-en="Extra information for the assistant (special services, conditions…) — it only uses what is written here and in your prices">معلومات إضافية للمساعد (خدمات خاصة، شروط…) — لا يستخدم إلا ما يُكتب هنا وما في أسعارك</span><textarea id="waBotExtra" rows="3" placeholder="مثال: الغسيل بالبخار متوفر للبدلات فقط بسعر 2.000 د.ب · الملابس الحساسة تُغسل يدوياً"></textarea></label>
+              </div>
               <div class="dlv-settings-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft)">
                 <strong data-en="🚚 Home pickup & delivery">🚚 الاستلام والتوصيل</strong>
                 <p class="section-note" style="margin:6px 0 8px" data-en="Each trip (home pickup or home delivery) counts once. Package customers get free trips every month; others pay a small fee.">كل مشوار (استلام من البيت أو توصيل للبيت) يُحسب رحلة. عملاء الباقات يحصلون على مشاوير مجانية كل شهر، وغيرهم برسوم رمزية.</p>

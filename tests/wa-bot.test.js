@@ -1,0 +1,227 @@
+// Unit tests for supabase/functions/whatsapp-bot (WhatsApp AI assistant), with Supabase REST, Meta and Claude mocked.
+const test = require("node:test");
+const assert = require("node:assert");
+const crypto = require("crypto");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
+const src = fs.readFileSync(path.join(__dirname, "..", "supabase", "functions", "whatsapp-bot", "index.ts"), "utf8");
+const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "wab-")), "index.mjs");
+fs.writeFileSync(tmp, src);
+const load = () => import(tmp).then((m) => m.handle);
+
+const ENV = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "svc", WA_TOKEN: "tok", WA_PHONE_ID: "123", WA_APP_SECRET: "appsecret", WA_VERIFY_TOKEN: "verify-me" };
+const SHOP = "shop-1";
+
+// ---------- in-memory Supabase REST + Meta Graph ----------
+function world(opts = {}) {
+  const settings = { prices: { thob_cotton_washiron: 0.5, thob_cotton_iron: 0.2, shirt_washiron: 0.4, abaya_plain_washiron: 1 }, garmentActive: {}, serviceActive: {},
+    packageDefs: [{ id: "p50", name: "Package 50ps", serviceType: "washiron", pieceCount: 50, price: 16.9, bonus: "لحاف مجاني", garments: [] }],
+    delivery: { on: true, fee: 0.5, pkgFree: 4, pkgFee: 0.5, freeOver: 0 }, waBot: { enabled: true, staffOn: true, staffFrom: "00:00", staffTo: "23:59", ...(opts.bot || {}) },
+    discountCodes: [{ code: "NAWAF", percent: 45 }] };
+  const recs = [
+    { collection: "settings", record_id: "_", data: settings },
+    { collection: "profile", record_id: "_", data: { nameAr: "مغسلة 997", nameEn: "997 Laundry", region: "الرفاع" } },
+    { collection: "customers", record_id: "c1", data: { id: "c1", name: "Ali", phone: "97333111111" } },
+    { collection: "customers", record_id: "c2", data: { id: "c2", name: "Other", phone: "97333222222" } },
+    { collection: "orders", record_id: "o1", data: { id: "o1", number: "00007", customerId: "c1", status: "ready", items: [{ qty: 3 }], payment: { total: 1.5, paid: 0 }, paymentConfirmed: false, createdAt: "2026-11-01T10:00:00Z" } },
+    { collection: "orders", record_id: "o2", data: { id: "o2", number: "00008", customerId: "c2", status: "received", items: [{ qty: 9 }], payment: { total: 9.9, paid: 0 }, createdAt: "2026-11-02T10:00:00Z" } },
+  ].map((r) => ({ shop_id: SHOP, deleted: false, ...r }));
+  const threads = [], msgs = [], sent = [], reads = [];
+  let mid = 1;
+  const q = (url) => { const u = new URL(url); const o = {}; u.searchParams.forEach((v, k) => { o[k] = v; }); return { table: u.pathname.split("/rest/v1/")[1], o }; };
+  const match = (row, o) => Object.entries(o).every(([k, v]) => {
+    if (["select", "limit", "order", "on_conflict"].includes(k)) return true;
+    const [op, ...rest] = v.split("."); const val = rest.join(".");
+    const cur = k.startsWith("data->>") ? (row.data || {})[k.slice(7)] : row[k];
+    if (op === "eq") return String(cur) === val;
+    if (op === "neq") return String(cur) !== val;
+    return true;
+  });
+  const res = (body, status = 200) => new Response(body === undefined ? "" : JSON.stringify(body), { status });
+  const f = async (url, opt = {}) => {
+    const method = opt.method || "GET";
+    if (url.includes("graph.facebook.com")) {
+      const b = JSON.parse(opt.body);
+      if (b.status === "read") { reads.push(b.message_id); return res({ success: true }); }
+      if (opts.sendFails) return res({ error: { message: "(#131047) Re-engagement message" } }, 400);
+      sent.push(b); return res({ messages: [{ id: "wamid.out" + sent.length }] });
+    }
+    if (url.endsWith("/auth/v1/user")) return opt.headers.Authorization === "Bearer staff-jwt" ? res({ id: "u1" }) : res({}, 401);
+    const { table, o } = q(url);
+    if (table === "shops") return res([{ id: SHOP }]);
+    if (table === "shop_members") return res(o.user_id === "eq.u1" ? [{ shop_id: SHOP, role: "worker", display_name: "Yaseen" }] : []);
+    const store = table === "records" ? recs : table === "wa_threads" ? threads : table === "wa_messages" ? msgs : null;
+    if (!store) return res({}, 404);
+    if (method === "GET") {
+      let rows = store.filter((r) => match(r, o));
+      if (o.order && o.order.startsWith("at.desc")) rows = rows.slice().sort((a, b) => b.id - a.id);
+      if (o.limit) rows = rows.slice(0, Number(o.limit));
+      return res(rows.map((r) => ({ ...r })));
+    }
+    if (method === "POST") {
+      const b = JSON.parse(opt.body);
+      if (table === "wa_messages" && b.wa_id && msgs.some((m) => m.wa_id === b.wa_id)) return res({ code: "23505" }, 409);
+      const row = { ...b, ...(table === "wa_messages" ? { id: mid++ } : {}), ...(table === "wa_threads" ? { mode: b.mode || "bot", waiting: !!b.waiting, unread: b.unread || 0 } : {}) };
+      store.push(row); return res([row], 201);
+    }
+    if (method === "PATCH") {
+      const b = JSON.parse(opt.body); const rows = store.filter((r) => match(r, o)); rows.forEach((r) => Object.assign(r, b)); return res(rows);
+    }
+    return res({}, 405);
+  };
+  return { f, recs, threads, msgs, sent, reads, settings };
+}
+
+// ---------- fake Claude: a script of turns ----------
+function fakeAI(script) {
+  const calls = [];
+  return { calls, beta: { messages: { create: async (p) => {
+    calls.push(JSON.parse(JSON.stringify(p)));
+    const step = script[Math.min(calls.length - 1, script.length - 1)];
+    return typeof step === "function" ? step(p) : step;
+  } } } };
+}
+const text = (t) => ({ stop_reason: "end_turn", content: [{ type: "text", text: t }] });
+const tool = (name, input, id = "t1") => ({ stop_reason: "tool_use", content: [{ type: "tool_use", id, name, input }] });
+
+// ---------- webhook helpers ----------
+function hook(body, secret = ENV.WA_APP_SECRET) {
+  const raw = JSON.stringify(body);
+  const sig = "sha256=" + crypto.createHmac("sha256", secret).update(raw).digest("hex");
+  return new Request("https://x.supabase.co/functions/v1/whatsapp-bot", { method: "POST", headers: { "content-type": "application/json", "x-hub-signature-256": sig }, body: raw });
+}
+let n = 0;
+const inbound = (from, body, extra) => ({ entry: [{ changes: [{ value: { contacts: [{ profile: { name: "WA Name" }, wa_id: from }], messages: [{ from, id: "wamid.in" + (++n), type: "text", text: { body }, ...(extra || {}) }] } }] }] });
+
+test("Meta webhook verification: right token echoes the challenge, wrong token is refused", async () => {
+  const handle = await load(), w = world();
+  const ok = await handle(new Request("https://x/functions/v1/whatsapp-bot?hub.mode=subscribe&hub.verify_token=verify-me&hub.challenge=12345"), ENV, { fetch: w.f });
+  assert.equal(ok.status, 200); assert.equal(await ok.text(), "12345");
+  const bad = await handle(new Request("https://x/functions/v1/whatsapp-bot?hub.mode=subscribe&hub.verify_token=nope&hub.challenge=1"), ENV, { fetch: w.f });
+  assert.equal(bad.status, 403);
+});
+
+test("a webhook with a wrong signature is refused and nothing is stored or sent", async () => {
+  const handle = await load(), w = world(), ai = fakeAI([text("hi")]);
+  const r = await handle(hook(inbound("97333111111", "هلا"), "wrong-secret"), ENV, { fetch: w.f, ai });
+  assert.equal(r.status, 401); assert.equal(w.msgs.length, 0); assert.equal(ai.calls.length, 0); assert.equal(w.sent.length, 0);
+});
+
+test("price question: Claude gets the real price list (cached), Bahraini rules, low effort, fallbacks; the reply is sent and stored", async () => {
+  const handle = await load(), w = world(), ai = fakeAI([text("هلا والله 🌸 غسيل وكي الثوب 0.500 د.ب")]);
+  const r = await handle(hook(inbound("97333111111", "بكم غسيل الثوب؟")), ENV, { fetch: w.f, ai });
+  assert.equal(r.status, 200);
+  const p = ai.calls[0];
+  assert.equal(p.model, "claude-opus-5-5"); assert.equal(p.output_config.effort, "low"); assert.equal(p.fallbacks, "default");
+  assert.deepEqual(p.betas, ["server-side-fallback-2026-07-01"]);
+  assert.match(p.system[0].text, /اللهجة البحرينية/);
+  assert.match(p.system[1].text, /ثوب \(Thobe\): غسيل وكي 0\.500 د\.ب · كي 0\.200 د\.ب/);
+  assert.match(p.system[1].text, /Package 50ps: غسيل وكي، 50 قطعة بـ 16\.900 د\.ب/);
+  assert.deepEqual(p.system[1].cache_control, { type: "ephemeral" });
+  assert.ok(!/NAWAF/.test(JSON.stringify(p)), "discount codes are never given to the model");
+  const last = p.messages[p.messages.length - 1];
+  assert.equal(last.role, "system"); assert.match(last.content, /العميل مسجّل: Ali/);
+  assert.equal(w.sent.length, 1); assert.equal(w.sent[0].to, "97333111111"); assert.match(w.sent[0].text.body, /0\.500/);
+  assert.deepEqual(w.msgs.map((m) => m.dir), ["in", "out"]);
+  assert.equal(w.reads.length, 1, "blue ticks: the customer's message is marked as read");
+});
+
+test("the same WhatsApp message delivered twice is answered once", async () => {
+  const handle = await load(), w = world(), ai = fakeAI([text("ok")]);
+  const body = inbound("97333111111", "هلا");
+  await handle(hook(body), ENV, { fetch: w.f, ai }); await handle(hook(body), ENV, { fetch: w.f, ai });
+  assert.equal(ai.calls.length, 1); assert.equal(w.sent.length, 1);
+});
+
+test("pickup booking from a new customer: customer + pickup REQUEST created (needs staff confirmation), chat flagged", async () => {
+  const handle = await load(), w = world();
+  const ai = fakeAI([tool("request_pickup", { customer_name: "Sara", area: "الرفاع", address: "مجمع 905 طريق 12", day: "tomorrow", slot: "evening", deliver_back: true, notes: "5 ثياب" }),
+    (p) => { const tr = p.messages[p.messages.length - 1].content[0]; assert.match(tr.content, /waiting for staff confirmation/); return text("وصل طلبك للمحل ✅ الموظف بيأكد الموعد قريباً"); }]);
+  await handle(hook(inbound("97333999999", "ايه أكد")), ENV, { fetch: w.f, ai });
+  const cust = w.recs.find((r) => r.collection === "customers" && r.data.phone === "97333999999");
+  assert.ok(cust && cust.data.name === "Sara", "new customer created with the phone and name");
+  const req = w.recs.find((r) => r.collection === "suspended_orders");
+  assert.ok(req && req.data.kind === "pickup" && req.data.needsConfirm === true && req.data.source === "whatsapp" && req.data.slot === "evening" && req.data.drop === true && req.data.customerId === cust.data.id);
+  assert.match(req.data.address, /الرفاع — مجمع 905/);
+  assert.equal(w.threads[0].flag, "pickup"); assert.equal(w.threads[0].waiting, true);
+  assert.match(w.sent[0].text.body, /بيأكد الموعد/);
+});
+
+test("'ابي اكلم الموظف' while staff are available: chat handed to staff, the assistant then stays quiet", async () => {
+  const handle = await load(), w = world(), ai = fakeAI([tool("request_human", { reason: "يبي يكلم موظف" }), text("تم 👍 حولتك للموظف، بيرد عليك هنا")]);
+  await handle(hook(inbound("97333111111", "ابي اكلم الموظف")), ENV, { fetch: w.f, ai });
+  assert.equal(w.threads[0].mode, "human"); assert.equal(w.threads[0].flag, "human");
+  assert.ok(w.msgs.some((m) => m.dir === "note" && /طلب التحدث مع موظف/.test(m.body)));
+  const before = ai.calls.length, sentBefore = w.sent.length;
+  await handle(hook(inbound("97333111111", "متى بتردون؟")), ENV, { fetch: w.f, ai });
+  assert.equal(ai.calls.length, before, "no AI call while a person handles the chat"); assert.equal(w.sent.length, sentBefore, "no automatic reply");
+  assert.equal(w.threads[0].unread, 2);
+});
+
+test("hand-off when staff are NOT available: the model is told so (no false transfer), the chat waits for a call back", async () => {
+  const handle = await load(), w = world({ bot: { staffOn: false } });
+  const ai = fakeAI([tool("request_human", { reason: "x" }), (p) => { const tr = JSON.parse(p.messages[p.messages.length - 1].content[0].content); assert.equal(tr.transferred, false); return text("الموظف مو متوفر الحين، تبي تخلي رسالة؟"); }]);
+  await handle(hook(inbound("97333111111", "حولني للموظف")), ENV, { fetch: w.f, ai });
+  assert.equal(w.threads[0].mode, "bot"); assert.equal(w.threads[0].waiting, true);
+  assert.match(w.sent[0].text.body, /مو متوفر/);
+});
+
+test("order status shows only the sender's own orders (privacy)", async () => {
+  const handle = await load(), w = world();
+  let seen = null;
+  const ai = fakeAI([tool("get_my_orders", {}), (p) => { seen = p.messages[p.messages.length - 1].content[0].content; return text("طلبك #00007 جاهز"); }]);
+  await handle(hook(inbound("97333111111", "وين طلبي")), ENV, { fetch: w.f, ai });
+  assert.match(seen, /00007/); assert.match(seen, /جاهز للاستلام/); assert.ok(!/00008/.test(seen), "another customer's order is never shown");
+});
+
+test("complaint is recorded for management and the chat is flagged", async () => {
+  const handle = await load(), w = world(), ai = fakeAI([tool("submit_feedback", { kind: "complaint", message: "الثوب فيه بقعة", order_number: "00007" }), text("نعتذر منك 🙏 بلغنا الإدارة")]);
+  await handle(hook(inbound("97333111111", "الثوب رجع فيه بقعة")), ENV, { fetch: w.f, ai });
+  assert.equal(w.threads[0].flag, "complaint");
+  assert.ok(w.msgs.some((m) => m.dir === "note" && /شكوى \(طلب #00007\)/.test(m.body)));
+});
+
+test("without a Claude key the assistant never pretends: first message gets a holding reply and goes to staff", async () => {
+  const handle = await load(), w = world();
+  await handle(hook(inbound("97333111111", "هلا")), ENV, { fetch: w.f });
+  assert.match(w.sent[0].text.body, /الموظف بيرد عليك/); assert.equal(w.threads[0].waiting, true);
+  await handle(hook(inbound("97333111111", "عادي سؤال")), ENV, { fetch: w.f });
+  assert.equal(w.sent.length, 1, "no repeated holding message");
+});
+
+test("assistant switched off: messages are stored for the inbox but not answered", async () => {
+  const handle = await load(), w = world({ bot: { enabled: false } }), ai = fakeAI([text("x")]);
+  await handle(hook(inbound("97333111111", "هلا")), ENV, { fetch: w.f, ai });
+  assert.equal(ai.calls.length, 0); assert.equal(w.sent.length, 0); assert.equal(w.msgs.length, 1); assert.equal(w.threads.length, 1);
+});
+
+test("a refusal or an API error gives a polite message and alerts staff", async () => {
+  const handle = await load(), w = world();
+  await handle(hook(inbound("97333111111", "x")), ENV, { fetch: w.f, ai: fakeAI([{ stop_reason: "refusal", content: [] }]) });
+  assert.match(w.sent[0].text.body, /أحولك للموظف/);
+  const w2 = world(); const broken = { beta: { messages: { create: async () => { throw Object.assign(new Error("overloaded"), { status: 529 }); } } } };
+  await handle(hook(inbound("97333111111", "x")), ENV, { fetch: w2.f, ai: broken });
+  assert.match(w2.sent[0].text.body, /بلغت الموظف/); assert.equal(w2.threads[0].waiting, true);
+});
+
+test("staff reply from the system: only signed-in members; sends, stores, and takes the chat over", async () => {
+  const handle = await load(), w = world();
+  const req = (auth, body) => new Request("https://x/functions/v1/whatsapp-bot", { method: "POST", headers: { "content-type": "application/json", ...(auth ? { authorization: auth } : {}) }, body: JSON.stringify(body) });
+  assert.equal((await handle(req("", { action: "reply", to: "97333111111", text: "هلا" }), ENV, { fetch: w.f })).status, 401);
+  assert.equal((await handle(req("Bearer someone", { action: "reply", to: "97333111111", text: "هلا" }), ENV, { fetch: w.f })).status, 401);
+  const r = await handle(req("Bearer staff-jwt", { action: "reply", to: "97333111111", text: "هلا، طلبك جاهز" }), ENV, { fetch: w.f });
+  assert.equal(r.status, 200);
+  assert.equal(w.sent[0].text.body, "هلا، طلبك جاهز");
+  assert.equal(w.msgs[0].who, "Yaseen"); assert.equal(w.threads[0].mode, "human"); assert.equal(w.threads[0].waiting, false);
+  const ping = await (await handle(req("Bearer staff-jwt", { action: "ping" }), ENV, { fetch: w.f })).json();
+  assert.deepEqual([ping.whatsapp, ping.signature, ping.verify, ping.ai], [true, true, true, false]);
+});
+
+test("a location message becomes a map link the assistant can use as the address", async () => {
+  const handle = await load(), w = world(), ai = fakeAI([text("وصلني موقعك 👍")]);
+  const body = { entry: [{ changes: [{ value: { contacts: [], messages: [{ from: "97333111111", id: "wamid.loc1", type: "location", location: { latitude: 26.13, longitude: 50.55 } }] } }] }] };
+  await handle(hook(body), ENV, { fetch: w.f, ai });
+  assert.match(w.msgs[0].body, /maps\.google\.com\/\?q=26\.13,50\.55/);
+});
