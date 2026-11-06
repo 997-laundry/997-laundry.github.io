@@ -6902,7 +6902,7 @@
     }
     body.innerHTML = settings.packageDefs.map((p) => `<tr>
       <td><strong>${esc(p.name)}</strong><div class="pos-cart-row-sub">👕 ${esc(garmentsLabel(p.garments, 6))}</div></td><td>${serviceName(p.serviceType)}</td><td>${p.pieceCount}</td>
-      <td>${money(p.price)}</td><td>${Number(p.validDays) > 0 ? `${p.validDays} يوم` : "♾ دائمة"}</td><td>${(() => { const t0 = pkgTrips(p); return t0.n > 0 ? `${t0.n} ${t0.period === "total" ? "طوال الباقة" : "شهرياً"}` : "—"; })()}</td><td>${esc(p.bonus) || "—"}</td>
+      <td>${money(p.price)}</td><td>${Number(p.validDays) > 0 ? (lang === "ar" ? `${p.validDays} يوم` : `${p.validDays} days`) : (lang === "ar" ? "♾ دائمة" : "♾ No expiry")}</td><td>${(() => { const t0 = pkgTrips(p); return t0.n > 0 ? `${t0.n} ${t0.period === "total" ? (lang === "ar" ? "طوال الباقة" : "for the whole package") : (lang === "ar" ? "شهرياً" : "a month")}` : "—"; })()}</td><td>${esc(p.bonus) || "—"}</td>
       <td class="row-actions"><button class="mini-btn" data-edit-package="${p.id}">تعديل</button><button class="mini-btn danger-mini" data-del-package="${p.id}">حذف</button></td>
     </tr>`).join("");
     body.querySelectorAll("[data-del-package]").forEach((btn) => {
