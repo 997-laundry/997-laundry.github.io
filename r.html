@@ -643,6 +643,23 @@
     },
     // حساب دخول لموظف جديد (يحتاج إنترنت) — يرجع رقم حسابه في السحابة
     // إرسال الإيصال عبر WhatsApp Business API (دالة whatsapp-send على Supabase — رمز Meta محفوظ هناك فقط)
+    // 💬 مساعد واتساب الذكي: المحادثات (جداول wa_threads / wa_messages — supabase/whatsapp_bot.sql)
+    async waThreads() {
+      try { return { rows: await api(`/rest/v1/wa_threads?shop_id=eq.${st.shopId}&order=last_at.desc&limit=200`) }; }
+      catch (e) { return { error: e.offline ? "offline" : e.status === 404 || /wa_threads/.test(e.message || "") ? "no-table" : e.message, status: e.status }; }
+    },
+    async waMessages(phone) {
+      try { return { rows: await api(`/rest/v1/wa_messages?shop_id=eq.${st.shopId}&phone=eq.${encodeURIComponent(phone)}&order=at.desc&limit=80`) }; }
+      catch (e) { return { error: e.offline ? "offline" : e.message, status: e.status }; }
+    },
+    async waThreadPatch(phone, patch) {
+      try { return { rows: await api(`/rest/v1/wa_threads?shop_id=eq.${st.shopId}&phone=eq.${encodeURIComponent(phone)}`, { method: "PATCH", body: patch, headers: rep }) }; }
+      catch (e) { return { error: e.offline ? "offline" : e.message, status: e.status }; }
+    },
+    async waBot(payload) {
+      try { return await api("/functions/v1/whatsapp-bot", { method: "POST", body: payload }); }
+      catch (e) { return { error: e.offline ? "offline" : e.noSession ? "no-session" : (e.data && (e.data.error + (e.data.detail ? " — " + e.data.detail : ""))) || e.message, status: e.status }; }
+    },
     async waSend(payload) {
       try { return await api("/functions/v1/whatsapp-send", { method: "POST", body: payload }); }
       catch (e) { return { error: e.offline ? "offline" : e.noSession ? "no-session" : (e.data && (e.data.error + (e.data.detail ? " — " + e.data.detail : ""))) || e.message, status: e.status }; }

@@ -726,6 +726,42 @@ body.auth-locked .top-logout{display:none!important}
 .permission-table tr.perm-group td{background:var(--primary-soft);color:var(--primary-dark,#1d5670);font-weight:800;font-size:13px;padding:10px 12px}
 #quickFormSub{white-space:pre-line}
 
+/* 💬 محادثات واتساب */
+.wa-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.wa-head-txt h3{margin:0 0 6px}
+.wa-layout{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:14px;margin-top:14px;align-items:start}
+.wa-list{display:flex;flex-direction:column;gap:6px;max-height:72vh;overflow:auto}
+.wa-filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+.wa-filters .mini-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.wa-thread{display:flex;flex-direction:column;gap:4px;text-align:start;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--panel);font:inherit;cursor:pointer;min-height:56px}
+.wa-thread.on{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-soft)}
+.wa-thread.need{border-inline-start:4px solid var(--danger)}
+.wa-t-top{display:flex;justify-content:space-between;gap:8px}.wa-t-top small{color:var(--muted);font-size:11px;white-space:nowrap}
+.wa-t-last{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wa-t-badges{display:flex;gap:6px;align-items:center}
+.wa-flag{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;background:var(--panel-soft);border:1px solid var(--border)}
+.wa-flag.f-human,.wa-flag.f-complaint{background:#fff1f1;border-color:#f3b4b4;color:var(--danger)}
+.wa-flag.f-pickup{background:var(--primary-soft);color:var(--primary-dark,#1d5670)}
+.wa-flag.f-bot{background:var(--success-soft);color:var(--success)}
+.wa-chat{display:flex;flex-direction:column;gap:8px;min-height:60vh}
+.wa-chat-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center;border-bottom:1px solid var(--border);padding-bottom:8px}
+.wa-back{display:none}
+.wa-msgs{flex:1;overflow:auto;max-height:52vh;display:flex;flex-direction:column;gap:6px;padding:6px;background:#efe9e1;border-radius:12px}
+.wa-bubble{max-width:78%;padding:8px 10px;border-radius:12px;font-size:14px;line-height:1.5;box-shadow:0 1px 1px rgba(0,0,0,.06)}
+.wa-bubble small{display:block;font-size:10.5px;color:var(--muted);margin-top:3px}
+.wa-bubble.in{align-self:flex-start;background:#fff}
+.wa-bubble.bot{align-self:flex-end;background:#e3f1fb}
+.wa-bubble.staff{align-self:flex-end;background:#dcf8c6}
+.wa-note{align-self:center;font-size:12px;background:#fff6d6;border:1px solid #f1df9a;border-radius:10px;padding:5px 10px;max-width:92%}
+.wa-note small{color:var(--muted)}
+.wa-quick{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}.wa-quick .mini-btn{white-space:nowrap}
+.wa-compose{display:flex;gap:8px;align-items:stretch}
+.wa-compose textarea{flex:1;padding:10px;border:1px solid var(--border);border-radius:12px;font:inherit;resize:vertical;min-height:48px}
+.wa-compose .primary-btn{min-width:84px}
+.wa-setup .wa-steps{line-height:1.9;padding-inline-start:20px}
+.dlv-wa{font-size:12.5px;font-weight:700;color:var(--primary-dark,#1d5670);background:var(--primary-soft);border-radius:10px;padding:6px 10px}
+@media (max-width:900px){.wa-layout{grid-template-columns:1fr}.wa-layout.has-chat .wa-list{display:none}.wa-layout:not(.has-chat) .wa-chat{display:none}.wa-back{display:inline-flex}.wa-msgs{max-height:58vh}.wa-bubble{max-width:88%}}
+
 </style>
 </head>
 <body class="auth-locked">
@@ -776,6 +812,7 @@ body.auth-locked .top-logout{display:none!important}
         <button type="button" class="nav-item" data-need="view_orders" data-page="orders">▦ <span data-i18n="nav_orders">الطلبات</span></button>
         <button type="button" class="nav-item" data-need="view_customers" data-page="customers">◉ <span data-i18n="nav_customers">العملاء</span></button>
         <button type="button" class="nav-item" data-need="delivery" data-page="delivery">🚚 <span data-i18n="nav_delivery">التوصيل</span></button>
+        <button type="button" class="nav-item" data-need="whatsapp_inbox" data-page="whatsapp">💬 <span data-i18n="nav_whatsapp">واتساب</span></button>
         <button type="button" class="nav-item" data-need="view_balances" data-page="balances">◈ <span data-i18n="nav_balances">الأرصدة</span></button>
         <button type="button" class="nav-item" data-need="view_reports" data-page="reports">▥ <span data-i18n="nav_reports">التقارير</span></button>
 
@@ -1143,6 +1180,7 @@ body.auth-locked .top-logout{display:none!important}
       <section class="page" id="page-audit"><div id="auditRoot"></div></section>
       <section class="page" id="page-security"><div id="securityRoot"></div></section>
       <section class="page" id="page-delivery"><div id="deliveryRoot"></div></section>
+      <section class="page" id="page-whatsapp"><div id="waRoot"></div></section>
 
       
 
@@ -1220,6 +1258,19 @@ body.auth-locked .top-logout{display:none!important}
               <label><span data-i18n="lbl_normal_hours">مدة الطلب العادي بالساعات</span><input id="normalHoursSetting" type="number" min="1" /></label>
               <label><span data-i18n="lbl_urgent_hours">مدة الطلب المستعجل بالساعات</span><input id="urgentHoursSetting" type="number" min="1" /></label>
               <label class="check-line"><input id="shiftsRequiredSetting" type="checkbox" /> <span>إلزام الموظفين ببدء وردية (عهدة صندوق) قبل استلام المبالغ</span></label>
+              <div class="wa-bot-box dlv-settings-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft)">
+                <strong data-en="💬 WhatsApp AI assistant">💬 مساعد واتساب الذكي</strong>
+                <p class="section-note" style="margin:6px 0 8px" data-en="Answers customers on the shop's WhatsApp number from your real prices, packages and delivery policy, books pickup requests (you confirm them), and hands the chat to a person on request. Needs the whatsapp-bot function in Supabase.">يرد على العملاء في رقم واتساب المحل من أسعارك وباقاتك وسياسة التوصيل الفعلية، ويستقبل طلبات الاستلام (وأنت تؤكدها)، ويحوّل المحادثة لموظف عند الطلب. يحتاج دالة whatsapp-bot في Supabase.</p>
+                <label class="check-line"><input id="waBotOn" type="checkbox" /> <span data-en="Turn the assistant on">تشغيل المساعد الذكي</span></label>
+                <label class="check-line"><input id="waBotStaffOn" type="checkbox" /> <span data-en="Staff can take chats over (hand-off on request)">الموظفون متاحون لاستلام المحادثات (التحويل عند الطلب)</span></label>
+                <div class="dlv-settings-grid">
+                  <label><span data-en="Staff available from">الموظفون متاحون من</span><input id="waBotFrom" type="time" /></label>
+                  <label><span data-en="until">إلى</span><input id="waBotTo" type="time" /></label>
+                  <label><span data-en="Opening hours (as the assistant says them)">ساعات العمل (كما يقولها المساعد)</span><input id="waBotHours" type="text" placeholder="مفتوح 24 ساعة" /></label>
+                  <label><span data-en="Delivery areas (empty = staff confirm)">مناطق التوصيل (فارغ = الموظف يؤكد)</span><input id="waBotAreas" type="text" placeholder="الرفاع، عسكر، عالي، سند…" /></label>
+                </div>
+                <label style="display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:12.5px"><span data-en="Extra information for the assistant (special services, conditions…) — it only uses what is written here and in your prices">معلومات إضافية للمساعد (خدمات خاصة، شروط…) — لا يستخدم إلا ما يُكتب هنا وما في أسعارك</span><textarea id="waBotExtra" rows="3" placeholder="مثال: الغسيل بالبخار متوفر للبدلات فقط بسعر 2.000 د.ب · الملابس الحساسة تُغسل يدوياً"></textarea></label>
+              </div>
               <div class="dlv-settings-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft)">
                 <strong data-en="🚚 Home pickup & delivery">🚚 الاستلام والتوصيل</strong>
                 <p class="section-note" style="margin:6px 0 8px" data-en="Each trip (home pickup or home delivery) counts once. Package customers get free trips every month; others pay a small fee.">كل مشوار (استلام من البيت أو توصيل للبيت) يُحسب رحلة. عملاء الباقات يحصلون على مشاوير مجانية كل شهر، وغيرهم برسوم رمزية.</p>
@@ -3348,6 +3399,23 @@ body.auth-locked .top-logout{display:none!important}
     },
     // حساب دخول لموظف جديد (يحتاج إنترنت) — يرجع رقم حسابه في السحابة
     // إرسال الإيصال عبر WhatsApp Business API (دالة whatsapp-send على Supabase — رمز Meta محفوظ هناك فقط)
+    // 💬 مساعد واتساب الذكي: المحادثات (جداول wa_threads / wa_messages — supabase/whatsapp_bot.sql)
+    async waThreads() {
+      try { return { rows: await api(`/rest/v1/wa_threads?shop_id=eq.${st.shopId}&order=last_at.desc&limit=200`) }; }
+      catch (e) { return { error: e.offline ? "offline" : e.status === 404 || /wa_threads/.test(e.message || "") ? "no-table" : e.message, status: e.status }; }
+    },
+    async waMessages(phone) {
+      try { return { rows: await api(`/rest/v1/wa_messages?shop_id=eq.${st.shopId}&phone=eq.${encodeURIComponent(phone)}&order=at.desc&limit=80`) }; }
+      catch (e) { return { error: e.offline ? "offline" : e.message, status: e.status }; }
+    },
+    async waThreadPatch(phone, patch) {
+      try { return { rows: await api(`/rest/v1/wa_threads?shop_id=eq.${st.shopId}&phone=eq.${encodeURIComponent(phone)}`, { method: "PATCH", body: patch, headers: rep }) }; }
+      catch (e) { return { error: e.offline ? "offline" : e.message, status: e.status }; }
+    },
+    async waBot(payload) {
+      try { return await api("/functions/v1/whatsapp-bot", { method: "POST", body: payload }); }
+      catch (e) { return { error: e.offline ? "offline" : e.noSession ? "no-session" : (e.data && (e.data.error + (e.data.detail ? " — " + e.data.detail : ""))) || e.message, status: e.status }; }
+    },
     async waSend(payload) {
       try { return await api("/functions/v1/whatsapp-send", { method: "POST", body: payload }); }
       catch (e) { return { error: e.offline ? "offline" : e.noSession ? "no-session" : (e.data && (e.data.error + (e.data.detail ? " — " + e.data.detail : ""))) || e.message, status: e.status }; }
@@ -3953,7 +4021,7 @@ body.auth-locked .top-logout{display:none!important}
       report_revenue: "إجمالي الإيرادات", report_orders_count: "عدد الطلبات",
       report_avg_order: "متوسط قيمة الطلب", report_outstanding: "مبالغ مستحقة",
       nav_finance: "المالية", nav_inventory: "المخزون والمشتريات", nav_employees: "الموظفون والرواتب",
-      nav_closures: "الإغلاقات", nav_security: "مركز الأمان", nav_delivery: "التوصيل", page_delivery_title: "🚚 الاستلام والتوصيل", page_delivery_sub: "مواعيد الاستلام من البيوت · الطلبات الجاهزة للتوصيل · المندوب في الطريق", nav_audit: "سجل النشاط", nav_ai: "الذكاء الاصطناعي",
+      nav_closures: "الإغلاقات", nav_security: "مركز الأمان", nav_whatsapp: "واتساب", page_wa_title: "💬 محادثات واتساب", page_wa_sub: "المساعد الذكي يرد على العملاء · تحويل للموظف · الرد من رقم المحل", nav_delivery: "التوصيل", page_delivery_title: "🚚 الاستلام والتوصيل", page_delivery_sub: "مواعيد الاستلام من البيوت · الطلبات الجاهزة للتوصيل · المندوب في الطريق", nav_audit: "سجل النشاط", nav_ai: "الذكاء الاصطناعي",
       nav_profile: "ملف المنشأة", nav_access: "المستخدمون والصلاحيات",
       page_finance_title: "المالية", page_finance_sub: "التقارير المالية والمصروفات والأرباح",
       page_inventory_title: "المخزون والمشتريات", page_inventory_sub: "الجرد والمواد والموردون وتنبيهات النقص",
@@ -4127,7 +4195,7 @@ body.auth-locked .top-logout{display:none!important}
       report_revenue: "Total revenue", report_orders_count: "Order count",
       report_avg_order: "Average order value", report_outstanding: "Outstanding balances",
       nav_finance: "Finance", nav_inventory: "Inventory & Purchases", nav_employees: "Employees & Payroll",
-      nav_closures: "Closures", nav_security: "Security Center", nav_delivery: "Delivery", page_delivery_title: "🚚 Pickup & Delivery", page_delivery_sub: "Home pickups · orders to deliver · driver on the way", nav_audit: "Activity Log", nav_ai: "AI Center",
+      nav_closures: "Closures", nav_security: "Security Center", nav_whatsapp: "WhatsApp", page_wa_title: "💬 WhatsApp chats", page_wa_sub: "AI assistant answers customers · hand-off to staff · reply from the shop number", nav_delivery: "Delivery", page_delivery_title: "🚚 Pickup & Delivery", page_delivery_sub: "Home pickups · orders to deliver · driver on the way", nav_audit: "Activity Log", nav_ai: "AI Center",
       nav_profile: "Company Profile", nav_access: "Users & Permissions",
       page_finance_title: "Finance", page_finance_sub: "Financial reports, expenses, and profits",
       page_inventory_title: "Inventory & Purchases", page_inventory_sub: "Stock, materials, suppliers, and low-stock alerts",
@@ -4301,7 +4369,7 @@ body.auth-locked .top-logout{display:none!important}
       report_revenue: "کل آمدنی", report_orders_count: "آرڈرز کی تعداد",
       report_avg_order: "اوسط آرڈر ویلیو", report_outstanding: "باقی بیلنس",
       nav_finance: "مالیات", nav_inventory: "انوینٹری اور خریداری", nav_employees: "ملازمین اور تنخواہیں",
-      nav_closures: "اختتامیہ", nav_security: "سیکیورٹی سینٹر", nav_delivery: "ڈیلیوری", page_delivery_title: "🚚 Pickup & Delivery", page_delivery_sub: "Home pickups · orders to deliver · driver on the way", nav_audit: "سرگرمی لاگ", nav_ai: "اے آئی سینٹر",
+      nav_closures: "اختتامیہ", nav_security: "سیکیورٹی سینٹر", nav_whatsapp: "WhatsApp", page_wa_title: "💬 WhatsApp chats", page_wa_sub: "AI assistant answers customers · hand-off to staff · reply from the shop number", nav_delivery: "ڈیلیوری", page_delivery_title: "🚚 Pickup & Delivery", page_delivery_sub: "Home pickups · orders to deliver · driver on the way", nav_audit: "سرگرمی لاگ", nav_ai: "اے آئی سینٹر",
       nav_profile: "کمپنی پروفائل", nav_access: "صارفین اور اجازتیں",
       page_finance_title: "مالیات", page_finance_sub: "مالی رپورٹس، اخراجات، اور منافع",
       page_inventory_title: "انوینٹری اور خریداری", page_inventory_sub: "اسٹاک، مواد، سپلائرز، اور کم اسٹاک الرٹس",
@@ -4978,6 +5046,7 @@ body.auth-locked .top-logout{display:none!important}
     audit: ["page_audit_title", "page_audit_sub"],
     security: ["مركز الأمان", "محاولات الدخول · الجلسات · التنبيهات · سجل التدقيق"],
     delivery: ["page_delivery_title", "page_delivery_sub"],
+    whatsapp: ["page_wa_title", "page_wa_sub"],
     profile: ["page_profile_title", "page_profile_sub"],
     access: ["page_access_title", "page_access_sub"],
     settings: ["page_settings_title", "page_settings_sub"],
@@ -5011,6 +5080,7 @@ body.auth-locked .top-logout{display:none!important}
     if (pageId === "audit" && typeof window.renderAudit997 === "function") window.renderAudit997();
     if (pageId === "security") renderSecurityPage();
     if (pageId === "delivery") renderDeliveryPage();
+    if (pageId === "whatsapp") { renderWhatsAppPage(); waLoadThreads().then(() => { if (currentPage === "whatsapp") renderWhatsAppPage(); }); }
     try { updateDeliveryBadge(); } catch (e) { /* ignore */ }
     if (pageId === "settings") renderSettingsPage();
     if (pageId === "profile") renderProfilePage();
@@ -5621,6 +5691,7 @@ body.auth-locked .top-logout{display:none!important}
     { id: "view_orders", grp: "page", label: "الطلبات", en: "Orders", worker: true, accountant: true, manager: true },
     { id: "view_customers", grp: "page", label: "العملاء", en: "Customers", worker: true, accountant: true, manager: true },
     { id: "delivery", grp: "page", label: "التوصيل والاستلام من البيوت", en: "Pickup & delivery", worker: true, accountant: true, manager: true },
+    { id: "whatsapp_inbox", grp: "page", label: "محادثات واتساب (المساعد الذكي والرد على العملاء)", en: "WhatsApp chats (AI assistant, replying to customers)", worker: true, accountant: false, manager: true },
     { id: "view_balances", grp: "page", label: "الأرصدة وكشوف الحساب", en: "Balances & statements", worker: false, accountant: true, manager: true },
     { id: "view_reports", grp: "page", label: "التقارير والمالية", en: "Reports & finance", worker: false, accountant: true, manager: true },
     { id: "add_expense", grp: "page", label: "المخزون والمشتريات (عرض وإضافة)", en: "Inventory & purchases (view and add)", worker: false, accountant: true, manager: true },
@@ -6182,7 +6253,7 @@ body.auth-locked .top-logout{display:none!important}
     return hit ? hit[0] : "orders";
   }
   const goOrders = () => openPage(can("view_orders") ? "orders" : homePage());
-  const PAGE_NEED = { orders: "view_orders", customers: "view_customers", delivery: "delivery", dashboard: "view_dashboard", balances: "view_balances", "new-order": "create_order", reports: "view_reports", finance: "view_reports", inventory: "add_expense", employees: "payroll", closures: "view_closures", audit: "audit_log", security: "security_center", profile: "admin_settings", settings: "admin_settings", access: "manage_users" };
+  const PAGE_NEED = { whatsapp: "whatsapp_inbox", orders: "view_orders", customers: "view_customers", delivery: "delivery", dashboard: "view_dashboard", balances: "view_balances", "new-order": "create_order", reports: "view_reports", finance: "view_reports", inventory: "add_expense", employees: "payroll", closures: "view_closures", audit: "audit_log", security: "security_center", profile: "admin_settings", settings: "admin_settings", access: "manage_users" };
   function denied() { toast(AX("e_noperm")); }
   window.L997Auth = { can: (p) => can(p), user: () => me, role: () => role };
 
@@ -10310,7 +10381,9 @@ body.auth-locked .top-logout{display:none!important}
     document.getElementById("urgentHoursSetting").value = settings.urgentHours;
     document.getElementById("shiftsRequiredSetting").checked = settings.shiftsRequired === true;
     document.getElementById("waApiSetting").checked = !!(settings.waApi && settings.waApi.enabled);
-    if (lang !== "ar") document.querySelectorAll(".dlv-settings-box [data-en]").forEach((el) => { el.textContent = el.dataset.en; });
+    if (lang !== "ar") document.querySelectorAll(".dlv-settings-box [data-en], .wa-bot-box [data-en]").forEach((el) => { el.textContent = el.dataset.en; });
+    { const b = waCfg(); const set = (id, v) => { const el = document.getElementById(id); if (el) { if (el.type === "checkbox") el.checked = v; else el.value = v; } };
+      set("waBotOn", b.enabled); set("waBotStaffOn", b.staffOn); set("waBotFrom", b.staffFrom); set("waBotTo", b.staffTo); set("waBotHours", b.hoursText); set("waBotAreas", b.areas); set("waBotExtra", b.extra); }
     { const d = dlvCfg(); const set = (id, v) => { const el = document.getElementById(id); if (el) { if (el.type === "checkbox") el.checked = v; else el.value = v; } };
       set("dlvOnSetting", d.on); set("dlvFeeSetting", d.fee.toFixed(3)); set("dlvPkgFreeSetting", d.pkgFree); set("dlvPkgFeeSetting", d.pkgFee.toFixed(3)); set("dlvFreeOverSetting", d.freeOver.toFixed(3)); }
 
@@ -10550,6 +10623,12 @@ body.auth-locked .top-logout{display:none!important}
     const waOn = document.getElementById("waApiSetting").checked;
     if (!!(settings.waApi && settings.waApi.enabled) !== waOn) logActivity(`${waOn ? "تفعيل" : "إيقاف"} الإرسال التلقائي لإيصال التسليم عبر WhatsApp Business API`);
     settings.waApi = { ...(settings.waApi || {}), enabled: waOn };
+    if (document.getElementById("waBotOn")) {
+      const v = (id) => (document.getElementById(id).value || "").trim();
+      const nb = { enabled: document.getElementById("waBotOn").checked, staffOn: document.getElementById("waBotStaffOn").checked, staffFrom: v("waBotFrom") || "08:00", staffTo: v("waBotTo") || "23:00", hoursText: v("waBotHours") || "مفتوح 24 ساعة", areas: v("waBotAreas"), extra: v("waBotExtra").slice(0, 3000) };
+      if (JSON.stringify(waCfg()) !== JSON.stringify(nb)) logActivity(`تعديل مساعد واتساب الذكي: ${nb.enabled ? "يعمل" : "متوقف"} — الموظفون ${nb.staffOn ? `${nb.staffFrom}–${nb.staffTo}` : "غير متاحين"}`);
+      settings.waBot = nb;
+    }
     if (document.getElementById("dlvOnSetting")) {
       const num = (id) => Math.max(0, Number(normDigits(document.getElementById(id).value)) || 0);
       const nd = { on: document.getElementById("dlvOnSetting").checked, fee: round3(num("dlvFeeSetting")), pkgFree: Math.floor(num("dlvPkgFreeSetting")), pkgFee: round3(num("dlvPkgFeeSetting")), freeOver: round3(num("dlvFreeOverSetting")) };
@@ -11133,7 +11212,8 @@ body.auth-locked .top-logout{display:none!important}
         <div class="dlv-line">📍 ${esc(r.address || "—")}</div>
         <div class="dlv-line">⏰ <b>${esc(whenLabel(r.date, r.slot))}</b>${late ? ` · <b style="color:var(--danger)">${DL("متأخر", "Late")}</b>` : ""} · ${r.drop !== false ? DL("📦 مع توصيل", "📦 with delivery back") : DL("🏪 يستلم من المحل", "🏪 collects at shop")}</div>
         ${r.notes ? `<div class="dlv-line section-note">📝 ${esc(r.notes)}</div>` : ""}
-        ${onway ? `<button type="button" class="primary-btn dlv-main" data-req-done="${r.id}">✓ ${DL("استلمنا الملابس ← أدخل القطع", "Clothes collected → add items")}</button>`
+        ${r.needsConfirm ? `<div class="dlv-wa">📲 ${DL("طلب من واتساب (المساعد الذكي) — بانتظار تأكيدك للعميل", "Request from WhatsApp (AI assistant) — waiting for you to confirm")}</div><button type="button" class="primary-btn dlv-main" data-req-confirm="${r.id}">✓ ${DL("تأكيد الموعد للعميل", "Confirm the pickup to the customer")}</button>`
+          : onway ? `<button type="button" class="primary-btn dlv-main" data-req-done="${r.id}">✓ ${DL("استلمنا الملابس ← أدخل القطع", "Clothes collected → add items")}</button>`
           : `<button type="button" class="primary-btn dlv-main" data-req-onway="${r.id}">🛵 ${DL("المندوب طالع الحين", "Driver leaving now")}</button>`}
         ${icons(c.phone, r.address, null, r.id)}</div>`;
     };
@@ -11187,6 +11267,19 @@ body.auth-locked .top-logout{display:none!important}
       renderDeliveryPage();
     }));
     q("[data-req-done]").forEach((b) => (b.onclick = () => convertPickup(b.dataset.reqDone)));
+    q("[data-req-confirm]").forEach((b) => (b.onclick = async () => {
+      const r = suspendedOrders.find((x) => x.id === b.dataset.reqConfirm); if (!r) return;
+      const c = custOf(r.customerId), fee = tripFeeText(r.customerId);
+      const msg = waMsg("pickup_booked", { name: c.name, when: whenLabel(r.date, r.slot), address: r.address, fee });
+      let sent = false;
+      if (cloudOn() && CLOUD.waBot) { const res = await CLOUD.waBot({ action: "reply", to: cleanPhone(c.phone), text: msg, keepBot: true }); sent = !!(res && res.ok); }
+      if (!sent && c.phone) openWhatsApp(c.phone, msg);
+      r.needsConfirm = false; r.confirmedAt = new Date().toISOString(); r.confirmedBy = me ? me.name : "";
+      save("l997_suspended_orders", suspendedOrders);
+      logActivity(`✓ تأكيد موعد استلام (من واتساب) — ${r.customerName} — ${whenLabel(r.date, r.slot)}`);
+      toast(sent ? DL("✓ تأكد الموعد وأُرسل للعميل على واتساب", "✓ Confirmed and sent to the customer on WhatsApp") : DL("✓ تأكد الموعد — أرسل الرسالة من واتساب", "✓ Confirmed — send the message in WhatsApp"));
+      renderDeliveryPage();
+    }));
     q("[data-reg-book]").forEach((b) => (b.onclick = () => {
       const [cpId, date] = b.dataset.regBook.split("|"), cp = customerPackages.find((x) => x.id === cpId); if (!cp) return;
       const c = customers.find((x) => x.id === cp.customerId); if (!c) return;
@@ -11222,6 +11315,147 @@ body.auth-locked .top-logout{display:none!important}
   }
   window.renderDeliveryPage997 = renderDeliveryPage;
   window.waErrHint997 = (r) => waErrHint(r);
+
+  /* ============================= 💬 محادثات واتساب (المساعد الذكي) =============================
+     الرسائل تصل من Meta إلى دالة whatsapp-bot في Supabase؛ المساعد يرد آلياً من بيانات المحل الفعلية.
+     هنا يرى الموظف كل المحادثات، ويتولى أي محادثة (المساعد يتوقف فيها)، ويرد من نفس رقم المحل، ثم يعيدها للمساعد. */
+  const waView = { phone: null, filter: "all", threads: [], msgs: [], timer: null, err: "", lastSeenWaiting: null };
+  const waCfg = () => { const b = settings.waBot || {}; return { enabled: b.enabled === true, staffOn: b.staffOn !== false, staffFrom: b.staffFrom || "08:00", staffTo: b.staffTo || "23:00", hoursText: b.hoursText || "مفتوح 24 ساعة", areas: b.areas || "", extra: b.extra || "" }; };
+  const waTime = (iso) => { if (!iso) return ""; const d = new Date(iso), today = FIN.localDay(new Date().toISOString()) === FIN.localDay(iso); try { return d.toLocaleString(lang === "ar" ? "ar-BH" : "en-GB", today ? { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bahrain" } : { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bahrain" }); } catch (e) { return iso.slice(11, 16); } };
+  const waNeedsStaff = (t) => !!t && (t.waiting || (t.mode === "human" && t.unread > 0));
+  const WA_FLAG = { human: ["🙋", "يطلب موظف", "Wants a person"], callback: ["✉️", "رسالة / اتصال", "Message / call back"], complaint: ["⚠️", "شكوى", "Complaint"], pickup: ["🚚", "طلب استلام", "Pickup request"], media: ["🎙", "صوت/صورة", "Voice/photo"] };
+  async function waLoadThreads() {
+    if (!cloudOn() || !CLOUD.waThreads) { waView.err = "cloud"; return; }
+    const r = await CLOUD.waThreads();
+    if (r.error) { waView.err = r.error; return; }
+    waView.err = ""; waView.threads = r.rows || [];
+    updateWaBadge();
+  }
+  function updateWaBadge() {
+    const btn = document.querySelector('.nav-item[data-page="whatsapp"]'); if (!btn) return;
+    const n = waView.threads.filter(waNeedsStaff).length;
+    let b = btn.querySelector(".nav-count");
+    if (!b) { b = document.createElement("span"); b.className = "nav-count"; btn.appendChild(b); }
+    b.textContent = n; b.style.display = n ? "" : "none";
+    const waitingIds = waView.threads.filter((t) => t.waiting).map((t) => t.phone).sort().join(",");
+    if (waView.lastSeenWaiting !== null && waitingIds && waitingIds !== waView.lastSeenWaiting && waView.threads.some((t) => t.waiting && !waView.lastSeenWaiting.includes(t.phone))) {
+      toast(DL("💬 عميل على واتساب يحتاج موظف", "💬 A WhatsApp customer needs a person"));
+    }
+    waView.lastSeenWaiting = waitingIds;
+  }
+  // فحص دوري خفيف (كل 30 ثانية) حتى يظهر عدد المحادثات التي تحتاج موظف في القائمة
+  setInterval(() => { try { if (me && cloudOn() && can("whatsapp_inbox") && (waCfg().enabled || waView.threads.length) && currentPage !== "whatsapp") waLoadThreads(); } catch (e) { /* ignore */ } }, 30000);
+  setTimeout(() => { try { if (me && cloudOn() && can("whatsapp_inbox")) waLoadThreads(); } catch (e) { /* ignore */ } }, 4000);
+
+  async function waOpenThread(phone) {
+    waView.phone = phone;
+    const r = await CLOUD.waMessages(phone);
+    waView.msgs = r.rows ? r.rows.slice().reverse() : [];
+    const t = waView.threads.find((x) => x.phone === phone);
+    if (t && t.unread) { t.unread = 0; CLOUD.waThreadPatch(phone, { unread: 0 }); updateWaBadge(); }
+    renderWhatsAppPage(true);
+    const box = document.getElementById("waMsgs"); if (box) box.scrollTop = box.scrollHeight;
+  }
+  function renderWhatsAppPage(keepScroll) {
+    const root = document.getElementById("waRoot"); if (!root) return;
+    const cfg = waCfg(), adm = can("admin_settings");
+    clearInterval(waView.timer);
+    if (currentPage === "whatsapp") waView.timer = setInterval(async () => {
+      if (currentPage !== "whatsapp") { clearInterval(waView.timer); return; }
+      const typing = document.activeElement && document.activeElement.id === "waText";
+      await waLoadThreads();
+      if (waView.phone) { const r = await CLOUD.waMessages(waView.phone); if (r.rows) { const fresh = r.rows.slice().reverse(); if (fresh.length !== waView.msgs.length || (fresh[fresh.length - 1] || {}).id !== (waView.msgs[waView.msgs.length - 1] || {}).id) { waView.msgs = fresh; if (!typing) renderWhatsAppPage(true); else renderWaMsgs(); } } }
+      else if (!typing) renderWhatsAppPage(true);
+    }, 6000);
+    const setupCard = (msg) => `<div class="panel wa-setup"><h3>💬 ${DL("مساعد واتساب الذكي", "WhatsApp AI assistant")}</h3><p>${msg}</p>
+      <ol class="wa-steps">
+        <li>${DL("Supabase ← SQL Editor ← شغّل الملف <b>supabase/whatsapp_bot.sql</b>", "Supabase → SQL Editor → run <b>supabase/whatsapp_bot.sql</b>")}</li>
+        <li>${DL("Supabase ← Edge Functions ← أنشئ الدالة <b>whatsapp-bot</b> (الملف supabase/functions/whatsapp-bot/index.ts) وأوقف «Verify JWT»", "Supabase → Edge Functions → create <b>whatsapp-bot</b> (supabase/functions/whatsapp-bot/index.ts) and turn off “Verify JWT”")}</li>
+        <li>${DL("Secrets: <b>WA_APP_SECRET</b> و <b>WA_VERIFY_TOKEN</b> و <b>ANTHROPIC_API_KEY</b> (مع WA_TOKEN و WA_PHONE_ID)", "Secrets: <b>WA_APP_SECRET</b>, <b>WA_VERIFY_TOKEN</b>, <b>ANTHROPIC_API_KEY</b> (plus WA_TOKEN, WA_PHONE_ID)")}</li>
+        <li>${DL("Meta ← WhatsApp ← Configuration ← Webhook: الرابط …/functions/v1/whatsapp-bot ← اشترك في <b>messages</b>", "Meta → WhatsApp → Configuration → Webhook: …/functions/v1/whatsapp-bot → subscribe to <b>messages</b>")}</li>
+        <li>${DL("هنا: فعّل المساعد من الإعدادات ← التشغيل ← «مساعد واتساب الذكي»", "Here: turn the assistant on in Settings → Operating → “WhatsApp AI assistant”")}</li>
+      </ol><p class="section-note">${DL("الدليل الكامل: docs/whatsapp-ai-assistant.md", "Full guide: docs/whatsapp-ai-assistant.md")}</p></div>`;
+    if (!cloudOn()) { root.innerHTML = setupCard(DL("المحادثات تعمل عبر السحابة — اربط النظام أولاً (ملف المنشأة ← المزامنة السحابية).", "Chats work through the cloud — link the system first (Company profile → Cloud sync).")); return; }
+    if (waView.err === "no-table") { root.innerHTML = setupCard(DL("جداول المحادثات غير موجودة بعد في Supabase.", "The chat tables are not in Supabase yet.")); return; }
+    const list = waView.threads.filter((t) => waView.filter === "all" ? true : waView.filter === "staff" ? waNeedsStaff(t) : t.flag === waView.filter);
+    const counts = { staff: waView.threads.filter(waNeedsStaff).length, complaint: waView.threads.filter((t) => t.flag === "complaint").length, pickup: waView.threads.filter((t) => t.flag === "pickup").length };
+    const cur = waView.threads.find((t) => t.phone === waView.phone) || null;
+    const custOf = (t) => (t && t.customer_id ? customers.find((c) => c.id === t.customer_id) : null) || (t ? customers.find((c) => phoneMatches(c.phone, t.phone)) : null);
+    const nameOf = (t) => { const c = custOf(t); return (c && c.name) || t.name || fmtPhone(t.phone); };
+    root.innerHTML = `
+      <div class="panel wa-head">
+        <div class="wa-head-txt"><h3>💬 ${DL("محادثات واتساب", "WhatsApp chats")}</h3>
+          <div class="dlv-policy"><span>🤖 ${DL("المساعد", "Assistant")}: <b style="color:${cfg.enabled ? "var(--success)" : "var(--danger)"}">${cfg.enabled ? DL("يعمل", "on") : DL("متوقف", "off")}</b></span>
+          <span>🙋 ${DL("الموظفون", "Staff")}: <b>${cfg.staffOn ? `${cfg.staffFrom}–${cfg.staffTo}` : DL("غير متاحين", "unavailable")}</b></span>
+          ${waView.err && waView.err !== "cloud" ? `<span style="color:var(--danger)">⚠ ${esc(waView.err)}</span>` : ""}</div></div>
+        <div class="row-actions">${adm ? `<button type="button" class="secondary-btn" id="waToggleBot">${cfg.enabled ? DL("⏸ إيقاف المساعد", "⏸ Turn assistant off") : DL("▶ تشغيل المساعد", "▶ Turn assistant on")}</button><button type="button" class="secondary-btn" id="waToggleStaff">${cfg.staffOn ? DL("🙅 الموظفون غير متاحين الآن", "🙅 Staff unavailable now") : DL("🙋 الموظفون متاحون", "🙋 Staff available")}</button>` : ""}<button type="button" class="ghost-btn" id="waPing">🔎 ${DL("فحص الربط", "Check connection")}</button></div>
+        <p class="section-note" id="waPingOut" style="margin:6px 0 0;flex-basis:100%"></p>
+      </div>
+      <div class="wa-layout ${cur ? "has-chat" : ""}">
+        <div class="panel wa-list">
+          <div class="wa-filters">${[["all", DL("الكل", "All"), waView.threads.length], ["staff", DL("يحتاج موظف", "Needs a person"), counts.staff], ["complaint", DL("شكاوى", "Complaints"), counts.complaint], ["pickup", DL("حجوزات", "Pickups"), counts.pickup]].map(([k, l, nn]) => `<button type="button" class="mini-btn ${waView.filter === k ? "active" : ""}" data-wa-filter="${k}">${l}${nn ? ` <b>${nn}</b>` : ""}</button>`).join("")}</div>
+          ${list.length ? list.map((t) => `<button type="button" class="wa-thread ${t.phone === waView.phone ? "on" : ""} ${waNeedsStaff(t) ? "need" : ""}" data-wa-open="${esc(t.phone)}">
+              <div class="wa-t-top"><b>${esc(nameOf(t))}</b><small>${esc(waTime(t.last_at))}</small></div>
+              <div class="wa-t-last">${t.mode === "human" ? "👤 " : "🤖 "}${esc(String(t.last_text || "").slice(0, 70))}</div>
+              <div class="wa-t-badges">${t.flag && WA_FLAG[t.flag] ? `<span class="wa-flag f-${t.flag}">${WA_FLAG[t.flag][0]} ${lang === "ar" ? WA_FLAG[t.flag][1] : WA_FLAG[t.flag][2]}</span>` : ""}${t.unread ? `<span class="nav-count">${t.unread}</span>` : ""}</div></button>`).join("")
+            : `<div class="empty-state compact">${waView.threads.length ? DL("لا توجد محادثات في هذا التصنيف", "No chats in this filter") : DL("لا توجد محادثات بعد — ستظهر هنا رسائل العملاء على رقم المحل", "No chats yet — customer messages to the shop number appear here")}</div>`}
+        </div>
+        <div class="panel wa-chat">${cur ? `
+          <div class="wa-chat-head"><button type="button" class="ghost-btn wa-back" id="waBack">→ ${DL("المحادثات", "Chats")}</button>
+            <div><b>${esc(nameOf(cur))}</b> <small dir="ltr">${esc(fmtPhone(cur.phone))}</small> ${cur.mode === "human" ? `<span class="wa-flag f-human">👤 ${DL("موظف يتولى", "Staff handling")}</span>` : `<span class="wa-flag f-bot">🤖 ${DL("المساعد يرد", "Assistant replying")}</span>`}</div>
+            <div class="row-actions">${cur.mode === "human" ? `<button type="button" class="mini-btn" data-wa-mode="bot">🤖 ${DL("رجوع للمساعد", "Back to assistant")}</button>` : `<button type="button" class="mini-btn" data-wa-mode="human">✋ ${DL("أتولى المحادثة", "Take over")}</button>`}
+            ${cur.waiting || cur.flag ? `<button type="button" class="mini-btn" data-wa-done="1">✓ ${DL("تمت المعالجة", "Done")}</button>` : ""}
+            ${custOf(cur) ? `<button type="button" class="mini-btn" data-wa-cust="${esc(custOf(cur).id)}">📋 ${DL("ملف العميل", "Customer file")}</button>` : ""}
+            ${dlvCfg().on ? `<button type="button" class="mini-btn" data-wa-pickup="1">🚚 ${DL("حجز استلام", "Book pickup")}</button>` : ""}</div></div>
+          <div class="wa-msgs" id="waMsgs"></div>
+          <div class="wa-quick">${[DL("هلا والله 🌸 شلون أقدر أخدمك؟", "Hello! How can I help?"), DL("طلبك جاهز ✅ تقدر تستلمه أي وقت", "Your order is ready ✅"), DL("المندوب في الطريق لك 🛵", "Our driver is on the way 🛵"), DL("تم تأكيد موعد الاستلام ✅", "Your pickup is confirmed ✅")].map((q) => `<button type="button" class="mini-btn" data-wa-quick="${esc(q)}">${esc(q)}</button>`).join("")}</div>
+          <div class="wa-compose"><textarea id="waText" rows="2" placeholder="${DL("اكتب ردك — يُرسل من رقم المحل (والمساعد يتوقف في هذه المحادثة)", "Type a reply — sent from the shop number (the assistant pauses in this chat)")}"></textarea><button type="button" class="primary-btn" id="waSend">${DL("إرسال", "Send")}</button></div>`
+          : `<div class="empty-state">${DL("اختر محادثة من القائمة", "Pick a chat from the list")}</div>`}</div>
+      </div>`;
+    if (cur) renderWaMsgs();
+    const q = (sel) => root.querySelectorAll(sel);
+    q("[data-wa-filter]").forEach((b) => (b.onclick = () => { waView.filter = b.dataset.waFilter; renderWhatsAppPage(true); }));
+    q("[data-wa-open]").forEach((b) => (b.onclick = () => waOpenThread(b.dataset.waOpen)));
+    const back = root.querySelector("#waBack"); if (back) back.onclick = () => { waView.phone = null; renderWhatsAppPage(true); };
+    q("[data-wa-mode]").forEach((b) => (b.onclick = async () => {
+      const mode = b.dataset.waMode, patch = mode === "human" ? { mode: "human", human_at: new Date().toISOString() } : { mode: "bot", waiting: false, flag: null };
+      const r = await CLOUD.waThreadPatch(cur.phone, patch); if (r.error) { toast("⚠ " + r.error); return; }
+      Object.assign(cur, patch); logActivity(`💬 ${mode === "human" ? "تولّى" : "أعاد للمساعد"} محادثة واتساب ${cur.phone}`); await waLoadThreads(); renderWhatsAppPage(true);
+    }));
+    q("[data-wa-done]").forEach((b) => (b.onclick = async () => { const patch = { waiting: false, flag: null, unread: 0 }; const r = await CLOUD.waThreadPatch(cur.phone, patch); if (r.error) { toast("⚠ " + r.error); return; } Object.assign(cur, patch); renderWhatsAppPage(true); updateWaBadge(); }));
+    q("[data-wa-cust]").forEach((b) => (b.onclick = () => window.openCustomerProfile997 && window.openCustomerProfile997(b.dataset.waCust)));
+    q("[data-wa-pickup]").forEach((b) => (b.onclick = () => { const c = custOf(cur); openPickupForm(c ? c.id : null); }));
+    q("[data-wa-quick]").forEach((b) => (b.onclick = () => { const ta = document.getElementById("waText"); ta.value = b.dataset.waQuick; ta.focus(); }));
+    const send = root.querySelector("#waSend");
+    if (send) send.onclick = async () => {
+      const ta = document.getElementById("waText"), txt = ta.value.trim(); if (!txt) return;
+      send.disabled = true;
+      const r = await CLOUD.waBot({ action: "reply", to: cur.phone, text: txt });
+      send.disabled = false;
+      if (!r || !r.ok) { toast(`⚠ ${waErrHint(r) || (r && r.error) || "خطأ"}`); return; }
+      ta.value = ""; Object.assign(cur, { mode: "human", waiting: false, unread: 0 });
+      logActivity(`💬 رد على واتساب — ${cur.phone}`);
+      await waLoadThreads(); waOpenThread(cur.phone);
+    };
+    const bt = root.querySelector("#waToggleBot"); if (bt) bt.onclick = () => { settings.waBot = { ...(settings.waBot || {}), enabled: !cfg.enabled }; persistAll(); logActivity(`${!cfg.enabled ? "تشغيل" : "إيقاف"} مساعد واتساب الذكي`); renderWhatsAppPage(true); };
+    const bs = root.querySelector("#waToggleStaff"); if (bs) bs.onclick = () => { settings.waBot = { ...(settings.waBot || {}), staffOn: !cfg.staffOn }; persistAll(); logActivity(`مساعد واتساب: الموظفون ${!cfg.staffOn ? "متاحون" : "غير متاحين"} للتحويل`); renderWhatsAppPage(true); };
+    root.querySelector("#waPing").onclick = async () => {
+      const out = document.getElementById("waPingOut"); out.textContent = "…";
+      const r = await CLOUD.waBot({ action: "ping" });
+      if (!r || !r.ok) { out.textContent = `⚠ ${r && r.status === 404 ? DL("دالة whatsapp-bot غير موجودة في Supabase بعد.", "The whatsapp-bot function is not in Supabase yet.") : waErrHint(r) || (r && r.error) || ""}`; return; }
+      const ok = (b, ar, en) => `${b ? "✓" : "✗"} ${DL(ar, en)}`;
+      out.textContent = [ok(r.whatsapp, "واتساب (WA_TOKEN / WA_PHONE_ID)", "WhatsApp (WA_TOKEN / WA_PHONE_ID)"), ok(r.signature, "توقيع Meta (WA_APP_SECRET)", "Meta signature (WA_APP_SECRET)"), ok(r.verify, "رمز التحقق (WA_VERIFY_TOKEN)", "Verify token (WA_VERIFY_TOKEN)"), ok(r.ai, `الذكاء الاصطناعي (ANTHROPIC_API_KEY) — ${r.model}`, `AI (ANTHROPIC_API_KEY) — ${r.model}`)].join(" · ");
+    };
+    if (!keepScroll) { const box = document.getElementById("waMsgs"); if (box) box.scrollTop = box.scrollHeight; }
+  }
+  function renderWaMsgs() {
+    const box = document.getElementById("waMsgs"); if (!box) return;
+    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    box.innerHTML = waView.msgs.map((m) => m.dir === "note" ? `<div class="wa-note">${esc(m.body)} <small>${esc(waTime(m.at))}</small></div>`
+      : `<div class="wa-bubble ${m.dir === "in" ? "in" : m.who === "bot" ? "bot" : "staff"}"><div>${esc(m.body).replace(/\n/g, "<br>")}</div><small>${m.dir === "in" ? "" : m.who === "bot" ? "🤖 " + DL("المساعد", "Assistant") + " · " : "👤 " + esc(m.who || "") + " · "}${esc(waTime(m.at))}</small></div>`).join("") || `<div class="empty-state compact">${DL("لا توجد رسائل", "No messages")}</div>`;
+    if (atBottom) box.scrollTop = box.scrollHeight;
+  }
+  window.renderWhatsAppPage997 = renderWhatsAppPage;
 
   /* ============================= الورديات (حضور وانصراف + عهدة الصندوق) =============================
      كل موظف يبدأ ورديته عند الدخول (= حضور) بعدّ النقد المستلم، وكل حركة مالية يقوم بها تُسجَّل باسمه،
