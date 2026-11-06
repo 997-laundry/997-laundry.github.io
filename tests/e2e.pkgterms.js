@@ -155,6 +155,14 @@ function check(name, cond, detail) { console.log(`${cond ? "PASS" : "FAIL"}  ${n
   check("weights: comforter 4, double bedsheet 3", st2.packageWeights.duvet.washiron === 4 && st2.packageWeights.bedsheet_double.washiron === 3, JSON.stringify(st2.packageWeights.duvet));
   check("packages already sold to customers are not changed", JSON.stringify((await ls("l997_customer_packages")).map((p) => [p.expiresAt, p.dlvTrips])) === soldBefore);
 
+  /* published iron-only packages: one tap adds the 5 from the flyer, no duplicates */
+  await closeAll(); await nav("settings"); await page.evaluate(() => document.querySelector('[data-settings-tab="packages"]').click()); await wait(150);
+  await page.click("#addIronPkgsBtn"); await page.waitForSelector("#quickFormSubmitBtn", { state: "visible" }); await submit();
+  const iron = (await ls("l997_settings")).packageDefs.filter((p) => p.serviceType === "iron").map((p) => [p.pieceCount, p.price, p.validDays]);
+  check("iron packages added as published: 50=8.900, 80=13.500, 100=16.000, 120=18.500, 150=22.000, no expiry", JSON.stringify(iron) === JSON.stringify([[50, 8.9, 0], [80, 13.5, 0], [100, 16, 0], [120, 18.5, 0], [150, 22, 0]]), JSON.stringify(iron));
+  await page.click("#addIronPkgsBtn"); await wait(200);
+  check("…pressing again does not duplicate them", (await ls("l997_settings")).packageDefs.filter((p) => p.serviceType === "iron").length === 5);
+
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();
   console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL PACKAGE-TERMS CHECKS PASSED");

@@ -6973,6 +6973,25 @@
     const [, days, trips] = tiers.find(([max]) => pieces <= max);
     return { validDays: days, dlvTrips: trips, dlvPeriod: "total" };
   }
+  // باقات «كوي فقط» كما في البروشور المنشور: 50/80/100/120/150 قطعة — دائمة بدون تاريخ انتهاء، كل الأصناف
+  const IRON_PKGS_997 = [[50, 8.9], [80, 13.5], [100, 16], [120, 18.5], [150, 22]];
+  document.getElementById("addIronPkgsBtn")?.addEventListener("click", () => {
+    if (!can("edit_pricing")) { denied(); return; }
+    settings.packageDefs = settings.packageDefs || [];
+    const exists = (n) => settings.packageDefs.some((p) => p.serviceType === "iron" && Number(p.pieceCount) === n);
+    const todo = IRON_PKGS_997.filter(([n]) => !exists(n));
+    if (!todo.length) { toast("باقات الكوي الخمس موجودة مسبقاً"); return; }
+    openQuickForm({
+      title: "＋ باقات الكوي (حسب البروشور)", sub: todo.map(([n, pr]) => `• كوي ${n} قطعة — ${money(pr)} (${money(pr / n)} للقطعة)`).join("\n") + "\n• كل الأصناف · بدون تاريخ انتهاء · المشاوير المجانية حسب الإعدادات (عدّلها لكل باقة إن أردت)",
+      fields: [], submitLabel: `إضافة ${todo.length} باقات`,
+      onSubmit: () => {
+        todo.forEach(([n, pr]) => settings.packageDefs.push({ id: uid(), name: `كوي ${n} قطعة`, serviceType: "iron", pieceCount: n, price: round3(pr), bonus: "", garments: [], validDays: 0, dlvPeriod: "month" }));
+        persistAll();
+        logActivity(`إضافة باقات الكوي (البروشور): ${todo.map(([n, pr]) => `${n} قطعة ${money(pr)}`).join("، ")}`);
+        renderPackageDefs(); toast(`✓ أُضيفت ${todo.length} باقات كوي`);
+      },
+    });
+  });
   document.getElementById("applyPkgTipsBtn")?.addEventListener("click", () => {
     if (!can("edit_pricing")) { denied(); return; }
     const defs = settings.packageDefs || [];

@@ -293,6 +293,7 @@
 "الصلاحية": "Permission",
 "مدة الصلاحية": "Validity",
 "✨ تطبيق التوصيات": "✨ Apply recommendations",
+"＋ باقات الكوي المنشورة": "＋ Published iron packages",
 "المشاوير المجانية": "Free trips",
 "الصنف": "Item",
 "الطريقة": "Method",
