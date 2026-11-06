@@ -704,3 +704,4 @@ body.auth-locked .top-logout{display:none!important}
 @media (max-width:560px){.ck-hero-val{font-size:21px}.ck-pipes{grid-template-columns:repeat(3,minmax(0,1fr))}.ck-mini.three{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
 .permission-table tr.perm-group td{background:var(--primary-soft);color:var(--primary-dark,#1d5670);font-weight:800;font-size:13px;padding:10px 12px}
+#quickFormSub{white-space:pre-line}

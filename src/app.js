@@ -6965,6 +6965,35 @@
     });
   }
   document.getElementById("addPackageDefBtn").addEventListener("click", () => openPackageDefForm(null));
+  /* ✨ توصيات الباقات (بضغطة واحدة، بعد عرض التغييرات): صلاحية ومشاوير مجانية محدودة حسب حجم الباقة،
+     هدية اللحاف للباقات من 100 قطعة فقط، ووزن اللحاف 4 والشرشف الدبل 3 (حتى لا يصبح استخدام الباقة أغلى من السعر العادي).
+     الباقات المباعة للعملاء سابقاً لا تتغير (التزام تجاه العميل) — تُطبّق على المبيعات الجديدة فقط. */
+  function pkgTipFor(pieces) {
+    const tiers = [[50, 60, 4], [80, 75, 6], [100, 90, 8], [120, 105, 10], [Infinity, 120, 12]];
+    const [, days, trips] = tiers.find(([max]) => pieces <= max);
+    return { validDays: days, dlvTrips: trips, dlvPeriod: "total" };
+  }
+  document.getElementById("applyPkgTipsBtn")?.addEventListener("click", () => {
+    if (!can("edit_pricing")) { denied(); return; }
+    const defs = settings.packageDefs || [];
+    if (!defs.length) { toast("لا توجد باقات لتطبيق التوصيات عليها"); return; }
+    const gift = (p) => (p.pieceCount >= 100 ? p.bonus : /لحاف/.test(p.bonus || "") ? "" : p.bonus);
+    const lines = defs.map((p) => { const t0 = pkgTipFor(p.pieceCount); return `• ${p.name}: صلاحية ${t0.validDays} يوم · ${t0.dlvTrips} مشاوير مجانية للباقة كاملة${gift(p) !== p.bonus ? " · بدون هدية اللحاف" : ""}`; });
+    const w = settings.packageWeights || {};
+    openQuickForm({
+      title: "✨ تطبيق توصيات الباقات", sub: lines.join("\n") + `\n• وزن اللحاف: ${pkgWeight("duvet", "washiron")} ← 4 · الشرشف الدبل: ${pkgWeight("bedsheet_double", "washiron")} ← 3\n• الباقات المباعة للعملاء سابقاً تبقى كما هي (تُطبّق على المبيعات الجديدة).`,
+      fields: [], submitLabel: "تطبيق",
+      onSubmit: () => {
+        const before = defs.map((p) => `${p.name}: ${Number(p.validDays) > 0 ? p.validDays + " يوم" : "دائمة"}/${pkgTrips(p).n} ${pkgTrips(p).period === "total" ? "للباقة" : "شهرياً"}/${p.bonus || "—"}`).join("، ");
+        defs.forEach((p) => { Object.assign(p, pkgTipFor(p.pieceCount)); p.bonus = gift(p); });
+        settings.packageWeights = { ...w, duvet: { ...(w.duvet || {}), washiron: 4, iron: (w.duvet && w.duvet.iron) || 2 }, bedsheet_double: { ...(w.bedsheet_double || {}), washiron: 3, iron: (w.bedsheet_double && w.bedsheet_double.iron) || 2 } };
+        persistAll();
+        logActivity(`تطبيق توصيات الباقات — قبل: ${before} — بعد: ${defs.map((p) => `${p.name}: ${p.validDays} يوم/${p.dlvTrips} مشاوير/${p.bonus || "—"}`).join("، ")} — اللحاف 4، الشرشف الدبل 3`);
+        renderPackageDefs(); renderPackageWeights();
+        toast("✓ طُبّقت التوصيات على الباقات");
+      },
+    });
+  });
 
   // سطر توضيحي للعميل: «العباية = 2 قطع · اللحاف = 5 قطع … · خارج الباقة: الستارة، الحذاء» (للأصناف المشمولة بخدمة الباقة فقط)
   function pkgRulesText(def) {

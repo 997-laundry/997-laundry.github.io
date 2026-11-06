@@ -292,6 +292,7 @@
 "الصافي": "Net",
 "الصلاحية": "Permission",
 "مدة الصلاحية": "Validity",
+"✨ تطبيق التوصيات": "✨ Apply recommendations",
 "المشاوير المجانية": "Free trips",
 "الصنف": "Item",
 "الطريقة": "Method",

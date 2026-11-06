@@ -139,6 +139,22 @@ function check(name, cond, detail) { console.log(`${cond ? "PASS" : "FAIL"}  ${n
   const st = (await ls("l997_settings")).discountCodes.filter((c) => c.createdBy === "system");
   check("the 8 customer codes stay permanent with no use limit", st.length === 8 && st.every((c) => !c.expiresAt && !c.maxUses));
 
+  /* ✨ apply recommendations: validity + trips by size, lahaf gift only from 100 pieces, heavy-item weights */
+  await page.evaluate(() => { const s = JSON.parse(localStorage.getItem("l997_settings")); s.packageDefs = [50, 80, 100, 120, 150].map((n) => ({ id: "pk" + n, name: "Package " + n, serviceType: "washiron", pieceCount: n, price: n * 0.3, bonus: "لحاف مجاني", garments: [] })); localStorage.setItem("l997_settings", JSON.stringify(s)); });
+  await page.reload(); await page.waitForSelector("#au_user, body:not(.auth-locked)");
+  if (await page.isVisible("#au_user")) { await page.fill("#au_user", "owner"); await page.fill("#au_pass", PW); await page.click("#au_form button[type=submit]"); await page.waitForSelector("body:not(.auth-locked)"); }
+  const soldBefore = JSON.stringify((await ls("l997_customer_packages")).map((p) => [p.expiresAt, p.dlvTrips]));
+  await closeAll(); await nav("settings"); await page.evaluate(() => document.querySelector('[data-settings-tab="packages"]').click()); await wait(150);
+  await page.click("#applyPkgTipsBtn"); await page.waitForSelector("#quickFormSubmitBtn", { state: "visible" });
+  check("recommendations dialog lists the changes before applying", /60 يوم/.test(await page.textContent("#quickFormSub")) && /120 يوم/.test(await page.textContent("#quickFormSub")));
+  await submit();
+  const st2 = await ls("l997_settings");
+  const got = st2.packageDefs.map((p) => [p.pieceCount, p.validDays, p.dlvTrips, p.dlvPeriod, p.bonus]);
+  check("packages: 50→60d/4, 80→75d/6, 100→90d/8, 120→105d/10, 150→120d/12 (whole package); lahaf gift only from 100",
+    JSON.stringify(got) === JSON.stringify([[50, 60, 4, "total", ""], [80, 75, 6, "total", ""], [100, 90, 8, "total", "لحاف مجاني"], [120, 105, 10, "total", "لحاف مجاني"], [150, 120, 12, "total", "لحاف مجاني"]]), JSON.stringify(got));
+  check("weights: comforter 4, double bedsheet 3", st2.packageWeights.duvet.washiron === 4 && st2.packageWeights.bedsheet_double.washiron === 3, JSON.stringify(st2.packageWeights.duvet));
+  check("packages already sold to customers are not changed", JSON.stringify((await ls("l997_customer_packages")).map((p) => [p.expiresAt, p.dlvTrips])) === soldBefore);
+
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();
   console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL PACKAGE-TERMS CHECKS PASSED");
