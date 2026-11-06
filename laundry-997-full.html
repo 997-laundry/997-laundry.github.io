@@ -724,6 +724,7 @@ body.auth-locked .top-logout{display:none!important}
 @media (max-width:560px){.ck-hero-val{font-size:21px}.ck-pipes{grid-template-columns:repeat(3,minmax(0,1fr))}.ck-mini.three{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
 .permission-table tr.perm-group td{background:var(--primary-soft);color:var(--primary-dark,#1d5670);font-weight:800;font-size:13px;padding:10px 12px}
+#quickFormSub{white-space:pre-line}
 
 </style>
 </head>
@@ -1242,7 +1243,7 @@ body.auth-locked .top-logout{display:none!important}
           </div>
 
           <div class="panel" data-settings-panel="packages" style="display:none">
-            <div class="panel-header"><div><h3>الباقات</h3><p>تعريف باقات مسبقة الدفع (عدد قطع بسعر ثابت) — أدخل أسعارك الخاصة</p></div><button class="primary-btn" id="addPackageDefBtn">＋ باقة جديدة</button></div>
+            <div class="panel-header"><div><h3>الباقات</h3><p>تعريف باقات مسبقة الدفع (عدد قطع بسعر ثابت) — أدخل أسعارك الخاصة</p></div><div class="row-actions"><button class="secondary-btn" type="button" id="applyPkgTipsBtn">✨ تطبيق التوصيات</button><button class="primary-btn" id="addPackageDefBtn">＋ باقة جديدة</button></div></div>
             <div class="table-wrap"><table><thead><tr><th>اسم الباقة</th><th>نوع الخدمة</th><th>عدد القطع</th><th>السعر</th><th>مدة الصلاحية</th><th>المشاوير المجانية</th><th>هدية مجانية</th><th></th></tr></thead><tbody id="packageDefsBody"></tbody></table></div>
           </div>
 
@@ -1981,6 +1982,7 @@ body.auth-locked .top-logout{display:none!important}
 "الصافي": "Net",
 "الصلاحية": "Permission",
 "مدة الصلاحية": "Validity",
+"✨ تطبيق التوصيات": "✨ Apply recommendations",
 "المشاوير المجانية": "Free trips",
 "الصنف": "Item",
 "الطريقة": "Method",
@@ -10658,6 +10660,35 @@ body.auth-locked .top-logout{display:none!important}
     });
   }
   document.getElementById("addPackageDefBtn").addEventListener("click", () => openPackageDefForm(null));
+  /* ✨ توصيات الباقات (بضغطة واحدة، بعد عرض التغييرات): صلاحية ومشاوير مجانية محدودة حسب حجم الباقة،
+     هدية اللحاف للباقات من 100 قطعة فقط، ووزن اللحاف 4 والشرشف الدبل 3 (حتى لا يصبح استخدام الباقة أغلى من السعر العادي).
+     الباقات المباعة للعملاء سابقاً لا تتغير (التزام تجاه العميل) — تُطبّق على المبيعات الجديدة فقط. */
+  function pkgTipFor(pieces) {
+    const tiers = [[50, 60, 4], [80, 75, 6], [100, 90, 8], [120, 105, 10], [Infinity, 120, 12]];
+    const [, days, trips] = tiers.find(([max]) => pieces <= max);
+    return { validDays: days, dlvTrips: trips, dlvPeriod: "total" };
+  }
+  document.getElementById("applyPkgTipsBtn")?.addEventListener("click", () => {
+    if (!can("edit_pricing")) { denied(); return; }
+    const defs = settings.packageDefs || [];
+    if (!defs.length) { toast("لا توجد باقات لتطبيق التوصيات عليها"); return; }
+    const gift = (p) => (p.pieceCount >= 100 ? p.bonus : /لحاف/.test(p.bonus || "") ? "" : p.bonus);
+    const lines = defs.map((p) => { const t0 = pkgTipFor(p.pieceCount); return `• ${p.name}: صلاحية ${t0.validDays} يوم · ${t0.dlvTrips} مشاوير مجانية للباقة كاملة${gift(p) !== p.bonus ? " · بدون هدية اللحاف" : ""}`; });
+    const w = settings.packageWeights || {};
+    openQuickForm({
+      title: "✨ تطبيق توصيات الباقات", sub: lines.join("\n") + `\n• وزن اللحاف: ${pkgWeight("duvet", "washiron")} ← 4 · الشرشف الدبل: ${pkgWeight("bedsheet_double", "washiron")} ← 3\n• الباقات المباعة للعملاء سابقاً تبقى كما هي (تُطبّق على المبيعات الجديدة).`,
+      fields: [], submitLabel: "تطبيق",
+      onSubmit: () => {
+        const before = defs.map((p) => `${p.name}: ${Number(p.validDays) > 0 ? p.validDays + " يوم" : "دائمة"}/${pkgTrips(p).n} ${pkgTrips(p).period === "total" ? "للباقة" : "شهرياً"}/${p.bonus || "—"}`).join("، ");
+        defs.forEach((p) => { Object.assign(p, pkgTipFor(p.pieceCount)); p.bonus = gift(p); });
+        settings.packageWeights = { ...w, duvet: { ...(w.duvet || {}), washiron: 4, iron: (w.duvet && w.duvet.iron) || 2 }, bedsheet_double: { ...(w.bedsheet_double || {}), washiron: 3, iron: (w.bedsheet_double && w.bedsheet_double.iron) || 2 } };
+        persistAll();
+        logActivity(`تطبيق توصيات الباقات — قبل: ${before} — بعد: ${defs.map((p) => `${p.name}: ${p.validDays} يوم/${p.dlvTrips} مشاوير/${p.bonus || "—"}`).join("، ")} — اللحاف 4، الشرشف الدبل 3`);
+        renderPackageDefs(); renderPackageWeights();
+        toast("✓ طُبّقت التوصيات على الباقات");
+      },
+    });
+  });
 
   // سطر توضيحي للعميل: «العباية = 2 قطع · اللحاف = 5 قطع … · خارج الباقة: الستارة، الحذاء» (للأصناف المشمولة بخدمة الباقة فقط)
   function pkgRulesText(def) {
