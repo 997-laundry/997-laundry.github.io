@@ -47,7 +47,12 @@ const PW = "Owner#2026pass";
 
   // B: tablet (iPad size) joins the same shop
   const B = await device("B", { width: 820, height: 1180 });
-  await B.click("#au_cloud_join"); await B.fill("#au_user", "owner"); await B.fill("#au_pass", PW);
+  await B.click("#au_cloud_join");
+  // a new device does not know employee numbers yet → clear message instead of "wrong username or password"
+  await B.fill("#au_user", "0001"); await B.fill("#au_pass", PW); await B.click("#au_form button[type=submit]");
+  await B.waitForFunction(() => /رقم وظيفي/.test(document.getElementById("au_err").textContent), null, { timeout: 15000 }).catch(() => {});
+  check("new device + employee number: tells the worker to use the username", /رقم وظيفي/.test(await B.textContent("#au_err")) && /اسم الدخول/.test(await B.textContent("#au_err")), await B.textContent("#au_err"));
+  await B.fill("#au_user", "owner"); await B.fill("#au_pass", PW);
   await Promise.all([B.waitForEvent("load", { timeout: 40000 }), B.click("#au_form button[type=submit]")]);
   await B.waitForSelector("#au_user"); await B.waitForTimeout(300); await B.fill("#au_user", "owner"); await B.fill("#au_pass", PW); await B.click("#au_form button[type=submit]");
   await B.waitForTimeout(1500); if (await B.isVisible("#au_saved")) { await B.check("#au_saved"); await B.click("#au_next"); }
