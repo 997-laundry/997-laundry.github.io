@@ -6380,7 +6380,8 @@ body.auth-locked .top-logout{display:none!important}
     } else if (authView === "cloudJoin") {
       html += `<h2>☁ ${lang === "en" ? "Sign in from the cloud" : "الدخول من السحابة"}</h2><p class="auth-sub">${lang === "en" ? "Your shop's data will be downloaded to this device. Use the username and password you use in the system." : "ستُنزَّل بيانات المحل كاملة لهذا الجهاز. استخدم اسم الدخول وكلمة المرور التي تستخدمها في النظام."}</p>
         ${authCtx.replace ? `<div class="cloud-warn">⚠ ${lang === "en" ? "This replaces the data currently on this device with the shop's cloud data. A backup file of this device is downloaded first." : "سيتم استبدال البيانات الموجودة على هذا الجهاز ببيانات المحل من السحابة. يُنزَّل أولاً ملف نسخة احتياطية من بيانات هذا الجهاز."}</div>` : ""}
-        <form id="au_form" novalidate>${txtField("au_user", AX("f_user"), "username")}${pwField("au_pass", AX("f_pass"), "current-password")}
+        <form id="au_form" novalidate>${txtField("au_user", lang === "en" ? "Username (not the employee number)" : "اسم الدخول (وليس الرقم الوظيفي)", "username", 'autocorrect="off"')}${pwField("au_pass", AX("f_pass"), "current-password")}
+        <div class="auth-hint" style="margin:-6px 0 8px">${lang === "en" ? "On a new device use the username the owner gave you (e.g. Yassen997). The employee number works only on devices that already have the shop's data." : "على جهاز جديد اكتب اسم الدخول الذي أعطاك إياه المالك (مثل Yassen997). الرقم الوظيفي يعمل فقط على الأجهزة التي فيها بيانات المحل."}</div>
         <div class="auth-err" id="au_err" role="alert"></div><button type="submit" class="primary-btn full">☁ ${lang === "en" ? "Sign in and download" : "دخول وتنزيل البيانات"}</button></form>
         <div class="auth-links"><button type="button" class="link-btn" id="au_back">${esc(AX("back_login"))}</button></div>`;
     } else if (authView === "forgot") {
@@ -6795,7 +6796,11 @@ body.auth-locked .top-logout{display:none!important}
     btn.disabled = true; setErr(lang === "en" ? "☁ Downloading the shop's data…" : "☁ جاري تنزيل بيانات المحل…");
     const r = await CLOUD.joinDevice(ident, pw);
     btn.disabled = false;
-    if (r.error) return setErr(cloudErr(r.error));
+    if (r.error) {
+      // رقم وظيفي على جهاز جديد: لا توجد قائمة موظفين بعد لمعرفة صاحبه — رسالة واضحة بدل «اسم أو كلمة مرور غير صحيحة»
+      if (/^\s*[0-9٠-٩]+\s*$/.test(ident) && r.error === "bad-credentials") return setErr(lang === "en" ? "That looks like an employee number. On a new device type your USERNAME (e.g. Yassen997) — ask the owner if you don't know it." : "هذا رقم وظيفي. على جهاز جديد اكتب «اسم الدخول» (مثل Yassen997) — اسأل المالك إذا ما تعرفه.");
+      return setErr(cloudErr(r.error));
+    }
     const list = JSON.parse(localStorage.getItem("l997_employees") || "[]");
     const emp = list.find((x) => x.cloudUserId === r.uid) || list.find((x) => String(x.username || "").toLowerCase() === ident.toLowerCase());
     if (emp) { emp.cloudUserId = r.uid; emp.salt = randHex(16); emp.passHash = hashPw(pw, emp.salt); localStorage.setItem("l997_employees", JSON.stringify(list)); }
