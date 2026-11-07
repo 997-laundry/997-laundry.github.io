@@ -760,7 +760,33 @@ body.auth-locked .top-logout{display:none!important}
 .wa-compose .primary-btn{min-width:84px}
 .wa-setup .wa-steps{line-height:1.9;padding-inline-start:20px}
 .dlv-wa{font-size:12.5px;font-weight:700;color:var(--primary-dark,#1d5670);background:var(--primary-soft);border-radius:10px;padding:6px 10px}
-@media (max-width:900px){.wa-layout{grid-template-columns:1fr}.wa-layout.has-chat .wa-list{display:none}.wa-layout:not(.has-chat) .wa-chat{display:none}.wa-back{display:inline-flex}.wa-msgs{max-height:58vh}.wa-bubble{max-width:88%}}
+/* WhatsApp page — app-like layout: fixed-height panes, only the messages scroll, the reply box stays visible */
+.wa-ping-out{margin:0;flex-basis:100%;white-space:pre-line}.wa-ping-out:empty{display:none}
+.wa-layout{height:calc(100dvh - 250px);min-height:380px;align-items:stretch}
+.wa-list{max-height:none;height:100%;min-height:0}
+.wa-chat{min-height:0;height:100%;overflow:hidden}
+.wa-msgs{max-height:none;min-height:120px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.wa-chat-head .row-actions{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none}.wa-chat-head .row-actions::-webkit-scrollbar{display:none}
+.wa-compose textarea{resize:none;max-height:120px}
+/* tablets (portrait AND landscape) and phones: one pane at a time — the list, or the open chat full width */
+@media (max-width:1180px){
+  .wa-layout{grid-template-columns:1fr;height:calc(100dvh - 210px);min-height:340px;gap:10px;margin-top:10px}
+  .wa-layout.has-chat .wa-list{display:none}.wa-layout:not(.has-chat) .wa-chat{display:none}
+  .wa-back{display:inline-flex}.wa-bubble{max-width:86%}
+  .wa-head{padding:10px 12px;gap:8px}.wa-head-txt h3{font-size:16px;margin:0 0 2px}
+  .wa-head .row-actions{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.wa-head .row-actions::-webkit-scrollbar{display:none}
+  .wa-head .row-actions button{white-space:nowrap;padding:7px 10px;font-size:13px}
+  .wa-head.chat-open .dlv-policy{display:none}
+  .wa-chat{padding:10px}.wa-chat-head{padding-bottom:6px;gap:6px}
+  .wa-quick .mini-btn{font-size:12px}
+}
+/* short screens (tablet / phone in landscape): give the conversation the height */
+@media (max-height:620px){
+  .wa-layout{height:calc(100dvh - 150px);min-height:260px}
+  .wa-head.chat-open{display:none}
+  .wa-quick{display:none}
+  .wa-compose textarea{min-height:40px}
+}
 
 </style>
 </head>
@@ -11366,16 +11392,25 @@ body.auth-locked .top-logout{display:none!important}
     renderWhatsAppPage(true);
     const box = document.getElementById("waMsgs"); if (box) box.scrollTop = box.scrollHeight;
   }
-  function renderWhatsAppPage(keepScroll) {
+  const waSig = () => JSON.stringify(waView.threads.map((t) => [t.phone, t.last_at, t.unread, t.flag, t.mode, t.waiting]));
+  function renderWhatsAppPage(keepScroll, fromPoll) {
     const root = document.getElementById("waRoot"); if (!root) return;
+    // remember where the user was, so a refresh never throws them back to the top
+    const prevList = root.querySelector(".wa-list"), prevMsgs = document.getElementById("waMsgs");
+    const keep = { list: prevList ? prevList.scrollTop : 0, msgsBottom: prevMsgs ? prevMsgs.scrollHeight - prevMsgs.scrollTop - prevMsgs.clientHeight < 40 : true, msgs: prevMsgs ? prevMsgs.scrollTop : 0, win: window.scrollY };
     const cfg = waCfg(), adm = can("admin_settings");
     clearInterval(waView.timer);
     if (currentPage === "whatsapp") waView.timer = setInterval(async () => {
       if (currentPage !== "whatsapp") { clearInterval(waView.timer); return; }
       const typing = document.activeElement && document.activeElement.id === "waText";
+      const before = waSig();
       await waLoadThreads();
-      if (waView.phone) { const r = await CLOUD.waMessages(waView.phone); if (r.rows) { const fresh = r.rows.slice().reverse(); if (fresh.length !== waView.msgs.length || (fresh[fresh.length - 1] || {}).id !== (waView.msgs[waView.msgs.length - 1] || {}).id) { waView.msgs = fresh; if (!typing) renderWhatsAppPage(true); else renderWaMsgs(); } } }
-      else if (!typing) renderWhatsAppPage(true);
+      let msgsChanged = false;
+      if (waView.phone) { const r = await CLOUD.waMessages(waView.phone); if (r.rows) { const fresh = r.rows.slice().reverse(); if (fresh.length !== waView.msgs.length || (fresh[fresh.length - 1] || {}).id !== (waView.msgs[waView.msgs.length - 1] || {}).id) { waView.msgs = fresh; msgsChanged = true; } } }
+      // nothing new → leave the screen alone (no jumps, taps are not lost)
+      if (waSig() === before && !msgsChanged) return;
+      if (typing) { if (msgsChanged) renderWaMsgs(); return; }
+      renderWhatsAppPage(true, true);
     }, 6000);
     const setupCard = (msg) => `<div class="panel wa-setup"><h3>💬 ${DL("مساعد واتساب الذكي", "WhatsApp AI assistant")}</h3><p>${msg}</p>
       <ol class="wa-steps">
@@ -11393,13 +11428,13 @@ body.auth-locked .top-logout{display:none!important}
     const custOf = (t) => (t && t.customer_id ? customers.find((c) => c.id === t.customer_id) : null) || (t ? customers.find((c) => phoneMatches(c.phone, t.phone)) : null);
     const nameOf = (t) => { const c = custOf(t); return (c && c.name) || t.name || fmtPhone(t.phone); };
     root.innerHTML = `
-      <div class="panel wa-head">
+      <div class="panel wa-head ${cur ? "chat-open" : ""}">
         <div class="wa-head-txt"><h3>💬 ${DL("محادثات واتساب", "WhatsApp chats")}</h3>
           <div class="dlv-policy"><span>🤖 ${DL("المساعد", "Assistant")}: <b style="color:${cfg.enabled ? "var(--success)" : "var(--danger)"}">${cfg.enabled ? DL("يعمل", "on") : DL("متوقف", "off")}</b></span>
           <span>🙋 ${DL("الموظفون", "Staff")}: <b>${cfg.staffOn ? `${cfg.staffFrom}–${cfg.staffTo}` : DL("غير متاحين", "unavailable")}</b></span>
           ${waView.err && waView.err !== "cloud" ? `<span style="color:var(--danger)">⚠ ${esc(waView.err)}</span>` : ""}</div></div>
         <div class="row-actions">${adm ? `<button type="button" class="secondary-btn" id="waToggleBot">${cfg.enabled ? DL("⏸ إيقاف المساعد", "⏸ Turn assistant off") : DL("▶ تشغيل المساعد", "▶ Turn assistant on")}</button><button type="button" class="secondary-btn" id="waToggleStaff">${cfg.staffOn ? DL("🙅 الموظفون غير متاحين الآن", "🙅 Staff unavailable now") : DL("🙋 الموظفون متاحون", "🙋 Staff available")}</button>` : ""}<button type="button" class="ghost-btn" id="waPing">🔎 ${DL("فحص الربط", "Check connection")}</button></div>
-        <p class="section-note" id="waPingOut" style="margin:6px 0 0;flex-basis:100%;white-space:pre-line"></p>
+        <p class="section-note wa-ping-out" id="waPingOut"></p>
       </div>
       <div class="wa-layout ${cur ? "has-chat" : ""}">
         <div class="panel wa-list">
@@ -11423,6 +11458,9 @@ body.auth-locked .top-logout{display:none!important}
           : `<div class="empty-state">${DL("اختر محادثة من القائمة", "Pick a chat from the list")}</div>`}</div>
       </div>`;
     if (cur) renderWaMsgs();
+    { const l = root.querySelector(".wa-list"); if (l) l.scrollTop = keep.list;
+      const m = document.getElementById("waMsgs"); if (m && keepScroll) m.scrollTop = keep.msgsBottom ? m.scrollHeight : keep.msgs;
+      if (fromPoll) window.scrollTo(0, keep.win); }
     const q = (sel) => root.querySelectorAll(sel);
     q("[data-wa-filter]").forEach((b) => (b.onclick = () => { waView.filter = b.dataset.waFilter; renderWhatsAppPage(true); }));
     q("[data-wa-open]").forEach((b) => (b.onclick = () => waOpenThread(b.dataset.waOpen)));

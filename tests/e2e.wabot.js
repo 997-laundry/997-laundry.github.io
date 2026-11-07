@@ -31,7 +31,7 @@ const PW = "Owner#2026pass";
   // the whatsapp-bot function (simulated): ping + staff reply (stores the message like the real function)
   await A.route(/\/functions\/v1\/whatsapp-bot$/, async (route) => {
     const body = JSON.parse(route.request().postData() || "{}"); botCalls.push(body);
-    if (body.action === "ping") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, whatsapp: true, signature: true, verify: true, ai: true, model: "claude-opus-5-5" }) });
+    if (body.action === "ping") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, whatsapp: true, signature: true, verify: true, ai: true, model: "claude-sonnet-5-5" }) });
     if (body.action === "reply") {
       const shop = (await cloud.query("select id from public.shops limit 1")).rows[0].id;
       adm(`insert into public.wa_messages (shop_id, phone, dir, who, body) values (${lit(shop)}, ${lit(body.to)}, 'out', 'Owner', ${lit(body.text)});`);
