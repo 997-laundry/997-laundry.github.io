@@ -391,5 +391,9 @@ if (typeof Deno !== "undefined") {
     ai = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   }
   const waitUntil = globalThis.EdgeRuntime && typeof globalThis.EdgeRuntime.waitUntil === "function" ? (p) => globalThis.EdgeRuntime.waitUntil(p) : null;
-  Deno.serve((req) => handle(req, Deno.env.toObject(), { ai, waitUntil }));
+  // any unexpected error still answers with CORS headers, so the system shows the real reason instead of "no internet"
+  Deno.serve(async (req) => {
+    try { return await handle(req, Deno.env.toObject(), { ai, waitUntil }); }
+    catch (e) { console.error("handler", e && e.message); return json(500, { error: "server error", detail: String((e && e.message) || e).slice(0, 300) }); }
+  });
 }

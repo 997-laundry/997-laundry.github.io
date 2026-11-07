@@ -75,4 +75,7 @@ export async function handle(req, env, fetchImpl) {
   return json(200, { ok: true, id: sj.messages && sj.messages[0] ? sj.messages[0].id : null });
 }
 
-if (typeof Deno !== "undefined") Deno.serve((req) => handle(req, Deno.env.toObject()));
+if (typeof Deno !== "undefined") Deno.serve(async (req) => {
+  try { return await handle(req, Deno.env.toObject()); }
+  catch (e) { console.error("handler", e && e.message); return json(500, { error: "server error", detail: String((e && e.message) || e).slice(0, 300) }); }
+});
