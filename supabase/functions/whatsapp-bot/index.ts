@@ -132,7 +132,10 @@ const RULES = `أنت المساعد الافتراضي لمغسلة على وا
 6) إذا طلب العميل التحدث مع شخص (مثل: ابي اكلم العامل/الموظف، حولني لموظف، أريد شخص، human, agent) أو كان غاضباً أو عنده مشكلة لا تحلها البيانات: استخدم request_human فوراً. إذا أعادت الأداة أن الموظف متاح، قل إنك حولت المحادثة وإن الموظف سيرد هنا قريباً. إذا أعادت أنه غير متاح، قل ذلك بصراحة واعرض عليه ترك رسالة أو طلب اتصال (leave_message). لا تدّعِ أبداً أن التحويل تم إذا لم يتم.
 7) الشكاوى والملاحظات: اعتذر باختصار، اجمع التفاصيل (رقم الطلب إن وجد)، ثم استخدم submit_feedback، وقل إن الإدارة ستتابع.
 8) لا تؤكد أسعاراً نهائية لطلب لم يُستلم بعد؛ السعر النهائي يُحسب في المحل حسب القطع الفعلية.
-9) رسائل الصوت والصور: قل إنك تستقبل النص فقط، واطلب كتابة الطلب أو عرض التحويل للموظف.`;
+9) رسائل الصوت والصور: قل إنك تستقبل النص فقط، واطلب كتابة الطلب أو عرض التحويل للموظف.
+10) اللغة: إذا اختار العميل «العربية» أو «English» (زر أو كتابة) أو كتب «عربي / Arabic / English / انجليزي»، التزم بهذه اللغة في كل الردود حتى يغيّرها. بالإنجليزية اكتب إنجليزية واضحة وودودة، وأسماء الأصناف بالإنجليزية من بيانات المحل، والعملة BHD.
+11) القائمة: إذا كانت رسالة العميل تحية فقط أو اختيار لغة أو «قائمة / menu / مساعدة»، رحّب واعرض باختصار ما تقدر تساعد فيه بأسطر مرقمة: 1 الأسعار والخدمات · 2 الباقات · 3 حجز استلام من البيت · 4 توصيل طلب جاهز · 5 حالة طلبي · 6 شكوى أو ملاحظة · 7 التحدث مع موظف. وإذا كتب رقماً من القائمة فنفّذ ما يقابله.
+12) توصيل طلب جاهز إلى البيت: تحقق بـ get_my_orders، ثم اجمع المنطقة والعنوان واليوم والوقت، لخّص واطلب الموافقة، ثم استخدم request_delivery. قل إن الطلب وصل للمحل والموظف يؤكد الموعد — لا تقل إنه تأكد.`;
 
 /* ===================== tools ===================== */
 const TOOLS = [
@@ -145,6 +148,12 @@ const TOOLS = [
     slot: { type: "string", enum: ["morning", "noon", "evening", "night"] },
     deliver_back: { type: "boolean", description: "Deliver back home after cleaning" },
     notes: { type: "string", description: "Items or instructions ('' if none)" } } } },
+  { name: "request_delivery", description: "Ask the shop to deliver an existing (ready) order to the customer's home, after the customer agreed to the summary. Staff confirm it; it is not confirmed yet.", strict: true, input_schema: { type: "object", additionalProperties: false, required: ["order_number", "area", "address", "day", "slot", "notes"], properties: {
+    order_number: { type: "string", description: "Order number from get_my_orders ('' if the customer does not know it)" },
+    area: { type: "string" }, address: { type: "string", description: "Block/road/house or a map link" },
+    day: { type: "string", description: "today | tomorrow | YYYY-MM-DD" },
+    slot: { type: "string", enum: ["morning", "noon", "evening", "night"] },
+    notes: { type: "string", description: "'' if none" } } } },
   { name: "request_human", description: "The customer wants a person (worker/staff) or has an issue you cannot solve. Hands the chat to staff if available; returns whether staff are available now.", strict: true, input_schema: { type: "object", additionalProperties: false, required: ["reason"], properties: { reason: { type: "string" } } } },
   { name: "leave_message", description: "Leave a message for staff / ask for a call back (when staff are not available or the customer prefers).", strict: true, input_schema: { type: "object", additionalProperties: false, required: ["message", "callback"], properties: { message: { type: "string" }, callback: { type: "boolean" } } } },
   { name: "submit_feedback", description: "Record a complaint, suggestion or praise for the management.", strict: true, input_schema: { type: "object", additionalProperties: false, required: ["kind", "message", "order_number"], properties: { kind: { type: "string", enum: ["complaint", "suggestion", "praise"] }, message: { type: "string" }, order_number: { type: "string", description: "'' if none" } } } },
@@ -185,6 +194,16 @@ async function runTool(name, input, ctx) {
     await D.post("records", { shop_id: shop, collection: "suspended_orders", record_id: id, data: req }, "return=minimal");
     ctx.flag = "pickup";
     return { ok: true, status: "REQUEST SENT — waiting for staff confirmation (not confirmed yet)", day, slot: SLOTS[input.slot] };
+  }
+  if (name === "request_delivery") {
+    const today = bhNow().date;
+    const day = input.day === "today" ? today : input.day === "tomorrow" ? addDays(today, 1) : /^\d{4}-\d{2}-\d{2}$/.test(input.day) ? input.day : "";
+    if (!day || day < today) return { ok: false, error: "Ask for a valid day (today, tomorrow or a date)." };
+    if (!String(input.address || "").trim() && !String(input.area || "").trim()) return { ok: false, error: "Ask for the address." };
+    ctx.flag = "pickup";
+    ctx.patch = { ...(ctx.patch || {}), waiting: true };
+    ctx.note = `🚚 طلب توصيل${input.order_number ? ` للطلب #${input.order_number}` : ""} — ${[input.area, input.address].filter((x) => String(x || "").trim()).join(" — ")} — ${day} ${SLOTS[input.slot] || input.slot}${input.notes ? ` — ${input.notes}` : ""}`;
+    return { ok: true, status: "DELIVERY REQUEST SENT — waiting for staff confirmation (not confirmed yet)", day, slot: SLOTS[input.slot] };
   }
   if (name === "request_human") {
     const avail = staffAvailable(botCfg(settings));
@@ -237,6 +256,12 @@ async function askClaude(ai, env, system, messages, ctx) {
 /* ===================== WhatsApp ===================== */
 async function waText(env, f, to, body) {
   const r = await f(`https://graph.facebook.com/${env.WA_API_VERSION || "v21.0"}/${env.WA_PHONE_ID}/messages`, { method: "POST", headers: { Authorization: `Bearer ${env.WA_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body: String(body).slice(0, 4000) } }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error((j.error && j.error.message) || `send ${r.status}`); e.status = r.status; throw e; }
+  return j.messages && j.messages[0] ? j.messages[0].id : null;
+}
+async function waButtons(env, f, to, body, buttons) {
+  const r = await f(`https://graph.facebook.com/${env.WA_API_VERSION || "v21.0"}/${env.WA_PHONE_ID}/messages`, { method: "POST", headers: { Authorization: `Bearer ${env.WA_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messaging_product: "whatsapp", to, type: "interactive", interactive: { type: "button", body: { text: body }, action: { buttons: buttons.map(([id, title]) => ({ type: "reply", reply: { id, title } })) } } }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error((j.error && j.error.message) || `send ${r.status}`); e.status = r.status; throw e; }
   return j.messages && j.messages[0] ? j.messages[0].id : null;
@@ -344,10 +369,22 @@ async function handleInbound(env, deps, payload) {
     }
     if (ctx.note) await D.post("wa_messages", { shop_id: shop, phone, dir: "note", who: "system", body: ctx.note.slice(0, 4000) }, "return=minimal");
     if (ctx.patch || ctx.flag) await D.patch(`wa_threads?shop_id=eq.${shop}&phone=eq.${phone}`, { ...(ctx.flag ? { flag: ctx.flag, waiting: true } : {}), ...(ctx.patch || {}), ...(ctx.cust && !thread.customer_id ? { customer_id: ctx.cust.id } : {}) });
+    // the customer sent another message while this answer was being written: let that newer turn answer everything at once
+    if (reply && m.id && deps.ai) {
+      const latest = (await D.get(`wa_messages?shop_id=eq.${shop}&phone=eq.${phone}&dir=eq.in&order=at.desc&limit=1`).catch(() => []))[0];
+      if (latest && latest.wa_id && latest.wa_id !== m.id) reply = "";
+    }
     if (reply && env.WA_TOKEN && env.WA_PHONE_ID) {
       try {
         const wid = await waText(env, f, phone, reply);
         await D.post("wa_messages", { shop_id: shop, phone, dir: "out", who: "bot", body: reply.slice(0, 4000), wa_id: wid }, "return=minimal");
+        // first contact: offer the language choice as two buttons
+        if (!ex && deps.ai) {
+          try {
+            const bid = await waButtons(env, f, phone, "🌐 تبي نكمل بأي لغة؟\nWhich language would you like?", [["lang_ar", "العربية"], ["lang_en", "English"]]);
+            await D.post("wa_messages", { shop_id: shop, phone, dir: "out", who: "bot", body: "🌐 العربية / English", wa_id: bid }, "return=minimal");
+          } catch (e) { console.error("buttons", e && e.message); }
+        }
       } catch (e) { console.error("send", e && e.message); await D.post("wa_messages", { shop_id: shop, phone, dir: "note", who: "system", body: `⚠️ تعذّر إرسال رد المساعد: ${(e && e.message) || ""}`.slice(0, 500) }, "return=minimal"); }
     }
   }

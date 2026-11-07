@@ -28,7 +28,7 @@ function world(opts = {}) {
     { collection: "orders", record_id: "o1", data: { id: "o1", number: "00007", customerId: "c1", status: "ready", items: [{ qty: 3 }], payment: { total: 1.5, paid: 0 }, paymentConfirmed: false, createdAt: "2026-11-01T10:00:00Z" } },
     { collection: "orders", record_id: "o2", data: { id: "o2", number: "00008", customerId: "c2", status: "received", items: [{ qty: 9 }], payment: { total: 9.9, paid: 0 }, createdAt: "2026-11-02T10:00:00Z" } },
   ].map((r) => ({ shop_id: SHOP, deleted: false, ...r }));
-  const threads = [], msgs = [], sent = [], reads = [];
+  const threads = [], msgs = [], sent = [], reads = [], buttons = [];
   let mid = 1;
   const q = (url) => { const u = new URL(url); const o = {}; u.searchParams.forEach((v, k) => { o[k] = v; }); return { table: u.pathname.split("/rest/v1/")[1], o }; };
   const match = (row, o) => Object.entries(o).every(([k, v]) => {
@@ -46,6 +46,7 @@ function world(opts = {}) {
       const b = JSON.parse(opt.body);
       if (b.status === "read") { reads.push(b.message_id); return res({ success: true }); }
       if (opts.sendFails) return res({ error: { message: "(#131047) Re-engagement message" } }, 400);
+      if (b.type === "interactive") { buttons.push(b); return res({ messages: [{ id: "wamid.btn" + buttons.length }] }); }
       sent.push(b); return res({ messages: [{ id: "wamid.out" + sent.length }] });
     }
     if (url.endsWith("/auth/v1/user")) return opt.headers.Authorization === "Bearer staff-jwt" ? res({ id: "u1" }) : res({}, 401);
@@ -71,7 +72,7 @@ function world(opts = {}) {
     }
     return res({}, 405);
   };
-  return { f, recs, threads, msgs, sent, reads, settings };
+  return { f, recs, threads, msgs, sent, reads, buttons, settings };
 }
 
 // ---------- fake Claude: a script of turns ----------
@@ -124,7 +125,7 @@ test("price question: Claude gets the real price list (cached), Bahraini rules, 
   const last = p.messages[p.messages.length - 1];
   assert.equal(last.role, "user"); assert.match(last.content[0].text, /العميل مسجّل: Ali/);
   assert.equal(w.sent.length, 1); assert.equal(w.sent[0].to, "97333111111"); assert.match(w.sent[0].text.body, /0\.500/);
-  assert.deepEqual(w.msgs.map((m) => m.dir), ["in", "out"]);
+  assert.deepEqual(w.msgs.map((m) => m.dir), ["in", "out", "out"]);
   assert.equal(w.reads.length, 1, "blue ticks: the customer's message is marked as read");
 });
 
@@ -282,4 +283,44 @@ test("keys pasted with invisible characters (RLM, NBSP, zero-width, newline) are
   const { cleanKey } = await import(tmp);
   assert.equal(cleanKey("‏sk-ant-api03-AbC_12 ​\n "), "sk-ant-api03-AbC_12");
   assert.equal(cleanKey(undefined), undefined);
+});
+
+test("first contact gets the language buttons once; later messages do not", async () => {
+  const handle = await load(), w = world(), ai = fakeAI([text("هلا 👋")]);
+  await handle(hook(inbound("97333111111", "هلا")), ENV, { fetch: w.f, ai });
+  assert.equal(w.buttons.length, 1);
+  const btns = w.buttons[0].interactive.action.buttons.map((b) => b.reply.title);
+  assert.deepEqual(btns, ["العربية", "English"]);
+  await handle(hook(inbound("97333111111", "كم سعر الثوب؟")), ENV, { fetch: w.f, ai });
+  assert.equal(w.buttons.length, 1, "no buttons again for a known chat");
+});
+
+test("choosing English with the button reaches the assistant as the text 'English'", async () => {
+  const handle = await load(), w = world(), ai = fakeAI([text("Hello! How can I help?")]);
+  await handle(hook(inbound("97333111111", "", { type: "interactive", text: undefined, interactive: { type: "button_reply", button_reply: { id: "lang_en", title: "English" } } })), ENV, { fetch: w.f, ai });
+  const last = ai.calls[0].messages[ai.calls[0].messages.length - 1];
+  assert.equal(last.content[1].text, "English");
+  assert.match(ai.calls[0].system[0].text, /English/);
+});
+
+test("two quick messages: only the newest one is answered (no duplicate replies)", async () => {
+  const handle = await load(), w = world();
+  let release; const gate = new Promise((r) => (release = r));
+  let n2 = 0;
+  const ai = { beta: { messages: { create: async () => { n2++; if (n2 === 1) await gate; return text("reply " + n2); } } } };
+  const first = handle(hook(inbound("97333111111", "مرحبا")), ENV, { fetch: w.f, ai });
+  await new Promise((r) => setTimeout(r, 10));
+  await handle(hook(inbound("97333111111", "كم سعر الثوب")), ENV, { fetch: w.f, ai });
+  release(); await first;
+  assert.deepEqual(w.sent.map((x) => x.text.body), ["reply 2"]);
+});
+
+test("delivery of a ready order is filed for staff (not confirmed) and the chat is flagged", async () => {
+  const handle = await load(), w = world();
+  const ai = fakeAI([tool("request_delivery", { order_number: "00007", area: "الرفاع", address: "مجمع 901", day: "tomorrow", slot: "evening", notes: "" }), text("وصل طلب التوصيل للمحل والموظف بيأكد الموعد")]);
+  await handle(hook(inbound("97333111111", "وصلوا لي طلبي بكرة المسا")), ENV, { fetch: w.f, ai });
+  const note = w.msgs.find((m) => m.dir === "note");
+  assert.match(note.body, /طلب توصيل للطلب #00007/); assert.match(note.body, /مجمع 901/);
+  assert.equal(w.threads[0].flag, "pickup"); assert.equal(w.threads[0].waiting, true);
+  assert.ok(!/تأكد|تم الحجز/.test(w.sent[0].text.body.replace("بيأكد", "")));
 });
