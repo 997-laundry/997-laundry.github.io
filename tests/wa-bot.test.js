@@ -225,3 +225,23 @@ test("a location message becomes a map link the assistant can use as the address
   await handle(hook(body), ENV, { fetch: w.f, ai });
   assert.match(w.msgs[0].body, /maps\.google\.com\/\?q=26\.13,50\.55/);
 });
+
+test("coexistence: a reply typed on the shop phone app is logged and the assistant then stays quiet", async () => {
+  const handle = await load(), w = world(), ai = fakeAI([text("رد المساعد")]);
+  const echo = { entry: [{ changes: [{ field: "smb_message_echoes", value: { message_echoes: [{ from: "15556463423", to: "97333111111", id: "wamid.echo1", type: "text", text: { body: "هلا، طلبك جاهز" } }] } }] }] };
+  await handle(hook(echo), ENV, { fetch: w.f, ai });
+  await handle(hook(echo), ENV, { fetch: w.f, ai }); // delivered twice → logged once
+  assert.equal(w.msgs.filter((m) => m.wa_id === "wamid.echo1").length, 1);
+  assert.equal(w.msgs[0].dir, "out"); assert.match(w.msgs[0].who, /جوال المحل/);
+  assert.equal(w.threads.length, 1); assert.equal(w.threads[0].mode, "human"); assert.ok(w.threads[0].human_at);
+  assert.equal(w.sent.length, 0); assert.equal(ai.calls.length, 0);
+  await handle(hook(inbound("97333111111", "شكراً")), ENV, { fetch: w.f, ai });
+  assert.equal(ai.calls.length, 0, "a person is handling the chat — no assistant reply"); assert.equal(w.sent.length, 0);
+});
+
+test("an unexpected error inside the function still answers JSON with CORS (not a network error in the browser)", async () => {
+  const src2 = fs.readFileSync(path.join(__dirname, "..", "supabase", "functions", "whatsapp-bot", "index.ts"), "utf8");
+  assert.match(src2, /Deno\.serve\(async \(req\) => \{\s*try \{ return await handle/);
+  const send = fs.readFileSync(path.join(__dirname, "..", "supabase", "functions", "whatsapp-send", "index.ts"), "utf8");
+  assert.match(send, /Deno\.serve\(async \(req\) => \{\s*try \{ return await handle/);
+});

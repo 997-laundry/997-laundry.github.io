@@ -252,6 +252,23 @@ async function handleInbound(env, deps, payload) {
   const shop = await shopId(env, D);
   if (!shop) return;
   const value = payload && payload.entry && payload.entry[0] && payload.entry[0].changes && payload.entry[0].changes[0] && payload.entry[0].changes[0].value;
+  // coexistence: a staff member answered from the WhatsApp Business app on the shop phone →
+  // log it in the chat and let the person handle it (the assistant stays quiet for HUMAN_HOURS)
+  if (value && Array.isArray(value.message_echoes)) {
+    for (const m of value.message_echoes) {
+      const phone = String(m.to || "").replace(/\D/g, "");
+      if (!/^\d{8,15}$/.test(phone)) continue;
+      const text = (m.type === "text" ? (m.text && m.text.body) || "" : `[${m.type || "رسالة"}]`).slice(0, 4000);
+      try { await D.post("wa_messages?on_conflict=wa_id", { shop_id: shop, phone, dir: "out", who: "📱 جوال المحل", body: text, wa_id: m.id || null }, "return=minimal"); }
+      catch (e) { if (e.status === 409) continue; throw e; } // already logged (e.g. the assistant's own reply)
+      const now = new Date().toISOString();
+      const patch = { last_text: text.slice(0, 200), last_at: now, unread: 0, waiting: false, mode: "human", human_at: now };
+      const ex = (await D.get(`wa_threads?shop_id=eq.${shop}&phone=eq.${phone}&limit=1`))[0];
+      if (ex) await D.patch(`wa_threads?shop_id=eq.${shop}&phone=eq.${phone}`, patch);
+      else await D.post("wa_threads", { shop_id: shop, phone, ...patch }, "return=minimal");
+    }
+    return;
+  }
   if (!value || !Array.isArray(value.messages)) return; // delivery/read statuses: nothing to do
   const contact = (value.contacts || [])[0] || {};
   const [settings, profile, garments] = await Promise.all([doc(D, shop, "settings"), doc(D, shop, "profile"), records(D, shop, "custom_garments")]);
