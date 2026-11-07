@@ -277,3 +277,9 @@ test("a 400 from the API is retried once without the fallback beta", async () =>
   assert.equal(calls.length, 2); assert.ok(!calls[1].betas && !calls[1].fallbacks);
   assert.equal(w.sent[0].text.body, "تمام");
 });
+
+test("keys pasted with invisible characters (RLM, NBSP, zero-width, newline) are cleaned", async () => {
+  const { cleanKey } = await import(tmp);
+  assert.equal(cleanKey("‏sk-ant-api03-AbC_12 ​\n "), "sk-ant-api03-AbC_12");
+  assert.equal(cleanKey(undefined), undefined);
+});

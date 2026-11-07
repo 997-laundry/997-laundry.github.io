@@ -75,7 +75,10 @@ export async function handle(req, env, fetchImpl) {
   return json(200, { ok: true, id: sj.messages && sj.messages[0] ? sj.messages[0].id : null });
 }
 
+// tokens pasted with an Arabic keyboard can carry invisible marks that break HTTP headers
+const cleanKey = (v) => (v == null ? v : String(v).replace(/[^\x21-\x7E]/g, ""));
+const cleanEnv = (e) => ({ ...e, WA_TOKEN: cleanKey(e.WA_TOKEN), WA_PHONE_ID: cleanKey(e.WA_PHONE_ID) });
 if (typeof Deno !== "undefined") Deno.serve(async (req) => {
-  try { return await handle(req, Deno.env.toObject()); }
+  try { return await handle(req, cleanEnv(Deno.env.toObject())); }
   catch (e) { console.error("handler", e && e.message); return json(500, { error: "server error", detail: String((e && e.message) || e).slice(0, 300) }); }
 });

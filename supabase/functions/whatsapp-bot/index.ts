@@ -419,8 +419,13 @@ export async function handle(req, env, deps) {
   return json(400, { error: "unknown action" });
 }
 
+// keys pasted with an Arabic keyboard can carry invisible marks (RLM, NBSP, zero-width…) that break HTTP headers
+const cleanKey = (v) => (v == null ? v : String(v).replace(/[^\x21-\x7E]/g, ""));
+const cleanEnv = (e) => ({ ...e, ANTHROPIC_API_KEY: cleanKey(e.ANTHROPIC_API_KEY), WA_TOKEN: cleanKey(e.WA_TOKEN), WA_PHONE_ID: cleanKey(e.WA_PHONE_ID), WA_APP_SECRET: cleanKey(e.WA_APP_SECRET), WA_VERIFY_TOKEN: cleanKey(e.WA_VERIFY_TOKEN) });
+export { cleanKey };
+
 if (typeof Deno !== "undefined") {
-  const env = Deno.env.toObject();
+  const env = cleanEnv(Deno.env.toObject());
   let ai = null;
   if (env.ANTHROPIC_API_KEY) {
     const { default: Anthropic } = await import("npm:@anthropic-ai/sdk");
@@ -429,7 +434,7 @@ if (typeof Deno !== "undefined") {
   const waitUntil = globalThis.EdgeRuntime && typeof globalThis.EdgeRuntime.waitUntil === "function" ? (p) => globalThis.EdgeRuntime.waitUntil(p) : null;
   // any unexpected error still answers with CORS headers, so the system shows the real reason instead of "no internet"
   Deno.serve(async (req) => {
-    try { return await handle(req, Deno.env.toObject(), { ai, waitUntil }); }
+    try { return await handle(req, cleanEnv(Deno.env.toObject()), { ai, waitUntil }); }
     catch (e) { console.error("handler", e && e.message); return json(500, { error: "server error", detail: String((e && e.message) || e).slice(0, 300) }); }
   });
 }
