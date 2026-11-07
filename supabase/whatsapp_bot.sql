@@ -48,6 +48,9 @@ grant update (mode, waiting, flag, unread, human_at) on public.wa_threads to aut
 do $$ begin
   if exists (select 1 from pg_roles where rolname = 'service_role') then
     grant select, insert, update on public.wa_threads, public.wa_messages to service_role;
+    -- the functions also check membership, read the shop's data and file pickup requests / new customers
+    grant select on public.shops, public.shop_members to service_role;
+    grant select, insert on public.records to service_role;
     grant usage, select on all sequences in schema public to service_role;
   end if;
 end $$;
