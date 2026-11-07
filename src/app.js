@@ -7632,7 +7632,7 @@
           <span>🙋 ${DL("الموظفون", "Staff")}: <b>${cfg.staffOn ? `${cfg.staffFrom}–${cfg.staffTo}` : DL("غير متاحين", "unavailable")}</b></span>
           ${waView.err && waView.err !== "cloud" ? `<span style="color:var(--danger)">⚠ ${esc(waView.err)}</span>` : ""}</div></div>
         <div class="row-actions">${adm ? `<button type="button" class="secondary-btn" id="waToggleBot">${cfg.enabled ? DL("⏸ إيقاف المساعد", "⏸ Turn assistant off") : DL("▶ تشغيل المساعد", "▶ Turn assistant on")}</button><button type="button" class="secondary-btn" id="waToggleStaff">${cfg.staffOn ? DL("🙅 الموظفون غير متاحين الآن", "🙅 Staff unavailable now") : DL("🙋 الموظفون متاحون", "🙋 Staff available")}</button>` : ""}<button type="button" class="ghost-btn" id="waPing">🔎 ${DL("فحص الربط", "Check connection")}</button></div>
-        <p class="section-note" id="waPingOut" style="margin:6px 0 0;flex-basis:100%"></p>
+        <p class="section-note" id="waPingOut" style="margin:6px 0 0;flex-basis:100%;white-space:pre-line"></p>
       </div>
       <div class="wa-layout ${cur ? "has-chat" : ""}">
         <div class="panel wa-list">
@@ -7687,7 +7687,7 @@
       const r = await CLOUD.waBot({ action: "ping" });
       if (!r || !r.ok) { out.textContent = `⚠ ${r && r.status === 404 ? DL("دالة whatsapp-bot غير موجودة في Supabase بعد.", "The whatsapp-bot function is not in Supabase yet.") : waErrHint(r) || (r && r.error) || ""}`; return; }
       const ok = (b, ar, en) => `${b ? "✓" : "✗"} ${DL(ar, en)}`;
-      out.textContent = [ok(r.whatsapp, "واتساب (WA_TOKEN / WA_PHONE_ID)", "WhatsApp (WA_TOKEN / WA_PHONE_ID)"), ok(r.signature, "توقيع Meta (WA_APP_SECRET)", "Meta signature (WA_APP_SECRET)"), ok(r.verify, "رمز التحقق (WA_VERIFY_TOKEN)", "Verify token (WA_VERIFY_TOKEN)"), ok(r.ai, `الذكاء الاصطناعي (ANTHROPIC_API_KEY) — ${r.model}`, `AI (ANTHROPIC_API_KEY) — ${r.model}`)].join(" · ");
+      out.textContent = [ok(r.whatsapp, "واتساب (WA_TOKEN / WA_PHONE_ID)", "WhatsApp (WA_TOKEN / WA_PHONE_ID)"), ok(r.signature, "توقيع Meta (WA_APP_SECRET)", "Meta signature (WA_APP_SECRET)"), ok(r.verify, "رمز التحقق (WA_VERIFY_TOKEN)", "Verify token (WA_VERIFY_TOKEN)"), ok(r.ai, `الذكاء الاصطناعي (ANTHROPIC_API_KEY) — ${r.model}`, `AI (ANTHROPIC_API_KEY) — ${r.model}`)].join(" · ") + (r.aiError ? `\n⚠️ ${DL("مفتاح Claude:", "Claude key:")} ${r.aiError}` : "");
     };
     if (!keepScroll) { const box = document.getElementById("waMsgs"); if (box) box.scrollTop = box.scrollHeight; }
   }

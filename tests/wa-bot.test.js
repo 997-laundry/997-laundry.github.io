@@ -204,6 +204,19 @@ test("a refusal or an API error gives a polite message and alerts staff", async 
   const w2 = world(); const broken = { beta: { messages: { create: async () => { throw Object.assign(new Error("overloaded"), { status: 529 }); } } } };
   await handle(hook(inbound("97333111111", "x")), ENV, { fetch: w2.f, ai: broken });
   assert.match(w2.sent[0].text.body, /بلغت الموظف/); assert.equal(w2.threads[0].waiting, true);
+  const note = w2.msgs.find((m) => m.dir === "note");
+  assert.ok(note && /Claude/.test(note.body) && /529/.test(note.body) && /overloaded/.test(note.body), "the real reason is shown to staff in the chat");
+});
+
+test("check connection makes a real call to Claude and reports a bad key with its reason", async () => {
+  const handle = await load(), w = world();
+  const req = (auth, body) => new Request("https://x/functions/v1/whatsapp-bot", { method: "POST", headers: { "content-type": "application/json", ...(auth ? { authorization: auth } : {}) }, body: JSON.stringify(body) });
+  const good = { models: { retrieve: async (id) => ({ id }) } };
+  const okPing = await (await handle(req("Bearer staff-jwt", { action: "ping" }), ENV, { fetch: w.f, ai: good })).json();
+  assert.equal(okPing.ai, true); assert.equal(okPing.aiError, null);
+  const bad = { models: { retrieve: async () => { throw Object.assign(new Error("invalid x-api-key"), { status: 401 }); } } };
+  const badPing = await (await handle(req("Bearer staff-jwt", { action: "ping" }), ENV, { fetch: w.f, ai: bad })).json();
+  assert.equal(badPing.ai, false); assert.match(badPing.aiError, /401 invalid x-api-key/);
 });
 
 test("staff reply from the system: only signed-in members; sends, stores, and takes the chat over", async () => {

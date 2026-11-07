@@ -324,7 +324,9 @@ async function handleInbound(env, deps, payload) {
         const out = await askClaude(deps.ai, env, system, msgs, ctx);
         reply = out.text || (out.refusal ? "عذراً، ما أقدر أساعد في هذا الطلب. تبي أحولك للموظف؟" : "");
       } catch (e) {
-        console.error("claude", e && (e.status || e.message));
+        const why = `${(e && e.status) || ""} ${(e && e.message) || e}`.trim().slice(0, 400);
+        console.error("claude", why);
+        ctx.note = `${ctx.note ? ctx.note + "\n" : ""}⚠️ تعذّر رد المساعد الذكي (Claude): ${why}`;
         ctx.patch = { ...(ctx.patch || {}), waiting: true, flag: "human" };
         reply = "عذراً، صار عندي خلل بسيط 🙏 بلغت الموظف وبيرد عليك هنا.";
       }
@@ -380,7 +382,13 @@ export async function handle(req, env, deps) {
   let body = {}; try { body = JSON.parse(raw || "{}"); } catch (e) { return json(400, { error: "bad request" }); }
   const D = db(env, f);
   if (body.action === "ping") {
-    return json(200, { ok: true, whatsapp: !!(env.WA_TOKEN && env.WA_PHONE_ID), signature: !!env.WA_APP_SECRET, verify: !!env.WA_VERIFY_TOKEN, ai: !!deps.ai, model: env.WA_BOT_MODEL || "claude-opus-5-5" });
+    const model = env.WA_BOT_MODEL || "claude-opus-5-5";
+    // a real (free) call: proves the Claude key works and can use the model, not just that it is set
+    let ai = !!deps.ai, aiError = null;
+    if (deps.ai && deps.ai.models && typeof deps.ai.models.retrieve === "function") {
+      try { await deps.ai.models.retrieve(model); } catch (e) { ai = false; aiError = `${(e && e.status) || ""} ${(e && e.message) || e}`.trim().slice(0, 300); }
+    }
+    return json(200, { ok: true, whatsapp: !!(env.WA_TOKEN && env.WA_PHONE_ID), signature: !!env.WA_APP_SECRET, verify: !!env.WA_VERIFY_TOKEN, ai, aiError, model });
   }
   if (body.action === "reply") {
     const to = String(body.to || "").replace(/\D/g, ""), text = String(body.text || "").trim();
