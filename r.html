@@ -149,11 +149,14 @@
     if (opt.bearer) h.Authorization = "Bearer " + opt.bearer;
     else if (opt.auth !== false) { const t = await accessToken(opt.as); if (!t) throw Object.assign(new Error("no-session"), { noSession: true }); h.Authorization = "Bearer " + t; }
     const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const to = ctl ? setTimeout(() => ctl.abort(), 15000) : null;
+    const to = ctl ? setTimeout(() => ctl.abort(), opt.timeout || 15000) : null;
     let r;
     const t0 = Date.now();
     try { r = await root.fetch(CFG.url + path, { method: opt.method || "GET", headers: h, body: opt.body === undefined ? undefined : JSON.stringify(opt.body), signal: ctl ? ctl.signal : undefined }); }
-    catch (e) { online = false; throw Object.assign(new Error("offline"), { offline: true }); }
+    catch (e) {
+      if (e && e.name === "AbortError" && opt.timeout) throw Object.assign(new Error("timeout"), { timeout: true });
+      online = false; throw Object.assign(new Error("offline"), { offline: true });
+    }
     finally { if (to) clearTimeout(to); }
     online = true;
     const txt = await r.text();
@@ -657,11 +660,11 @@
       catch (e) { return { error: e.offline ? "offline" : e.message, status: e.status }; }
     },
     async waBot(payload) {
-      try { return await api("/functions/v1/whatsapp-bot", { method: "POST", body: payload }); }
+      try { return await api("/functions/v1/whatsapp-bot", { method: "POST", body: payload, timeout: 45000 }); }
       catch (e) { return { error: e.offline ? "offline" : e.noSession ? "no-session" : (e.data && (e.data.error + (e.data.detail ? " — " + e.data.detail : ""))) || e.message, status: e.status }; }
     },
     async waSend(payload) {
-      try { return await api("/functions/v1/whatsapp-send", { method: "POST", body: payload }); }
+      try { return await api("/functions/v1/whatsapp-send", { method: "POST", body: payload, timeout: 45000 }); }
       catch (e) { return { error: e.offline ? "offline" : e.noSession ? "no-session" : (e.data && (e.data.error + (e.data.detail ? " — " + e.data.detail : ""))) || e.message, status: e.status }; }
     },
     // صفحة الإيصال العامة: يقرأ إيصالاً واحداً برمزه السري (بدون حساب)

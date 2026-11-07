@@ -2905,11 +2905,14 @@ body.auth-locked .top-logout{display:none!important}
     if (opt.bearer) h.Authorization = "Bearer " + opt.bearer;
     else if (opt.auth !== false) { const t = await accessToken(opt.as); if (!t) throw Object.assign(new Error("no-session"), { noSession: true }); h.Authorization = "Bearer " + t; }
     const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const to = ctl ? setTimeout(() => ctl.abort(), 15000) : null;
+    const to = ctl ? setTimeout(() => ctl.abort(), opt.timeout || 15000) : null;
     let r;
     const t0 = Date.now();
     try { r = await root.fetch(CFG.url + path, { method: opt.method || "GET", headers: h, body: opt.body === undefined ? undefined : JSON.stringify(opt.body), signal: ctl ? ctl.signal : undefined }); }
-    catch (e) { online = false; throw Object.assign(new Error("offline"), { offline: true }); }
+    catch (e) {
+      if (e && e.name === "AbortError" && opt.timeout) throw Object.assign(new Error("timeout"), { timeout: true });
+      online = false; throw Object.assign(new Error("offline"), { offline: true });
+    }
     finally { if (to) clearTimeout(to); }
     online = true;
     const txt = await r.text();
@@ -3413,11 +3416,11 @@ body.auth-locked .top-logout{display:none!important}
       catch (e) { return { error: e.offline ? "offline" : e.message, status: e.status }; }
     },
     async waBot(payload) {
-      try { return await api("/functions/v1/whatsapp-bot", { method: "POST", body: payload }); }
+      try { return await api("/functions/v1/whatsapp-bot", { method: "POST", body: payload, timeout: 45000 }); }
       catch (e) { return { error: e.offline ? "offline" : e.noSession ? "no-session" : (e.data && (e.data.error + (e.data.detail ? " — " + e.data.detail : ""))) || e.message, status: e.status }; }
     },
     async waSend(payload) {
-      try { return await api("/functions/v1/whatsapp-send", { method: "POST", body: payload }); }
+      try { return await api("/functions/v1/whatsapp-send", { method: "POST", body: payload, timeout: 45000 }); }
       catch (e) { return { error: e.offline ? "offline" : e.noSession ? "no-session" : (e.data && (e.data.error + (e.data.detail ? " — " + e.data.detail : ""))) || e.message, status: e.status }; }
     },
     // صفحة الإيصال العامة: يقرأ إيصالاً واحداً برمزه السري (بدون حساب)
@@ -8685,6 +8688,8 @@ body.auth-locked .top-logout{display:none!important}
     if (/not configured/.test(e)) return H("أضف WA_TOKEN و WA_PHONE_ID في Supabase ← Edge Functions ← Secrets.", "Add WA_TOKEN and WA_PHONE_ID in Supabase → Edge Functions → Secrets.");
     if (/sign in|no-session|not a member/.test(e)) return H("سجّل الدخول بحساب مرتبط بالسحابة (ملف المنشأة ← المزامنة السحابية) ثم أعد المحاولة.", "Sign in with an account linked to the cloud (Company profile → Cloud sync), then try again.");
     if (/offline/.test(e)) return H("لا يوجد اتصال بالإنترنت.", "No internet connection.");
+    if (/^timeout$/.test(e)) return H("الدالة تأخرت في الرد (أول تشغيل قد يأخذ وقتاً) — أعد المحاولة بعد دقيقة.", "The function took too long to answer (the first run can be slow) — try again in a minute.");
+    if (/server error/.test(e)) return H(`خطأ داخل الدالة في Supabase: ${String((r && r.error) || "").replace(/^server error\s*—?\s*/i, "")}`, `Error inside the Supabase function: ${String((r && r.error) || "").replace(/^server error\s*—?\s*/i, "")}`);
     if (/access token|oauth|session has expired|token.*(invalid|expired)|error validating/.test(e)) return H("رمز Meta (WA_TOKEN) غير صحيح أو منتهي — أنشئ رمز System user بمدة «Never» وضعه من جديد في Secrets.", "The Meta token (WA_TOKEN) is wrong or expired — create a System-user token that never expires and put it in Secrets again.");
     if (/template|translation/.test(e) && /not exist|does not|paused|disabled|pending|rejected|translation/.test(e)) return H("نموذج الرسالة order_delivered غير معتمد بعد أو لغته ليست العربية — راجع WhatsApp Manager ← Message templates.", "The order_delivered template isn't approved yet or isn't in Arabic — check WhatsApp Manager → Message templates.");
     if (/object with id|does not exist|unsupported (post|get) request|invalid parameter.*phone/.test(e)) return H("WA_PHONE_ID غير صحيح — انسخ «Phone number ID» (وليس رقم الهاتف) من Meta ← WhatsApp ← API Setup.", "WA_PHONE_ID is wrong — copy the “Phone number ID” (not the phone number) from Meta → WhatsApp → API Setup.");
