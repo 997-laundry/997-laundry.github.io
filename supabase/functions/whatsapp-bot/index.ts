@@ -211,7 +211,14 @@ async function askClaude(ai, env, system, messages, ctx) {
   const base = { model, max_tokens: 2048, system, tools: TOOLS, output_config: { effort: env.WA_BOT_EFFORT || "low" } };
   const fallback = /^claude-(opus|fable|sonnet)/.test(model) ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : {};
   for (let i = 0; i < 5; i++) {
-    const res = await ai.beta.messages.create({ ...base, ...fallback, messages });
+    let res;
+    try { res = await ai.beta.messages.create({ ...base, ...fallback, messages }); }
+    catch (e) {
+      if (!(e && e.status === 400 && fallback.betas)) throw e;
+      // a 400 tied to the optional fallback beta: retry once as a plain request
+      console.error("claude 400, retry without fallback", e && e.message);
+      res = await ai.beta.messages.create({ ...base, messages });
+    }
     if (res.stop_reason === "refusal") return { text: "", refusal: true };
     if (res.stop_reason !== "tool_use") return { text: res.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim() };
     messages.push({ role: "assistant", content: res.content });
@@ -318,7 +325,11 @@ async function handleInbound(env, deps, payload) {
       while (msgs.length && msgs[0].role !== "user") msgs.shift();
       const n0 = bhNow();
       const who = cust ? `العميل مسجّل: ${cust.name}${cust.area ? " — " + cust.area : ""}${cust.address ? " — " + cust.address : ""}.` : `عميل جديد غير مسجّل${thread && thread.name ? ` (اسمه في واتساب: ${thread.name})` : ""}.`;
-      msgs.push({ role: "system", content: `الآن: ${n0.weekday} ${n0.date} الساعة ${n0.time} (البحرين). ${who} الموظفون ${staffAvailable(cfg) ? "متاحون الآن" : `غير متاحين الآن (الدوام ${cfg.from}–${cfg.to})`}.${media ? " آخر رسالة من العميل ليست نصاً." : ""}` });
+      // context for this turn rides inside the customer's last message (works on every model; no system-role message)
+      const ctxText = `[سياق من النظام — ليس من العميل] الآن: ${n0.weekday} ${n0.date} الساعة ${n0.time} (البحرين). ${who} الموظفون ${staffAvailable(cfg) ? "متاحون الآن" : `غير متاحين الآن (الدوام ${cfg.from}–${cfg.to})`}.${media ? " آخر رسالة من العميل ليست نصاً." : ""}`;
+      const last = msgs[msgs.length - 1];
+      if (last && last.role === "user") last.content = [{ type: "text", text: ctxText }, ...(typeof last.content === "string" ? [{ type: "text", text: last.content }] : last.content)];
+      else msgs.push({ role: "user", content: ctxText });
       const system = [{ type: "text", text: RULES }, { type: "text", text: `بيانات المحل (المصدر الوحيد للأسعار والخدمات):\n${knowledge(settings, profile, garments)}`, cache_control: { type: "ephemeral" } }];
       try {
         const out = await askClaude(deps.ai, env, system, msgs, ctx);

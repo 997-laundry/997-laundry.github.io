@@ -122,7 +122,7 @@ test("price question: Claude gets the real price list (cached), Bahraini rules, 
   assert.deepEqual(p.system[1].cache_control, { type: "ephemeral" });
   assert.ok(!/NAWAF/.test(JSON.stringify(p)), "discount codes are never given to the model");
   const last = p.messages[p.messages.length - 1];
-  assert.equal(last.role, "system"); assert.match(last.content, /العميل مسجّل: Ali/);
+  assert.equal(last.role, "user"); assert.match(last.content[0].text, /العميل مسجّل: Ali/);
   assert.equal(w.sent.length, 1); assert.equal(w.sent[0].to, "97333111111"); assert.match(w.sent[0].text.body, /0\.500/);
   assert.deepEqual(w.msgs.map((m) => m.dir), ["in", "out"]);
   assert.equal(w.reads.length, 1, "blue ticks: the customer's message is marked as read");
@@ -257,4 +257,23 @@ test("an unexpected error inside the function still answers JSON with CORS (not 
   assert.match(src2, /Deno\.serve\(async \(req\) => \{\s*try \{ return await handle/);
   const send = fs.readFileSync(path.join(__dirname, "..", "supabase", "functions", "whatsapp-send", "index.ts"), "utf8");
   assert.match(send, /Deno\.serve\(async \(req\) => \{\s*try \{ return await handle/);
+});
+
+test("the request has no system-role message; the turn context rides in the last user message", async () => {
+  const handle = await load(), w = world(), ai = fakeAI([text("هلا 👋")]);
+  await handle(hook(inbound("97333111111", "هلا")), ENV, { fetch: w.f, ai });
+  const msgs = ai.calls[0].messages;
+  assert.ok(msgs.every((m) => m.role === "user" || m.role === "assistant"));
+  const last = msgs[msgs.length - 1];
+  assert.equal(last.role, "user");
+  assert.match(last.content[0].text, /سياق من النظام/); assert.equal(last.content[1].text, "هلا");
+  assert.equal(w.sent[0].text.body, "هلا 👋");
+});
+
+test("a 400 from the API is retried once without the fallback beta", async () => {
+  const handle = await load(), w = world(), calls = [];
+  const ai = { beta: { messages: { create: async (p) => { calls.push(p); if (p.betas) throw Object.assign(new Error("bad beta"), { status: 400 }); return text("تمام"); } } } };
+  await handle(hook(inbound("97333111111", "هلا")), ENV, { fetch: w.f, ai });
+  assert.equal(calls.length, 2); assert.ok(!calls[1].betas && !calls[1].fallbacks);
+  assert.equal(w.sent[0].text.body, "تمام");
 });
