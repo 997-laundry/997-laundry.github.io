@@ -7,7 +7,7 @@
 //   WA_APP_SECRET           Meta app → App settings → Basic → App secret (verifies that a webhook really comes from Meta)
 //   WA_VERIFY_TOKEN         any long random text you choose; type the same text in Meta → WhatsApp → Configuration → Webhook
 //   ANTHROPIC_API_KEY       Claude API key (console.anthropic.com) — without it the assistant only routes to staff
-//   WA_BOT_MODEL            optional, default claude-opus-5-5 (e.g. claude-haiku-5-5 for a lower bill)
+//   WA_BOT_MODEL            optional, default claude-sonnet-5-5 (fast; claude-opus-5-5 for the strongest, claude-haiku-5-5 for the cheapest)
 //   WA_BOT_EFFORT           optional, default low (short chat answers)
 //   WA_SHOP_ID              optional — only if the project holds more than one shop
 // Meta → WhatsApp → Configuration → Webhook: Callback URL = https://<project>.supabase.co/functions/v1/whatsapp-bot ,
@@ -226,7 +226,7 @@ async function runTool(name, input, ctx) {
 
 /* ===================== Claude ===================== */
 async function askClaude(ai, env, system, messages, ctx) {
-  const model = env.WA_BOT_MODEL || "claude-opus-5-5";
+  const model = env.WA_BOT_MODEL || "claude-sonnet-5-5";
   const base = { model, max_tokens: 2048, system, tools: TOOLS, output_config: { effort: env.WA_BOT_EFFORT || "low" } };
   const fallback = /^claude-(opus|fable|sonnet)/.test(model) ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : {};
   for (let i = 0; i < 5; i++) {
@@ -430,7 +430,7 @@ export async function handle(req, env, deps) {
   let body = {}; try { body = JSON.parse(raw || "{}"); } catch (e) { return json(400, { error: "bad request" }); }
   const D = db(env, f);
   if (body.action === "ping") {
-    const model = env.WA_BOT_MODEL || "claude-opus-5-5";
+    const model = env.WA_BOT_MODEL || "claude-sonnet-5-5";
     // a real (free) call: proves the Claude key works and can use the model, not just that it is set
     let ai = !!deps.ai, aiError = null;
     if (deps.ai && deps.ai.models && typeof deps.ai.models.retrieve === "function") {

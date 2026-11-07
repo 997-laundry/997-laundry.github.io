@@ -97,7 +97,7 @@ const PW = "Owner#2026pass";
   check("«done» clears the complaint flag", (await cloud.query("select waiting, flag from public.wa_threads where phone='97333333333'")).rows[0].flag === null);
 
   await A.click("#waPing"); await wait(400);
-  check("connection check lists the 4 parts (WhatsApp, Meta signature, verify token, AI)", /WA_APP_SECRET/.test(await A.textContent("#waPingOut")) && /claude-opus-5-5/.test(await A.textContent("#waPingOut")));
+  check("connection check lists the 4 parts (WhatsApp, Meta signature, verify token, AI)", /WA_APP_SECRET/.test(await A.textContent("#waPingOut")) && /claude-sonnet-5-5/.test(await A.textContent("#waPingOut")));
 
   // assistant settings (Settings → Operating)
   await nav("settings"); await A.evaluate(() => document.querySelector('[data-settings-tab="operating"]').click()); await wait(200);
@@ -138,6 +138,18 @@ const PW = "Owner#2026pass";
   await A.click('[data-wa-open="97333222222"]'); await wait(500);
   const ph = await A.evaluate(() => ({ ov: document.documentElement.scrollWidth - window.innerWidth, list: getComputedStyle(document.querySelector(".wa-list")).display, back: !!document.querySelector("#waBack") && getComputedStyle(document.querySelector("#waBack")).display !== "none" }));
   check("iPhone: chat opens full-screen with a back button, no sideways scrolling", ph.ov <= 1 && ph.list === "none" && ph.back, JSON.stringify(ph));
+  // shop tablet (8", portrait and landscape): the reply box is on screen without scrolling the page, and only the messages scroll
+  const tab = async (w, h) => { await A.setViewportSize({ width: w, height: h }); await wait(400); await A.evaluate(() => window.scrollTo(0, 0)); await wait(100);
+    return A.evaluate(() => { const r = (s) => { const e = document.querySelector(s); return e ? e.getBoundingClientRect() : null; }; const send = r("#waSend"), msgs = r("#waMsgs");
+      return { ov: document.documentElement.scrollWidth - window.innerWidth, sendVisible: !!send && send.bottom <= window.innerHeight + 1 && send.top >= 0, msgsH: msgs ? Math.round(msgs.height) : 0, list: getComputedStyle(document.querySelector(".wa-list")).display }; }); };
+  const tp = await tab(800, 1280);
+  check("tablet portrait: chat full width, reply box on screen, messages area tall", tp.ov <= 1 && tp.sendVisible && tp.list === "none" && tp.msgsH >= 500, JSON.stringify(tp));
+  const tl = await tab(1280, 800);
+  check("tablet landscape: reply box on screen, messages area usable", tl.ov <= 1 && tl.sendVisible && tl.msgsH >= 250, JSON.stringify(tl));
+  // the 6-second refresh with nothing new does not redraw (no jumps, taps not lost)
+  await A.evaluate(() => { const m = document.getElementById("waMsgs"); m.dataset.mark = "x"; });
+  await wait(6800);
+  check("auto-refresh with nothing new leaves the screen alone", await A.evaluate(() => (document.getElementById("waMsgs") || {}).dataset?.mark === "x"));
 
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close(); await cloud.close();

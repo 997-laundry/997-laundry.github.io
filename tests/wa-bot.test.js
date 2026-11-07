@@ -115,7 +115,7 @@ test("price question: Claude gets the real price list (cached), Bahraini rules, 
   const r = await handle(hook(inbound("97333111111", "بكم غسيل الثوب؟")), ENV, { fetch: w.f, ai });
   assert.equal(r.status, 200);
   const p = ai.calls[0];
-  assert.equal(p.model, "claude-opus-5-5"); assert.equal(p.output_config.effort, "low"); assert.equal(p.fallbacks, "default");
+  assert.equal(p.model, "claude-sonnet-5-5"); assert.equal(p.output_config.effort, "low"); assert.equal(p.fallbacks, "default");
   assert.deepEqual(p.betas, ["server-side-fallback-2026-07-01"]);
   assert.match(p.system[0].text, /اللهجة البحرينية/);
   assert.match(p.system[1].text, /ثوب \(Thobe\): غسيل وكي 0\.500 د\.ب · كي 0\.200 د\.ب/);

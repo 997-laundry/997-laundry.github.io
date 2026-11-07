@@ -7599,16 +7599,25 @@
     renderWhatsAppPage(true);
     const box = document.getElementById("waMsgs"); if (box) box.scrollTop = box.scrollHeight;
   }
-  function renderWhatsAppPage(keepScroll) {
+  const waSig = () => JSON.stringify(waView.threads.map((t) => [t.phone, t.last_at, t.unread, t.flag, t.mode, t.waiting]));
+  function renderWhatsAppPage(keepScroll, fromPoll) {
     const root = document.getElementById("waRoot"); if (!root) return;
+    // remember where the user was, so a refresh never throws them back to the top
+    const prevList = root.querySelector(".wa-list"), prevMsgs = document.getElementById("waMsgs");
+    const keep = { list: prevList ? prevList.scrollTop : 0, msgsBottom: prevMsgs ? prevMsgs.scrollHeight - prevMsgs.scrollTop - prevMsgs.clientHeight < 40 : true, msgs: prevMsgs ? prevMsgs.scrollTop : 0, win: window.scrollY };
     const cfg = waCfg(), adm = can("admin_settings");
     clearInterval(waView.timer);
     if (currentPage === "whatsapp") waView.timer = setInterval(async () => {
       if (currentPage !== "whatsapp") { clearInterval(waView.timer); return; }
       const typing = document.activeElement && document.activeElement.id === "waText";
+      const before = waSig();
       await waLoadThreads();
-      if (waView.phone) { const r = await CLOUD.waMessages(waView.phone); if (r.rows) { const fresh = r.rows.slice().reverse(); if (fresh.length !== waView.msgs.length || (fresh[fresh.length - 1] || {}).id !== (waView.msgs[waView.msgs.length - 1] || {}).id) { waView.msgs = fresh; if (!typing) renderWhatsAppPage(true); else renderWaMsgs(); } } }
-      else if (!typing) renderWhatsAppPage(true);
+      let msgsChanged = false;
+      if (waView.phone) { const r = await CLOUD.waMessages(waView.phone); if (r.rows) { const fresh = r.rows.slice().reverse(); if (fresh.length !== waView.msgs.length || (fresh[fresh.length - 1] || {}).id !== (waView.msgs[waView.msgs.length - 1] || {}).id) { waView.msgs = fresh; msgsChanged = true; } } }
+      // nothing new → leave the screen alone (no jumps, taps are not lost)
+      if (waSig() === before && !msgsChanged) return;
+      if (typing) { if (msgsChanged) renderWaMsgs(); return; }
+      renderWhatsAppPage(true, true);
     }, 6000);
     const setupCard = (msg) => `<div class="panel wa-setup"><h3>💬 ${DL("مساعد واتساب الذكي", "WhatsApp AI assistant")}</h3><p>${msg}</p>
       <ol class="wa-steps">
@@ -7626,13 +7635,13 @@
     const custOf = (t) => (t && t.customer_id ? customers.find((c) => c.id === t.customer_id) : null) || (t ? customers.find((c) => phoneMatches(c.phone, t.phone)) : null);
     const nameOf = (t) => { const c = custOf(t); return (c && c.name) || t.name || fmtPhone(t.phone); };
     root.innerHTML = `
-      <div class="panel wa-head">
+      <div class="panel wa-head ${cur ? "chat-open" : ""}">
         <div class="wa-head-txt"><h3>💬 ${DL("محادثات واتساب", "WhatsApp chats")}</h3>
           <div class="dlv-policy"><span>🤖 ${DL("المساعد", "Assistant")}: <b style="color:${cfg.enabled ? "var(--success)" : "var(--danger)"}">${cfg.enabled ? DL("يعمل", "on") : DL("متوقف", "off")}</b></span>
           <span>🙋 ${DL("الموظفون", "Staff")}: <b>${cfg.staffOn ? `${cfg.staffFrom}–${cfg.staffTo}` : DL("غير متاحين", "unavailable")}</b></span>
           ${waView.err && waView.err !== "cloud" ? `<span style="color:var(--danger)">⚠ ${esc(waView.err)}</span>` : ""}</div></div>
         <div class="row-actions">${adm ? `<button type="button" class="secondary-btn" id="waToggleBot">${cfg.enabled ? DL("⏸ إيقاف المساعد", "⏸ Turn assistant off") : DL("▶ تشغيل المساعد", "▶ Turn assistant on")}</button><button type="button" class="secondary-btn" id="waToggleStaff">${cfg.staffOn ? DL("🙅 الموظفون غير متاحين الآن", "🙅 Staff unavailable now") : DL("🙋 الموظفون متاحون", "🙋 Staff available")}</button>` : ""}<button type="button" class="ghost-btn" id="waPing">🔎 ${DL("فحص الربط", "Check connection")}</button></div>
-        <p class="section-note" id="waPingOut" style="margin:6px 0 0;flex-basis:100%;white-space:pre-line"></p>
+        <p class="section-note wa-ping-out" id="waPingOut"></p>
       </div>
       <div class="wa-layout ${cur ? "has-chat" : ""}">
         <div class="panel wa-list">
@@ -7656,6 +7665,9 @@
           : `<div class="empty-state">${DL("اختر محادثة من القائمة", "Pick a chat from the list")}</div>`}</div>
       </div>`;
     if (cur) renderWaMsgs();
+    { const l = root.querySelector(".wa-list"); if (l) l.scrollTop = keep.list;
+      const m = document.getElementById("waMsgs"); if (m && keepScroll) m.scrollTop = keep.msgsBottom ? m.scrollHeight : keep.msgs;
+      if (fromPoll) window.scrollTo(0, keep.win); }
     const q = (sel) => root.querySelectorAll(sel);
     q("[data-wa-filter]").forEach((b) => (b.onclick = () => { waView.filter = b.dataset.waFilter; renderWhatsAppPage(true); }));
     q("[data-wa-open]").forEach((b) => (b.onclick = () => waOpenThread(b.dataset.waOpen)));
