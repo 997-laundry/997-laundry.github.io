@@ -132,6 +132,10 @@ html[dir="ltr"] .link-btn{padding:6px 0}
 .pos-qty-mini button{border:0;background:transparent;padding:4px 8px;font-weight:800}
 .pos-qty-mini strong{min-width:20px;text-align:center;font-size:12px}
 .pos-cart-remove{border:0;background:transparent;color:var(--danger);font-size:16px;padding:2px 4px}
+.pos-urgent-chip{border:1px solid var(--border);background:var(--panel);border-radius:999px;font-size:14px;line-height:1;padding:6px 8px;filter:grayscale(1);opacity:.55;cursor:pointer}
+.pos-urgent-chip.on{filter:none;opacity:1;background:#fff3d6;border-color:#f0b429;box-shadow:0 0 0 2px #fde7a8}
+.pos-urgent-chip:disabled{opacity:.2;cursor:not-allowed}
+.pos-urgent-help{margin:2px 0 0;font-size:12px}.pos-urgent-hint{margin:2px 0 0;font-weight:700;color:#a86b00}.pos-urgent-hint:empty{display:none}
 
 .pos-urgent-toggle{display:flex;align-items:center;gap:8px;background:var(--warning-soft);color:var(--warning);border-radius:12px;padding:10px 12px;font-weight:700;font-size:13px;cursor:pointer}
 .pos-advanced{border:1px solid var(--border);border-radius:12px;padding:10px 12px}
@@ -1002,8 +1006,10 @@ body.auth-locked .top-logout{display:none!important}
             <div id="posExtras" class="pos-extras" style="display:none"></div>
             <label class="pos-urgent-toggle">
               <input type="checkbox" id="orderPriorityToggle" />
-              ⚡ طلب مستعجل (رسوم إضافية تلقائية)
+              ⚡ الطلب كله مستعجل (رسوم إضافية تلقائية)
             </label>
+            <p class="section-note pos-urgent-help">بعض القطع فقط مستعجلة؟ اضغط ⚡ بجانب كل قطعة مستعجلة في السلة.</p>
+            <p class="section-note pos-urgent-hint" id="posUrgentHint"></p>
 
             <details class="pos-advanced">
               <summary>تفاصيل إضافية (الموعد، الموظف)</summary>
@@ -2460,6 +2466,8 @@ body.auth-locked .top-logout{display:none!important}
 "طلب جديد منذ آخر نسخة احتياطية": "new orders since the last backup",
 "طلب جديد منذ ذلك الوقت": "new orders since then",
 "طلب مستعجل (رسوم إضافية تلقائية": "Urgent order (extra fee added automatically",
+"الطلب كله مستعجل (رسوم إضافية تلقائية": "Whole order urgent (extra fee added automatically",
+"بعض القطع فقط مستعجلة؟ اضغط ⚡ بجانب كل قطعة مستعجلة في السلة.": "Only some pieces urgent? Tap ⚡ next to each urgent piece in the cart.",
 "طلبات": "orders",
 "طلبات + الطلبات المعلّقة": "orders + held orders",
 "طلبات / مبيعات": "Orders / sales",
@@ -4920,6 +4928,19 @@ body.auth-locked .top-logout{display:none!important}
     const s0 = loadSessions().find((x) => x.id === mySessionId);
     return !!(s0 && s0.revokedAt);
   }
+  // آخر دخول/آخر نشاط/آخر خروج لكل موظف — من سجل الجلسات المتزامن (يكتبه كل الأدوار)، مع lastLogin القديم كاحتياط
+  function loginInfo(e) {
+    const mine = loadSessions().filter((x) => (x.empId && x.empId === e.id) || (e.cloudUserId && x.uid === e.cloudUserId) || (!x.empId && e.username && x.username === e.username));
+    const at = mine.reduce((m, x) => (x.at && x.at > m ? x.at : m), String(e.lastLogin || ""));
+    const last = mine.slice().sort((a, b) => String(b.at).localeCompare(String(a.at)))[0] || null;
+    return { at: at || null, last, state: last ? sessionState(last) : null, out: last ? last.end || null : null, seen: last ? last.seen || null : null };
+  }
+  function lastLoginCell(e) {
+    const i = loginInfo(e);
+    if (!i.at) return "—";
+    const tag = i.state === "active" ? ' <span class="status-badge status-ready">متصل الآن</span>' : i.out ? `<div class="inv-muted" style="font-size:11.5px">خروج: ${fmtDT(i.out)}</div>` : i.seen ? `<div class="inv-muted" style="font-size:11.5px">آخر نشاط: ${fmtDT(i.seen)}</div>` : "";
+    return fmtDT(i.at) + tag;
+  }
   function sessionState(x) {
     if (x.revokedAt) return "revoked";
     if (x.end) return x.why === "idle" ? "idle" : "ended";
@@ -5231,7 +5252,7 @@ body.auth-locked .top-logout{display:none!important}
           ${chain ? (chain.bad.length || chain.gaps.length ? `<div class="cloud-warn">⚠ <b>${chain.bad.length}</b> قيد معدّل و<b>${chain.gaps.length}</b> فجوة (قيود محذوفة) — ${chain.bad.slice(0, 5).map((a) => `${fmtDT(a.at)}: ${esc(a.action.slice(0, 60))}`).join(" · ")}</div>` : `<p style="color:var(--success);font-weight:700">✓ السجل سليم — ${chain.checked} قيد من ${chain.devices} جهاز، بلا تعديل أو حذف.${chain.unsigned ? ` (${chain.unsigned} قيد قديم قبل تفعيل البصمات)` : ""}</p>`) : `<p class="section-note">اضغط «فحص سلامة السجل».</p>`}
         </div>
         <div class="panel" style="margin-top:14px"><div class="panel-header"><div><h3>🔐 حسابات الإدارة</h3></div></div>
-          <div class="table-wrap"><table><thead><tr><th>الحساب</th><th>الدور</th><th>التحقق بخطوتين</th><th>أجهزة موثوقة</th><th>آخر دخول</th></tr></thead><tbody>${admins.map((e) => { const tr = (e.mfaTrust || []).filter((x) => x.until > Date.now() && Date.parse(x.at || 0) > (Number(e.mfaTrustResetAt) || 0)); return `<tr><td>${esc(e.name)}</td><td>${esc(ACCESS_ROLE_AR[validRole(e.role)] || e.role)}</td><td>${e.mfaOn ? '<span class="status-badge status-ready">مفعّل</span>' : '<span class="status-badge status-cancelled">غير مفعّل</span>'}</td><td>${e.mfaOn ? `${tr.length ? tr.map((x) => esc(x.label || "جهاز")).join("، ") : "—"} ${role === "owner" ? `<button class="mini-btn danger-mini" type="button" data-forget-trust="${e.id}">إلغاء الثقة</button>` : ""}` : "—"}</td><td>${e.lastLogin ? fmtDT(e.lastLogin) : "—"}</td></tr>`; }).join("")}</tbody></table></div>
+          <div class="table-wrap"><table><thead><tr><th>الحساب</th><th>الدور</th><th>التحقق بخطوتين</th><th>أجهزة موثوقة</th><th>آخر دخول</th></tr></thead><tbody>${admins.map((e) => { const tr = (e.mfaTrust || []).filter((x) => x.until > Date.now() && Date.parse(x.at || 0) > (Number(e.mfaTrustResetAt) || 0)); return `<tr><td>${esc(e.name)}</td><td>${esc(ACCESS_ROLE_AR[validRole(e.role)] || e.role)}</td><td>${e.mfaOn ? '<span class="status-badge status-ready">مفعّل</span>' : '<span class="status-badge status-cancelled">غير مفعّل</span>'}</td><td>${e.mfaOn ? `${tr.length ? tr.map((x) => esc(x.label || "جهاز")).join("، ") : "—"} ${role === "owner" ? `<button class="mini-btn danger-mini" type="button" data-forget-trust="${e.id}">إلغاء الثقة</button>` : ""}` : "—"}</td><td>${lastLoginCell(e)}</td></tr>`; }).join("")}</tbody></table></div>
           <p class="section-note">التفعيل لكل حساب: المستخدمون والصلاحيات ← سياسات الأمان ← «تفعيل التحقق بخطوتين».</p></div>
         <div class="panel" style="margin-top:14px"><div class="panel-header"><div><h3>آخر التنبيهات</h3></div></div>${evTable(alerts.slice(0, 8))}</div>`;
     } else if (secView.tab === "logins") {
@@ -5473,7 +5494,7 @@ body.auth-locked .top-logout{display:none!important}
           <td>${esc(e.name)}${self ? ' <span class="status-badge status-ready">أنت</span>' : ""}${hasLoginAccount(e) ? "" : ' <span class="nopw-tag">بدون حساب دخول</span>'}${e.mustChange ? ' <span class="nopw-tag">كلمة مؤقتة</span>' : ""}</td>
           <td dir="ltr" style="text-align:start">${esc(e.username) || "—"}</td>
           <td>${ACCESS_ROLE_AR[e.role] || esc(e.role)}${ovCount ? ` <span class="inv-muted" title="صلاحيات خاصة">✱${ovCount}</span>` : ""}</td>
-          <td>${e.lastLogin ? fmtDT(e.lastLogin) : "—"}</td>
+          <td>${lastLoginCell(e)}</td>
           <td>${e.expiryDate ? `<span style="${expired ? "color:var(--danger);font-weight:800" : ""}">${esc(e.expiryDate)}${expired ? " (منتهي)" : ""}</span>` : "—"}</td>
           <td><span class="status-badge ${e.active === false ? "status-cancelled" : "status-ready"}">${e.active === false ? "معطّل" : "نشط"}</span>${locked ? ' <span class="lock-tag">مقفل</span>' : ""}</td>
           <td class="row-actions">${manage ? `
@@ -5730,6 +5751,7 @@ body.auth-locked .top-logout{display:none!important}
     { id: "security_center", grp: "page", label: "مركز الأمان (محاولات الدخول، الجلسات، التنبيهات)", en: "Security center (logins, sessions, alerts)", worker: false, accountant: false, manager: true },
     { id: "admin_settings", grp: "page", label: "ملف المنشأة والإعدادات", en: "Company profile & settings", worker: false, accountant: false, manager: true },
     { id: "manage_users", grp: "page", label: "المستخدمون والصلاحيات (للأدنى رتبةً فقط)", en: "Users & permissions (lower roles only)", worker: false, accountant: false, manager: true },
+    { id: "edit_order", grp: "action", label: "تعديل الطلب (تقليل أو حذف قطع، إلغاء الاستعجال) بدون موافقة مشرف — قبل تأكيد الدفع", en: "Edit an order (reduce or remove items, drop urgent) without supervisor approval — before payment", worker: true, accountant: false, manager: true },
     { id: "cancel_order", grp: "action", label: "إلغاء الطلب بدون موافقة مشرف / إرجاعه من التسليم", en: "Cancel an order without supervisor approval / undo a hand-over", worker: false, accountant: false, manager: true },
     { id: "give_discount", grp: "action", label: "منح خصم يدوي على الطلب بدون موافقة مشرف (ضمن الحد الأقصى)", en: "Give a manual discount without approval (within the limit)", worker: true, accountant: true, manager: true, rev: 2 },
     { id: "edit_customer", grp: "action", label: "تعديل بيانات العملاء (الاسم والجوال)", en: "Edit customer details (name, phone)", worker: false, accountant: true, manager: true },
@@ -6325,6 +6347,32 @@ body.auth-locked .top-logout{display:none!important}
       submitLabel: "اعتماد",
       onSubmit: (v) => {
         const sup = findAccount(v.u);
+        // the name typed is not on this device's list (cloud login name, e-mail, or the list is not synced here yet):
+        // check it in the cloud, then match the account by its cloud id
+        if (!sup && cloudOn() && String(v.u || "").trim() && v.p) {
+          const lk = "ov:" + toLatinDigits(v.u).toLowerCase();
+          const left0 = lockLeftMs(lk);
+          if (left0 > 0) { toast(AX("e_locked", Math.ceil(left0 / 60000))); return false; }
+          const btn = document.getElementById("quickFormSubmitBtn"); btn.disabled = true;
+          CLOUD.verifyPassword(toLatinDigits(v.u).trim(), v.p).then((r) => {
+            btn.disabled = false;
+            if (r && r.error === "offline") { toast(cloudErr("offline")); return; }
+            const found = r && r.ok ? emps().find((e) => e.cloudUserId && e.cloudUserId === r.uid) : null;
+            if (!found || found.active === false || isExpired(found)) {
+              const f = attFail(lk);
+              logActivity(`محاولة موافقة مشرف فاشلة — ${what} — بواسطة ${me ? me.name : "؟"}`);
+              toast(f.locked ? AX("e_locked", sec.lockMin) : AX("e_bad"));
+              return;
+            }
+            if (me && found.id === me.id) { toast("لا يمكنك اعتماد إجراء بنفسك"); return; }
+            if (!can(permId, found)) { toast("هذا المشرف لا يملك صلاحية اعتماد هذا الإجراء"); return; }
+            attClear(lk);
+            logActivity(`موافقة مشرف: ${found.name} اعتمد «${what}» — طلب بواسطة ${me ? me.name : "؟"} (تحقق سحابي)`);
+            quickFormDialog.close();
+            setTimeout(() => onApproved(found, true), 60);
+          });
+          return false;
+        }
         const key = "ov:" + (sup ? sup.id : toLatinDigits(v.u).toLowerCase());
         const left = lockLeftMs(key);
         if (left > 0) { toast(AX("e_locked", Math.ceil(left / 60000))); return false; }
@@ -6336,6 +6384,8 @@ body.auth-locked .top-logout{display:none!important}
             btn.disabled = false;
             if (r.ok && (!sup.cloudUserId || r.uid === sup.cloudUserId)) { v._cloudOk = true; finishOverride(true); }
             else if (r.error === "offline") toast(cloudErr("offline"));
+            else if (r.ok) { logActivity(`موافقة مشرف: حساب السحابة لا يطابق «${sup.name}» — ${what}`); toast("⚠ الحساب في السحابة لا يطابق هذا المستخدم على هذا الجهاز — سجّل خروج ودخول مرة على هذا الجهاز ثم أعد المحاولة"); }
+            else if (r.error && r.error !== "bad-credentials") toast(`⚠ تعذّر التحقق من السحابة الآن (${r.error}) — انتظر دقيقة وأعد المحاولة`);
             else finishOverride(false);
           });
           return false;
@@ -6598,8 +6648,8 @@ body.auth-locked .top-logout{display:none!important}
     return { emp };
   }
   function finishLogin(emp) {
-    emp.lastLogin = new Date().toISOString();
-    persistEmps();
+    // with the cloud, a worker cannot write the staff list (it would be refused) — the session log records the login instead
+    if (!(cloudOn() && validRole(emp.role) === "worker")) { emp.lastLogin = new Date().toISOString(); persistEmps(); }
     role = validRole(emp.role);
     save("l997_user", emp.name);
     save("l997_role", t("role_" + role));
@@ -7524,6 +7574,9 @@ body.auth-locked .top-logout{display:none!important}
     if (empSelReset) empSelReset.value = "";
     document.getElementById("orderPriority").value = "normal";
     document.getElementById("orderPriorityToggle").checked = false;
+    document.getElementById("orderPriorityToggle").indeterminate = false;
+    draftUrgentAll = false;
+    { const h = document.getElementById("posUrgentHint"); if (h) h.textContent = ""; }
     document.getElementById("paymentMethod").value = "cash";
     document.getElementById("paidAmount").value = 0;
     document.getElementById("balanceUse").value = 0;
@@ -7632,10 +7685,12 @@ body.auth-locked .top-logout{display:none!important}
   function urgentFixed(clothingId) { const v = settings.urgentPrices && settings.urgentPrices[clothingId]; return v === undefined || v === null || v === "" ? null : Number(v); }
   const urgentBlocked = (it) => urgentFixed(it.clothingId) === 0;
   // رسوم الاستعجال: سعر الاستعجال المحدد للصنف (غسيل وكي) − السعر العادي، وإلا النسبة من الإعدادات. قطع الباقات بدون رسوم
+  // قطع مستعجلة داخل الطلب: إذا حُددت قطع بعينها (⚡ على السطر) فالرسوم عليها فقط؛ الطلبات القديمة بدون تحديد = كل القطع
+  const lineUrgent = (items, it) => ((items || []).some((x) => x.urgent === true) ? it.urgent === true : true);
   function urgentFeeOf(items) {
     let pct = 0, fixed = 0;
     (items || []).forEach((it) => {
-      if (it.fromPackageId || !(Number(it.total) > 0) || urgentBlocked(it)) return;
+      if (!lineUrgent(items, it) || it.fromPackageId || !(Number(it.total) > 0) || urgentBlocked(it)) return;
       const f = it.serviceId === "washiron" ? urgentFixed(it.clothingId) : null;
       if (f !== null && f > 0) fixed += Math.max(0, f * it.qty - it.total); else pct += Number(it.total) || 0;
     });
@@ -7807,7 +7862,19 @@ body.auth-locked .top-logout{display:none!important}
     renderProductGrid();
   });
 
+  // ⚡ لكل سطر: «الطلب كله مستعجل» يضع ⚡ على كل القطع (والجديدة)، أو اختر القطع المستعجلة واحدة واحدة
+  let draftUrgentAll = false;
+  function syncDraftPriority() {
+    draftItems.forEach((it) => { if (it.urgent === undefined) it.urgent = draftUrgentAll && !urgentBlocked(it); if (urgentBlocked(it)) it.urgent = false; });
+    const can0 = draftItems.filter((it) => !urgentBlocked(it)), on = draftItems.filter((it) => it.urgent);
+    const tg = document.getElementById("orderPriorityToggle");
+    document.getElementById("orderPriority").value = on.length ? "urgent" : "normal";
+    if (tg) { tg.checked = draftItems.length ? on.length > 0 && on.length === can0.length : draftUrgentAll; tg.indeterminate = on.length > 0 && on.length < can0.length; }
+    const hint = document.getElementById("posUrgentHint");
+    if (hint) hint.textContent = on.length && on.length < draftItems.length ? `⚡ ${on.reduce((a, it) => a + it.qty, 0)} ${lang === "en" ? "urgent pieces" : "قطعة مستعجلة"} · ${draftItems.filter((it) => !it.urgent).reduce((a, it) => a + it.qty, 0)} ${lang === "en" ? "normal" : "عادية"}` : "";
+  }
   function renderOrderItemsTable() {
+    syncDraftPriority();
     const body = document.getElementById("orderItemsBody");
     const countLabel = document.getElementById("posCartCount");
     if (draftItems.length === 0) {
@@ -7836,8 +7903,14 @@ body.auth-locked .top-logout{display:none!important}
           <button type="button" data-qty-plus="${it.id}">＋</button>
         </div>
         <div class="pos-cart-row-price">${money(it.total)}</div>
+        <button type="button" class="pos-urgent-chip ${it.urgent ? "on" : ""}" data-urgent-line="${it.id}" ${urgentBlocked(it) ? `disabled title="${lang === "en" ? "No urgent service for this item" : "لا توجد خدمة مستعجلة لهذا الصنف"}"` : `title="${lang === "en" ? "Urgent" : "مستعجل"}"`}>⚡</button>
         <button type="button" class="pos-cart-remove" data-remove="${it.id}">✕</button>
       </div>`).join("");
+    body.querySelectorAll("[data-urgent-line]").forEach((b) => (b.onclick = () => {
+      const it = draftItems.find((x) => x.id === b.dataset.urgentLine); if (!it || urgentBlocked(it)) return;
+      it.urgent = !it.urgent; draftUrgentAll = false;
+      renderOrderItemsTable(); updateSummary();
+    }));
     body.querySelectorAll("[data-service-change]").forEach((sel) => {
       sel.addEventListener("change", () => {
         const it = draftItems.find((x) => x.id === sel.dataset.serviceChange);
@@ -7932,8 +8005,7 @@ body.auth-locked .top-logout{display:none!important}
     const extras0 = extrasLines([...draftExtras], draftItems.reduce((n, it) => n + it.qty, 0));
     const extras = extras0.concat(deliveryQuote(draftCustomerId, draftDelivery, round3(itemsTotal + extrasTotalOf(extras0))).lines);
     const extrasTotal = extrasTotalOf(extras);
-    const priority = document.getElementById("orderPriority").value;
-    const urgentFee = priority === "urgent" ? urgentFeeOf(draftItems) : 0;
+    const urgentFee = draftItems.some((it) => it.urgent) ? urgentFeeOf(draftItems) : 0;
     return { itemsTotal, extras, extrasTotal, subtotal: round3(itemsTotal + extrasTotal), urgentFee };
   }
   function currentTotals() {
@@ -8019,8 +8091,11 @@ body.auth-locked .top-logout{display:none!important}
     }
   }
   document.getElementById("orderPriorityToggle").addEventListener("change", (e) => {
-    document.getElementById("orderPriority").value = e.target.checked ? "urgent" : "normal";
-    updateSummary();
+    draftUrgentAll = e.target.checked;
+    draftItems.forEach((it) => { it.urgent = draftUrgentAll && !urgentBlocked(it); });
+    const blocked = draftUrgentAll ? draftItems.filter(urgentBlocked) : [];
+    if (blocked.length) toast(`${lang === "en" ? "No urgent service for" : "لا توجد خدمة مستعجلة لـ"}: ${[...new Set(blocked.map((it) => clothingName(it.clothingId)))].join("، ")}${blocked.length < draftItems.length ? (lang === "en" ? " — the other pieces are urgent" : " — بقية القطع صارت مستعجلة") : ""}`);
+    renderOrderItemsTable(); updateSummary();
   });
   function clearDraftCode(notify) {
     draftCode = null;
@@ -8233,7 +8308,7 @@ body.auth-locked .top-logout{display:none!important}
   function saveCurrentOrder(andPrint) {
     if (!draftCustomerId) { toast(t("toast_pick_customer")); openPosCustomerPicker(); return; }
     if (draftItems.length === 0) { toast(t("toast_add_one_item")); return; }
-    const noUrgent = document.getElementById("orderPriority").value === "urgent" ? draftItems.filter(urgentBlocked) : [];
+    const noUrgent = draftItems.filter((it) => it.urgent && urgentBlocked(it));
     if (noUrgent.length) { toast(`الخدمة المستعجلة غير متوفرة لـ: ${[...new Set(noUrgent.map((it) => clothingName(it.clothingId)))].join("، ")} — اجعل الطلب عادياً أو افصل هذه القطع في طلب عادي`); return; }
     const tt = currentTotals();
     const reason = document.getElementById("discountReason").value.trim();
@@ -8455,8 +8530,9 @@ body.auth-locked .top-logout{display:none!important}
     document.getElementById("discountAmount").value = s.discount || "0";
     const drr = document.getElementById("discountReason"); if (drr) drr.value = s.discountReason || "";
     if (s.employeeId) { const sel = document.getElementById("orderEmployeeSelect"); if (sel) sel.value = s.employeeId; }
-    document.getElementById("orderPriority").value = s.priority || "normal";
-    document.getElementById("orderPriorityToggle").checked = s.priority === "urgent";
+    draftUrgentAll = s.priority === "urgent" && !draftItems.some((it) => it.urgent === true);
+    if (draftUrgentAll) draftItems.forEach((it) => { it.urgent = !urgentBlocked(it); });
+    syncDraftPriority();
     suspendedOrders = suspendedOrders.filter((x) => x.id !== id);
     save("l997_suspended_orders", suspendedOrders);
     renderOrderItemsTable();
@@ -8625,7 +8701,7 @@ body.auth-locked .top-logout{display:none!important}
     const lines = [`🧾 ${shop} — ${L("إيصال الطلب", "Receipt — Order")} #${order.number}`, `📅 ${fmtDT(order.createdAt)}`];
     if (cust) lines.push(`👤 ${cust.name}`);
     lines.push("");
-    order.items.forEach((it) => lines.push(`• ${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty} = ${it.fromPackageId ? L("من الباقة", "from package") : money(it.total)}`));
+    order.items.forEach((it) => lines.push(`• ${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty} = ${it.fromPackageId ? L("من الباقة", "from package") : money(it.total)}`));
     (order.extras || []).forEach((l) => lines.push(`➕ ${extraLabel(l)}${l.per === "piece" ? ` × ${l.qty}` : ""} = ${extraVal(l)}`));
     lines.push(`👕 ${L("عدد القطع", "Pieces")}: ${piecesOf(order)}`, "──────────");
     lines.push(`${L("المجموع الأساسي", "Subtotal")}: ${money(p.subtotal)}`);
@@ -8653,7 +8729,7 @@ body.auth-locked .top-logout{display:none!important}
     const iso = (x) => "\u2066" + x + "\u2069"; // رقم أو نص إنجليزي داخل سطر عربي يبقى بترتيبه الصحيح
     const en = lang === "en" || lang === "ur", L = (ar, eng) => (en ? eng : ar);
     const p = order.payment, profile = loadProfile();
-    const rows = order.items.map((it) => ({ a: `${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}`, q: it.qty, v: it.fromPackageId ? L("من الباقة", "Package") : money(it.total) }));
+    const rows = order.items.map((it) => ({ a: `${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}`, q: it.qty, v: it.fromPackageId ? L("من الباقة", "Package") : money(it.total) }));
     (order.extras || []).forEach((l) => rows.push({ a: `+ ${extraLabel(l)}`, q: l.per === "piece" ? l.qty : "", v: extraVal(l) }));
     const totals = [[L("المجموع الأساسي", "Subtotal"), money(p.subtotal)]], paidRows = [];
     if (p.urgentFee > 0) totals.push([L("رسوم الاستعجال", "Urgent fee"), money(p.urgentFee)]);
@@ -8922,7 +8998,7 @@ body.auth-locked .top-logout{display:none!important}
 
         <table>
           <thead><tr><th>${t("th_cloth")}</th><th>${t("th_service")}</th><th>${t("th_qty")}</th><th>${t("th_total")}</th></tr></thead>
-          <tbody>${order.items.map((it) => `<tr><td>${clothingName(it.clothingId)}</td><td>${serviceName(it.serviceId)}</td><td>${it.qty}</td><td>${money(it.total)}</td></tr>`).join("")}${(order.extras || []).map((l) => `<tr><td>${esc(extraLabel(l))}</td><td>—</td><td>${l.qty}</td><td>${extraVal(l)}</td></tr>`).join("")}</tbody>
+          <tbody>${order.items.map((it) => `<tr><td>${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)}</td><td>${serviceName(it.serviceId)}</td><td>${it.qty}</td><td>${money(it.total)}</td></tr>`).join("")}${(order.extras || []).map((l) => `<tr><td>${esc(extraLabel(l))}</td><td>—</td><td>${l.qty}</td><td>${extraVal(l)}</td></tr>`).join("")}</tbody>
         </table>
         ${order.notes ? `<div class="receipt-notes"><strong>⚠ ${t("dlg_notes")}:</strong> ${esc(order.notes)}</div>` : ""}
         ${orderPackageLines(order).map((l) => `<div class="receipt-notes">🎟 ${esc(l)}</div>`).join("")}
@@ -9271,7 +9347,7 @@ body.auth-locked .top-logout{display:none!important}
     if (order.status !== "received" || order.paymentConfirmed) { toast(lang === "en" ? "Only unpaid received orders can be edited" : "يمكن تعديل الطلب فقط قبل تأكيد الدفع"); return; }
     if (!can("create_order")) { denied(); return; }
     const toLocalInput = (iso) => { if (!iso) return ""; const d = new Date(iso); if (isNaN(d)) return iso; return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
-    const fields = order.items.map((it, i) => ({ id: "q" + i, label: `${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}${it.fromPackageId ? " (باقة)" : ` (${money(it.unit)})`}`, type: "number", step: "1", value: it.qty, min: 0 }));
+    const fields = order.items.map((it, i) => ({ id: "q" + i, label: `${it.urgent ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}${it.fromPackageId ? " (باقة)" : ` (${money(it.unit)})`}`, type: "number", step: "1", value: it.qty, min: 0 }));
     fields.push(
       { id: "priority", label: t("th_priority"), type: "select", value: order.priority, options: [{ value: "normal", label: t("opt_normal") }, { value: "urgent", label: t("opt_urgent") }] },
       { id: "expected", label: "موعد التسليم المتوقع", type: "datetime-local", value: toLocalInput(order.expectedDelivery) },
@@ -9279,13 +9355,14 @@ body.auth-locked .top-logout{display:none!important}
       { id: "reason", label: "سبب التعديل (إلزامي)", type: "text", value: "" },
     );
     openQuickForm({
-      title: `✏️ تعديل الطلب #${order.number}`, sub: "غيّر الكمية أو اجعلها 0 لحذف الصنف. الإجمالي يُعاد حسابه تلقائياً. تقليل القطع يحتاج صلاحية الإلغاء أو موافقة مشرف.",
+      title: `✏️ تعديل الطلب #${order.number}`, sub: `غيّر الكمية أو اجعلها 0 لحذف الصنف. الإجمالي يُعاد حسابه تلقائياً.${can("edit_order") ? "" : " تقليل القطع يحتاج موافقة مشرف."}`,
       fields, submitLabel: "حفظ التعديل",
       onSubmit: (v) => {
         if (!v.reason) { toast("اكتب سبب التعديل"); return false; }
         const newQty = order.items.map((it, i) => Math.max(0, Math.floor(Number(v["q" + i]) || 0)));
         if (newQty.every((q) => q === 0)) { toast("لا يمكن حذف كل الأصناف — استخدم إلغاء الطلب بدلاً من ذلك"); return false; }
-        const blockedU = v.priority === "urgent" ? order.items.filter((it, i) => newQty[i] > 0 && urgentBlocked(it)) : [];
+        const flagged = order.items.some((it) => it.urgent === true);
+        const blockedU = v.priority === "urgent" && !(flagged && order.priority === "urgent") ? order.items.filter((it, i) => newQty[i] > 0 && urgentBlocked(it)) : [];
         if (blockedU.length) { toast(`الخدمة المستعجلة غير متوفرة لـ: ${[...new Set(blockedU.map((it) => clothingName(it.clothingId)))].join("، ")}`); return false; }
         // الباقات: الزيادة يجب أن تتوفر بالرصيد المتبقي للباقة
         for (let i = 0; i < order.items.length; i++) {
@@ -9309,6 +9386,8 @@ body.auth-locked .top-logout{display:none!important}
             it.total = round3(it.unit * it.qty);
           });
           order.items = order.items.filter((it) => it.qty > 0);
+          if (v.priority !== order.priority) order.items.forEach((it) => { if (flagged || v.priority === "normal") it.urgent = v.priority === "urgent" && !urgentBlocked(it); });
+          else if (flagged && !order.items.some((it) => it.urgent)) v.priority = "normal"; // the urgent lines were removed
           order.priority = v.priority === "urgent" ? "urgent" : "normal";
           order.expectedDelivery = v.expected || null;
           order.notes = v.notes;
@@ -9321,7 +9400,7 @@ body.auth-locked .top-logout{display:none!important}
           renderOrdersPage();
           toast(lang === "en" ? "Order updated" : "تم تعديل الطلب");
         };
-        if (reduces) { setTimeout(() => requireOverride("cancel_order", `تقليل قطع/قيمة الطلب #${order.number}`, apply), 80); return; }
+        if (reduces) { setTimeout(() => requireOverride("edit_order", `تقليل قطع/قيمة الطلب #${order.number}`, apply), 80); return; }
         apply(null, false);
       },
     });
@@ -9354,6 +9433,15 @@ body.auth-locked .top-logout{display:none!important}
     if (!rows.length) return "";
     return `<div class="details-box full-span" style="grid-column:1/-1"><h4>سجل المسؤولية</h4>${rows.map((r) => `<div class="details-line"><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join("")}</div>`;
   }
+  // طلب فيه قطع مستعجلة وقطع عادية: موعدان للتجهيز
+  function urgentSplitNote(order) {
+    const u = order.items.filter((it) => it.urgent === true);
+    if (!u.length || u.length === order.items.length) return "";
+    const base = new Date((order.statusHistory && order.statusHistory[0] && order.statusHistory[0].at) || order.createdAt || Date.now()).getTime();
+    const at = (h) => fmtDT(new Date(base + h * 3600e3).toISOString());
+    const n = (list) => list.reduce((a, it) => a + it.qty, 0);
+    return `<div class="details-line" style="background:var(--warning-soft,#fff6e0);border-radius:8px;padding:6px 8px"><span>⚡ ${n(u)} ${lang === "en" ? "urgent — ready by" : "قطعة مستعجلة — جاهزة قبل"} <b>${at(settings.urgentHours)}</b> · ${n(order.items.filter((it) => !it.urgent))} ${lang === "en" ? "normal — by" : "عادية — قبل"} <b>${at(settings.normalHours)}</b></span></div>`;
+  }
   function renderOrderDialog() {
     const order = orders.find((o) => o.id === currentOrderDialogId);
     if (!order) { orderDialog.close(); return; }
@@ -9372,7 +9460,8 @@ body.auth-locked .top-logout{display:none!important}
       <div class="order-details-grid">
         <div class="details-box">
           <h4>${t("dlg_items")}</h4>
-          ${order.items.map((it) => `<div class="details-line"><span>${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty}</span><strong>${money(it.total)}</strong></div>`).join("")}
+          ${urgentSplitNote(order)}
+          ${order.items.map((it) => `<div class="details-line"><span>${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty}</span><strong>${money(it.total)}</strong></div>`).join("")}
           ${(order.extras || []).map((l) => `<div class="details-line"><span>➕ ${esc(extraLabel(l))}${l.per === "piece" ? ` × ${l.qty}` : ""}</span><strong>${extraVal(l)}</strong></div>`).join("")}${order.delivery ? `<div class="details-line"><span>🚚 ${esc(dlvStatusText(order))}</span><strong>${esc(order.delivery.address || "—")}</strong></div>` : ""}
         </div>
         <div class="details-box">
@@ -10391,7 +10480,7 @@ body.auth-locked .top-logout{display:none!important}
         <button class="primary-btn" id="saveAdminAccountBtn">حفظ بيانات الحساب</button>
         <button class="secondary-btn" id="adminChangePwBtn" type="button">🔑 تغيير كلمة المرور</button>
       </div>
-      <p class="section-note" style="margin-top:10px">الدور: ${ACCESS_ROLE_AR[acct.role] || esc(acct.role)} — آخر دخول: ${acct.lastLogin ? fmtDT(acct.lastLogin) : "—"} — آخر تغيير لكلمة المرور: ${acct.passChangedAt ? fmtDT(acct.passChangedAt) : "—"}.<br>كلمات المرور مخزّنة مشفّرة (لا يمكن عرضها حتى للمالك). لا يُرسَل أي بريد إلكتروني؛ نسيان كلمة المرور يُعالَج برمز الاسترداد أو بإعادة التعيين من المالك.</p>`;
+      <p class="section-note" style="margin-top:10px">الدور: ${ACCESS_ROLE_AR[acct.role] || esc(acct.role)} — آخر دخول: ${(() => { const i = loginInfo(acct); return i.at ? fmtDT(i.at) : "—"; })()} — آخر تغيير لكلمة المرور: ${acct.passChangedAt ? fmtDT(acct.passChangedAt) : "—"}.<br>كلمات المرور مخزّنة مشفّرة (لا يمكن عرضها حتى للمالك). لا يُرسَل أي بريد إلكتروني؛ نسيان كلمة المرور يُعالَج برمز الاسترداد أو بإعادة التعيين من المالك.</p>`;
     document.getElementById("adminChangePwBtn").addEventListener("click", openChangePw);
     document.getElementById("saveAdminAccountBtn").addEventListener("click", () => {
       const name = document.getElementById("adminName").value.trim();
