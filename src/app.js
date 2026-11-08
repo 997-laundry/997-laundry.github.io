@@ -4292,6 +4292,8 @@
   document.getElementById("orderPriorityToggle").addEventListener("change", (e) => {
     draftUrgentAll = e.target.checked;
     draftItems.forEach((it) => { it.urgent = draftUrgentAll && !urgentBlocked(it); });
+    const blocked = draftUrgentAll ? draftItems.filter(urgentBlocked) : [];
+    if (blocked.length) toast(`${lang === "en" ? "No urgent service for" : "لا توجد خدمة مستعجلة لـ"}: ${[...new Set(blocked.map((it) => clothingName(it.clothingId)))].join("، ")}${blocked.length < draftItems.length ? (lang === "en" ? " — the other pieces are urgent" : " — بقية القطع صارت مستعجلة") : ""}`);
     renderOrderItemsTable(); updateSummary();
   });
   function clearDraftCode(notify) {

@@ -113,9 +113,12 @@ function check(name, cond, detail) {
   tt = await urgentTotal("bisht", 1); await clearCart();
   check("urgent bisht = 5.000", /5\.000/.test(tt), tt);
   const nOrders = ((await F.evaluate(() => JSON.parse(localStorage.getItem("l997_orders") || "[]")))).length;
-  await urgentTotal("shoes", 1); await F.click("#posSaveOrderMainBtn"); await F.waitForTimeout(400);
-  check("shoes cannot be urgent (crossed out on the list): urgent order refused", ((await F.evaluate(() => JSON.parse(localStorage.getItem("l997_orders") || "[]")))).length === nOrders);
-  await F.uncheck("#orderPriorityToggle"); await F.click("#posSaveOrderMainBtn"); await F.waitForTimeout(400);
+  await F.evaluate(() => document.querySelector('.nav-item[data-page="new-order"]').click());
+  await F.click(`#posProductGrid [data-cloth="shoes"]`);
+  await F.click("#orderPriorityToggle"); await F.waitForTimeout(200);
+  const shoeUrgent = await F.evaluate(() => ({ on: document.getElementById("orderPriorityToggle").checked, chip: document.querySelector("#orderItemsBody [data-urgent-line]").disabled, fee: document.getElementById("summaryUrgent").textContent }));
+  check("shoes cannot be urgent (crossed out on the list): the switch does not stay on, ⚡ is disabled, no fee", !shoeUrgent.on && shoeUrgent.chip && /^0\.000/.test(shoeUrgent.fee.trim()) && ((await F.evaluate(() => JSON.parse(localStorage.getItem("l997_orders") || "[]")))).length === nOrders, JSON.stringify(shoeUrgent));
+  await F.click("#posSaveOrderMainBtn"); await F.waitForTimeout(400);
   check("…as a normal order it is accepted (1.500)", ((await F.evaluate(() => JSON.parse(localStorage.getItem("l997_orders") || "[]"))))[0]?.payment.total === 1.5);
   // one order with every product of the list (wash & iron): each line and the total exactly as the list
   await F.evaluate(() => document.querySelectorAll("dialog[open]").forEach((d) => d.close()));
