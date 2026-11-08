@@ -185,9 +185,16 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   check("…and the cancellation is accepted by the cloud", await until(async () => (await rows("orders")).find((x) => x.record_id === toCancel2.id)?.data.status === "cancelled", 20000));
   check("worker device: nothing rejected by the cloud", (await b.cloudStatus()).rejected === 0, JSON.stringify((await b.cloudStatus()).rejectedList));
 
+  // the owner sees the worker's real last login (from the session log), not an old date
+  const seenOnA = await until(async () => {
+    await a.nav("access").catch(() => {}); await A.waitForTimeout(300);
+    const row = await A.$eval("#accessUsersBody", (b) => [...b.querySelectorAll("tr")].map((r) => r.textContent).find((t) => /worker1/.test(t)) || "").catch(() => "");
+    return /متصل الآن/.test(row) ? row : false;
+  }, 25000);
+  check("owner's users table: the worker's last login is current («online now»), from the session log", !!seenOnA, String(seenOnA).slice(0, 200));
   // device A (idle) picks up the worker's order and refreshes itself
   await a.nav("dashboard"); await A.mouse.move(5, 5);
-  check("owner device receives the worker's orders while idle", await until(async () => ((await a.ls("l997_orders")) || []).length === 3, 20000));
+  check("owner device receives the worker's orders while idle", await until(async () => ((await a.ls("l997_orders")) || []).length === 4, 20000));
   await A.waitForSelector("body:not(.auth-locked)");
   check("owner stays signed in after the automatic refresh", !(await A.evaluate(() => document.body.classList.contains("auth-locked"))));
 

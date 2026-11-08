@@ -1127,6 +1127,19 @@
     const s0 = loadSessions().find((x) => x.id === mySessionId);
     return !!(s0 && s0.revokedAt);
   }
+  // آخر دخول/آخر نشاط/آخر خروج لكل موظف — من سجل الجلسات المتزامن (يكتبه كل الأدوار)، مع lastLogin القديم كاحتياط
+  function loginInfo(e) {
+    const mine = loadSessions().filter((x) => (x.empId && x.empId === e.id) || (e.cloudUserId && x.uid === e.cloudUserId) || (!x.empId && e.username && x.username === e.username));
+    const at = mine.reduce((m, x) => (x.at && x.at > m ? x.at : m), String(e.lastLogin || ""));
+    const last = mine.slice().sort((a, b) => String(b.at).localeCompare(String(a.at)))[0] || null;
+    return { at: at || null, last, state: last ? sessionState(last) : null, out: last ? last.end || null : null, seen: last ? last.seen || null : null };
+  }
+  function lastLoginCell(e) {
+    const i = loginInfo(e);
+    if (!i.at) return "—";
+    const tag = i.state === "active" ? ' <span class="status-badge status-ready">متصل الآن</span>' : i.out ? `<div class="inv-muted" style="font-size:11.5px">خروج: ${fmtDT(i.out)}</div>` : i.seen ? `<div class="inv-muted" style="font-size:11.5px">آخر نشاط: ${fmtDT(i.seen)}</div>` : "";
+    return fmtDT(i.at) + tag;
+  }
   function sessionState(x) {
     if (x.revokedAt) return "revoked";
     if (x.end) return x.why === "idle" ? "idle" : "ended";
@@ -1438,7 +1451,7 @@
           ${chain ? (chain.bad.length || chain.gaps.length ? `<div class="cloud-warn">⚠ <b>${chain.bad.length}</b> قيد معدّل و<b>${chain.gaps.length}</b> فجوة (قيود محذوفة) — ${chain.bad.slice(0, 5).map((a) => `${fmtDT(a.at)}: ${esc(a.action.slice(0, 60))}`).join(" · ")}</div>` : `<p style="color:var(--success);font-weight:700">✓ السجل سليم — ${chain.checked} قيد من ${chain.devices} جهاز، بلا تعديل أو حذف.${chain.unsigned ? ` (${chain.unsigned} قيد قديم قبل تفعيل البصمات)` : ""}</p>`) : `<p class="section-note">اضغط «فحص سلامة السجل».</p>`}
         </div>
         <div class="panel" style="margin-top:14px"><div class="panel-header"><div><h3>🔐 حسابات الإدارة</h3></div></div>
-          <div class="table-wrap"><table><thead><tr><th>الحساب</th><th>الدور</th><th>التحقق بخطوتين</th><th>أجهزة موثوقة</th><th>آخر دخول</th></tr></thead><tbody>${admins.map((e) => { const tr = (e.mfaTrust || []).filter((x) => x.until > Date.now() && Date.parse(x.at || 0) > (Number(e.mfaTrustResetAt) || 0)); return `<tr><td>${esc(e.name)}</td><td>${esc(ACCESS_ROLE_AR[validRole(e.role)] || e.role)}</td><td>${e.mfaOn ? '<span class="status-badge status-ready">مفعّل</span>' : '<span class="status-badge status-cancelled">غير مفعّل</span>'}</td><td>${e.mfaOn ? `${tr.length ? tr.map((x) => esc(x.label || "جهاز")).join("، ") : "—"} ${role === "owner" ? `<button class="mini-btn danger-mini" type="button" data-forget-trust="${e.id}">إلغاء الثقة</button>` : ""}` : "—"}</td><td>${e.lastLogin ? fmtDT(e.lastLogin) : "—"}</td></tr>`; }).join("")}</tbody></table></div>
+          <div class="table-wrap"><table><thead><tr><th>الحساب</th><th>الدور</th><th>التحقق بخطوتين</th><th>أجهزة موثوقة</th><th>آخر دخول</th></tr></thead><tbody>${admins.map((e) => { const tr = (e.mfaTrust || []).filter((x) => x.until > Date.now() && Date.parse(x.at || 0) > (Number(e.mfaTrustResetAt) || 0)); return `<tr><td>${esc(e.name)}</td><td>${esc(ACCESS_ROLE_AR[validRole(e.role)] || e.role)}</td><td>${e.mfaOn ? '<span class="status-badge status-ready">مفعّل</span>' : '<span class="status-badge status-cancelled">غير مفعّل</span>'}</td><td>${e.mfaOn ? `${tr.length ? tr.map((x) => esc(x.label || "جهاز")).join("، ") : "—"} ${role === "owner" ? `<button class="mini-btn danger-mini" type="button" data-forget-trust="${e.id}">إلغاء الثقة</button>` : ""}` : "—"}</td><td>${lastLoginCell(e)}</td></tr>`; }).join("")}</tbody></table></div>
           <p class="section-note">التفعيل لكل حساب: المستخدمون والصلاحيات ← سياسات الأمان ← «تفعيل التحقق بخطوتين».</p></div>
         <div class="panel" style="margin-top:14px"><div class="panel-header"><div><h3>آخر التنبيهات</h3></div></div>${evTable(alerts.slice(0, 8))}</div>`;
     } else if (secView.tab === "logins") {
@@ -1680,7 +1693,7 @@
           <td>${esc(e.name)}${self ? ' <span class="status-badge status-ready">أنت</span>' : ""}${hasLoginAccount(e) ? "" : ' <span class="nopw-tag">بدون حساب دخول</span>'}${e.mustChange ? ' <span class="nopw-tag">كلمة مؤقتة</span>' : ""}</td>
           <td dir="ltr" style="text-align:start">${esc(e.username) || "—"}</td>
           <td>${ACCESS_ROLE_AR[e.role] || esc(e.role)}${ovCount ? ` <span class="inv-muted" title="صلاحيات خاصة">✱${ovCount}</span>` : ""}</td>
-          <td>${e.lastLogin ? fmtDT(e.lastLogin) : "—"}</td>
+          <td>${lastLoginCell(e)}</td>
           <td>${e.expiryDate ? `<span style="${expired ? "color:var(--danger);font-weight:800" : ""}">${esc(e.expiryDate)}${expired ? " (منتهي)" : ""}</span>` : "—"}</td>
           <td><span class="status-badge ${e.active === false ? "status-cancelled" : "status-ready"}">${e.active === false ? "معطّل" : "نشط"}</span>${locked ? ' <span class="lock-tag">مقفل</span>' : ""}</td>
           <td class="row-actions">${manage ? `
@@ -2570,6 +2583,8 @@
             btn.disabled = false;
             if (r.ok && (!sup.cloudUserId || r.uid === sup.cloudUserId)) { v._cloudOk = true; finishOverride(true); }
             else if (r.error === "offline") toast(cloudErr("offline"));
+            else if (r.ok) { logActivity(`موافقة مشرف: حساب السحابة لا يطابق «${sup.name}» — ${what}`); toast("⚠ الحساب في السحابة لا يطابق هذا المستخدم على هذا الجهاز — سجّل خروج ودخول مرة على هذا الجهاز ثم أعد المحاولة"); }
+            else if (r.error && r.error !== "bad-credentials") toast(`⚠ تعذّر التحقق من السحابة الآن (${r.error}) — انتظر دقيقة وأعد المحاولة`);
             else finishOverride(false);
           });
           return false;
@@ -2832,8 +2847,8 @@
     return { emp };
   }
   function finishLogin(emp) {
-    emp.lastLogin = new Date().toISOString();
-    persistEmps();
+    // with the cloud, a worker cannot write the staff list (it would be refused) — the session log records the login instead
+    if (!(cloudOn() && validRole(emp.role) === "worker")) { emp.lastLogin = new Date().toISOString(); persistEmps(); }
     role = validRole(emp.role);
     save("l997_user", emp.name);
     save("l997_role", t("role_" + role));
@@ -6625,7 +6640,7 @@
         <button class="primary-btn" id="saveAdminAccountBtn">حفظ بيانات الحساب</button>
         <button class="secondary-btn" id="adminChangePwBtn" type="button">🔑 تغيير كلمة المرور</button>
       </div>
-      <p class="section-note" style="margin-top:10px">الدور: ${ACCESS_ROLE_AR[acct.role] || esc(acct.role)} — آخر دخول: ${acct.lastLogin ? fmtDT(acct.lastLogin) : "—"} — آخر تغيير لكلمة المرور: ${acct.passChangedAt ? fmtDT(acct.passChangedAt) : "—"}.<br>كلمات المرور مخزّنة مشفّرة (لا يمكن عرضها حتى للمالك). لا يُرسَل أي بريد إلكتروني؛ نسيان كلمة المرور يُعالَج برمز الاسترداد أو بإعادة التعيين من المالك.</p>`;
+      <p class="section-note" style="margin-top:10px">الدور: ${ACCESS_ROLE_AR[acct.role] || esc(acct.role)} — آخر دخول: ${(() => { const i = loginInfo(acct); return i.at ? fmtDT(i.at) : "—"; })()} — آخر تغيير لكلمة المرور: ${acct.passChangedAt ? fmtDT(acct.passChangedAt) : "—"}.<br>كلمات المرور مخزّنة مشفّرة (لا يمكن عرضها حتى للمالك). لا يُرسَل أي بريد إلكتروني؛ نسيان كلمة المرور يُعالَج برمز الاسترداد أو بإعادة التعيين من المالك.</p>`;
     document.getElementById("adminChangePwBtn").addEventListener("click", openChangePw);
     document.getElementById("saveAdminAccountBtn").addEventListener("click", () => {
       const name = document.getElementById("adminName").value.trim();
