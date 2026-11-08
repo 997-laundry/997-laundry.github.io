@@ -1937,6 +1937,7 @@
     { id: "security_center", grp: "page", label: "مركز الأمان (محاولات الدخول، الجلسات، التنبيهات)", en: "Security center (logins, sessions, alerts)", worker: false, accountant: false, manager: true },
     { id: "admin_settings", grp: "page", label: "ملف المنشأة والإعدادات", en: "Company profile & settings", worker: false, accountant: false, manager: true },
     { id: "manage_users", grp: "page", label: "المستخدمون والصلاحيات (للأدنى رتبةً فقط)", en: "Users & permissions (lower roles only)", worker: false, accountant: false, manager: true },
+    { id: "edit_order", grp: "action", label: "تعديل الطلب (تقليل أو حذف قطع، إلغاء الاستعجال) بدون موافقة مشرف — قبل تأكيد الدفع", en: "Edit an order (reduce or remove items, drop urgent) without supervisor approval — before payment", worker: true, accountant: false, manager: true },
     { id: "cancel_order", grp: "action", label: "إلغاء الطلب بدون موافقة مشرف / إرجاعه من التسليم", en: "Cancel an order without supervisor approval / undo a hand-over", worker: false, accountant: false, manager: true },
     { id: "give_discount", grp: "action", label: "منح خصم يدوي على الطلب بدون موافقة مشرف (ضمن الحد الأقصى)", en: "Give a manual discount without approval (within the limit)", worker: true, accountant: true, manager: true, rev: 2 },
     { id: "edit_customer", grp: "action", label: "تعديل بيانات العملاء (الاسم والجوال)", en: "Edit customer details (name, phone)", worker: false, accountant: true, manager: true },
@@ -5486,7 +5487,7 @@
       { id: "reason", label: "سبب التعديل (إلزامي)", type: "text", value: "" },
     );
     openQuickForm({
-      title: `✏️ تعديل الطلب #${order.number}`, sub: "غيّر الكمية أو اجعلها 0 لحذف الصنف. الإجمالي يُعاد حسابه تلقائياً. تقليل القطع يحتاج صلاحية الإلغاء أو موافقة مشرف.",
+      title: `✏️ تعديل الطلب #${order.number}`, sub: `غيّر الكمية أو اجعلها 0 لحذف الصنف. الإجمالي يُعاد حسابه تلقائياً.${can("edit_order") ? "" : " تقليل القطع يحتاج موافقة مشرف."}`,
       fields, submitLabel: "حفظ التعديل",
       onSubmit: (v) => {
         if (!v.reason) { toast("اكتب سبب التعديل"); return false; }
@@ -5528,7 +5529,7 @@
           renderOrdersPage();
           toast(lang === "en" ? "Order updated" : "تم تعديل الطلب");
         };
-        if (reduces) { setTimeout(() => requireOverride("cancel_order", `تقليل قطع/قيمة الطلب #${order.number}`, apply), 80); return; }
+        if (reduces) { setTimeout(() => requireOverride("edit_order", `تقليل قطع/قيمة الطلب #${order.number}`, apply), 80); return; }
         apply(null, false);
       },
     });

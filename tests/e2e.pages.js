@@ -76,6 +76,33 @@ function check(name, cond, detail) { console.log(`${cond ? "PASS" : "FAIL"}  ${n
   const saved = (await page.evaluate(() => JSON.parse(localStorage.getItem("l997_orders") || "[]"))).length;
   check("…and can still save orders (no page error)", saved === 1 && !(await page.evaluate(() => document.getElementById("page-orders").classList.contains("active"))), saved);
 
+  // a worker edits an unpaid order and reduces the pieces without a supervisor (permission «edit order», on by default)
+  const twoShirts = async () => {
+    await nav("new-order"); await page.click("#posCustomerBarBtn"); await page.fill("#orderCustomerPhone", "33009988"); await wait(250);
+    await page.click("#customerResults [data-pick]"); await wait(150);
+    await page.click('#posProductGrid [data-cloth="shirt"]'); await page.click('#posProductGrid [data-cloth="shirt"]'); await page.click("#posSaveOrderMainBtn"); await wait(500); await closeAll();
+    return (await page.evaluate(() => JSON.parse(localStorage.getItem("l997_orders") || "[]"))).filter((o) => o.items.some((it) => it.qty === 2)).pop();
+  };
+  const reduceToOne = async (o) => {
+    await nav("orders"); await wait(200);
+    await page.click(`#ordersBody tr:has-text("#${o.number}") [data-view]`); await page.click("#editOrderBtn");
+    await page.fill("#qf_q0", "1"); await page.fill("#qf_reason", "customer took one back"); await page.click("#quickFormSubmitBtn"); await wait(500);
+    const askedSup = await page.isVisible("#qf_p").catch(() => false);
+    const after = (await page.evaluate(() => JSON.parse(localStorage.getItem("l997_orders") || "[]"))).find((x) => x.id === o.id);
+    await closeAll(); return { askedSup, qty: after.items[0].qty, edits: (after.editHistory || []).length };
+  };
+  await logout(); await login("owner", OWNER_PW); await nav("access"); await wait(200);
+  check("«edit order» is an action in the matrix, allowed for workers by default", await page.isChecked('[data-perm="edit_order"][data-role="worker"]'));
+  await page.check('[data-perm="view_orders"][data-role="worker"]'); await wait(200);
+  await logout(); await login("yaseen", WORKER_PW);
+  const r1 = await reduceToOne(await twoShirts());
+  check("worker reduces an unpaid order's pieces with no supervisor prompt", !r1.askedSup && r1.qty === 1 && r1.edits === 1, JSON.stringify(r1));
+  await logout(); await login("owner", OWNER_PW); await nav("access"); await wait(200);
+  await page.uncheck('[data-perm="edit_order"][data-role="worker"]'); await wait(200);
+  await logout(); await login("yaseen", WORKER_PW);
+  const r2 = await reduceToOne(await twoShirts());
+  check("…when the owner turns it off, reducing needs a supervisor again", r2.askedSup && r2.qty === 2, JSON.stringify(r2));
+
   // English labels
   await logout(); await login("owner", OWNER_PW);
   await page.selectOption("#langSelect", "en"); await wait(900); await page.waitForSelector("body:not(.auth-locked)").catch(() => {});
