@@ -167,6 +167,22 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   await B.fill("#qf_u", "owner"); await B.fill("#qf_p", OWNER_PW); await B.click("#quickFormSubmitBtn"); await B.waitForTimeout(400);
   await B.fill("#qf_reason", "customer changed mind"); await b.submit(); await b.closeDialogs();
   check("worker's approved cancellation accepted by the cloud", await until(async () => (await rows("orders")).find((x) => x.record_id === toCancel.id)?.data.status === "cancelled", 20000));
+  // supervisor approval with a login the device does not list (the owner's cloud e-mail): checked in the cloud
+  await b.nav("new-order");
+  await B.click("#posCustomerBarBtn"); await B.fill("#orderCustomerPhone", "33001122"); await B.waitForTimeout(150);
+  await B.click("#customerResults [data-pick]"); await B.click('#posProductGrid [data-cloth="shirt"]');
+  await B.click("#posSaveOrderMainBtn"); await b.later(); await b.closeDialogs();
+  const toCancel2 = (await b.ls("l997_orders")).find((o) => o.status !== "cancelled" && o.status !== "delivered" && o.id !== toCancel.id);
+  await b.nav("orders"); await B.click(`#ordersBody tr:has-text("#${toCancel2.number}") [data-view]`);
+  await B.click("#cancelOrderBtn"); await B.waitForTimeout(300);
+  await B.fill("#qf_u", "owner@997laundry.app"); await B.fill("#qf_p", "wrong-pass-1"); await B.click("#quickFormSubmitBtn"); await B.waitForTimeout(1500);
+  const stillAsking = await B.isVisible("#qf_u");
+  await B.fill("#qf_p", OWNER_PW); await B.click("#quickFormSubmitBtn");
+  const gotReason = await B.waitForSelector("#qf_reason", { timeout: 8000 }).then(() => true).catch(() => false);
+  check("supervisor approval by a login not on this device: a wrong password is refused, the right one is checked in the cloud", stillAsking && gotReason);
+  if (gotReason) { await B.fill("#qf_reason", "customer changed mind"); await b.submit(); }
+  await b.closeDialogs();
+  check("…and the cancellation is accepted by the cloud", await until(async () => (await rows("orders")).find((x) => x.record_id === toCancel2.id)?.data.status === "cancelled", 20000));
   check("worker device: nothing rejected by the cloud", (await b.cloudStatus()).rejected === 0, JSON.stringify((await b.cloudStatus()).rejectedList));
 
   // device A (idle) picks up the worker's order and refreshes itself

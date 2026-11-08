@@ -2533,6 +2533,32 @@
       submitLabel: "اعتماد",
       onSubmit: (v) => {
         const sup = findAccount(v.u);
+        // the name typed is not on this device's list (cloud login name, e-mail, or the list is not synced here yet):
+        // check it in the cloud, then match the account by its cloud id
+        if (!sup && cloudOn() && String(v.u || "").trim() && v.p) {
+          const lk = "ov:" + toLatinDigits(v.u).toLowerCase();
+          const left0 = lockLeftMs(lk);
+          if (left0 > 0) { toast(AX("e_locked", Math.ceil(left0 / 60000))); return false; }
+          const btn = document.getElementById("quickFormSubmitBtn"); btn.disabled = true;
+          CLOUD.verifyPassword(toLatinDigits(v.u).trim(), v.p).then((r) => {
+            btn.disabled = false;
+            if (r && r.error === "offline") { toast(cloudErr("offline")); return; }
+            const found = r && r.ok ? emps().find((e) => e.cloudUserId && e.cloudUserId === r.uid) : null;
+            if (!found || found.active === false || isExpired(found)) {
+              const f = attFail(lk);
+              logActivity(`محاولة موافقة مشرف فاشلة — ${what} — بواسطة ${me ? me.name : "؟"}`);
+              toast(f.locked ? AX("e_locked", sec.lockMin) : AX("e_bad"));
+              return;
+            }
+            if (me && found.id === me.id) { toast("لا يمكنك اعتماد إجراء بنفسك"); return; }
+            if (!can(permId, found)) { toast("هذا المشرف لا يملك صلاحية اعتماد هذا الإجراء"); return; }
+            attClear(lk);
+            logActivity(`موافقة مشرف: ${found.name} اعتمد «${what}» — طلب بواسطة ${me ? me.name : "؟"} (تحقق سحابي)`);
+            quickFormDialog.close();
+            setTimeout(() => onApproved(found, true), 60);
+          });
+          return false;
+        }
         const key = "ov:" + (sup ? sup.id : toLatinDigits(v.u).toLowerCase());
         const left = lockLeftMs(key);
         if (left > 0) { toast(AX("e_locked", Math.ceil(left / 60000))); return false; }
