@@ -112,6 +112,10 @@ html[dir="ltr"] .link-btn{padding:6px 0}
 .pos-qty-mini button{border:0;background:transparent;padding:4px 8px;font-weight:800}
 .pos-qty-mini strong{min-width:20px;text-align:center;font-size:12px}
 .pos-cart-remove{border:0;background:transparent;color:var(--danger);font-size:16px;padding:2px 4px}
+.pos-urgent-chip{border:1px solid var(--border);background:var(--panel);border-radius:999px;font-size:14px;line-height:1;padding:6px 8px;filter:grayscale(1);opacity:.55;cursor:pointer}
+.pos-urgent-chip.on{filter:none;opacity:1;background:#fff3d6;border-color:#f0b429;box-shadow:0 0 0 2px #fde7a8}
+.pos-urgent-chip:disabled{opacity:.2;cursor:not-allowed}
+.pos-urgent-help{margin:2px 0 0;font-size:12px}.pos-urgent-hint{margin:2px 0 0;font-weight:700;color:#a86b00}.pos-urgent-hint:empty{display:none}
 
 .pos-urgent-toggle{display:flex;align-items:center;gap:8px;background:var(--warning-soft);color:var(--warning);border-radius:12px;padding:10px 12px;font-weight:700;font-size:13px;cursor:pointer}
 .pos-advanced{border:1px solid var(--border);border-radius:12px;padding:10px 12px}

@@ -3773,6 +3773,9 @@
     if (empSelReset) empSelReset.value = "";
     document.getElementById("orderPriority").value = "normal";
     document.getElementById("orderPriorityToggle").checked = false;
+    document.getElementById("orderPriorityToggle").indeterminate = false;
+    draftUrgentAll = false;
+    { const h = document.getElementById("posUrgentHint"); if (h) h.textContent = ""; }
     document.getElementById("paymentMethod").value = "cash";
     document.getElementById("paidAmount").value = 0;
     document.getElementById("balanceUse").value = 0;
@@ -3881,10 +3884,12 @@
   function urgentFixed(clothingId) { const v = settings.urgentPrices && settings.urgentPrices[clothingId]; return v === undefined || v === null || v === "" ? null : Number(v); }
   const urgentBlocked = (it) => urgentFixed(it.clothingId) === 0;
   // رسوم الاستعجال: سعر الاستعجال المحدد للصنف (غسيل وكي) − السعر العادي، وإلا النسبة من الإعدادات. قطع الباقات بدون رسوم
+  // قطع مستعجلة داخل الطلب: إذا حُددت قطع بعينها (⚡ على السطر) فالرسوم عليها فقط؛ الطلبات القديمة بدون تحديد = كل القطع
+  const lineUrgent = (items, it) => ((items || []).some((x) => x.urgent === true) ? it.urgent === true : true);
   function urgentFeeOf(items) {
     let pct = 0, fixed = 0;
     (items || []).forEach((it) => {
-      if (it.fromPackageId || !(Number(it.total) > 0) || urgentBlocked(it)) return;
+      if (!lineUrgent(items, it) || it.fromPackageId || !(Number(it.total) > 0) || urgentBlocked(it)) return;
       const f = it.serviceId === "washiron" ? urgentFixed(it.clothingId) : null;
       if (f !== null && f > 0) fixed += Math.max(0, f * it.qty - it.total); else pct += Number(it.total) || 0;
     });
@@ -4056,7 +4061,19 @@
     renderProductGrid();
   });
 
+  // ⚡ لكل سطر: «الطلب كله مستعجل» يضع ⚡ على كل القطع (والجديدة)، أو اختر القطع المستعجلة واحدة واحدة
+  let draftUrgentAll = false;
+  function syncDraftPriority() {
+    draftItems.forEach((it) => { if (it.urgent === undefined) it.urgent = draftUrgentAll && !urgentBlocked(it); if (urgentBlocked(it)) it.urgent = false; });
+    const can0 = draftItems.filter((it) => !urgentBlocked(it)), on = draftItems.filter((it) => it.urgent);
+    const tg = document.getElementById("orderPriorityToggle");
+    document.getElementById("orderPriority").value = on.length ? "urgent" : "normal";
+    if (tg) { tg.checked = draftItems.length ? on.length > 0 && on.length === can0.length : draftUrgentAll; tg.indeterminate = on.length > 0 && on.length < can0.length; }
+    const hint = document.getElementById("posUrgentHint");
+    if (hint) hint.textContent = on.length && on.length < draftItems.length ? `⚡ ${on.reduce((a, it) => a + it.qty, 0)} ${lang === "en" ? "urgent pieces" : "قطعة مستعجلة"} · ${draftItems.filter((it) => !it.urgent).reduce((a, it) => a + it.qty, 0)} ${lang === "en" ? "normal" : "عادية"}` : "";
+  }
   function renderOrderItemsTable() {
+    syncDraftPriority();
     const body = document.getElementById("orderItemsBody");
     const countLabel = document.getElementById("posCartCount");
     if (draftItems.length === 0) {
@@ -4085,8 +4102,14 @@
           <button type="button" data-qty-plus="${it.id}">＋</button>
         </div>
         <div class="pos-cart-row-price">${money(it.total)}</div>
+        <button type="button" class="pos-urgent-chip ${it.urgent ? "on" : ""}" data-urgent-line="${it.id}" ${urgentBlocked(it) ? `disabled title="${lang === "en" ? "No urgent service for this item" : "لا توجد خدمة مستعجلة لهذا الصنف"}"` : `title="${lang === "en" ? "Urgent" : "مستعجل"}"`}>⚡</button>
         <button type="button" class="pos-cart-remove" data-remove="${it.id}">✕</button>
       </div>`).join("");
+    body.querySelectorAll("[data-urgent-line]").forEach((b) => (b.onclick = () => {
+      const it = draftItems.find((x) => x.id === b.dataset.urgentLine); if (!it || urgentBlocked(it)) return;
+      it.urgent = !it.urgent; draftUrgentAll = false;
+      renderOrderItemsTable(); updateSummary();
+    }));
     body.querySelectorAll("[data-service-change]").forEach((sel) => {
       sel.addEventListener("change", () => {
         const it = draftItems.find((x) => x.id === sel.dataset.serviceChange);
@@ -4181,8 +4204,7 @@
     const extras0 = extrasLines([...draftExtras], draftItems.reduce((n, it) => n + it.qty, 0));
     const extras = extras0.concat(deliveryQuote(draftCustomerId, draftDelivery, round3(itemsTotal + extrasTotalOf(extras0))).lines);
     const extrasTotal = extrasTotalOf(extras);
-    const priority = document.getElementById("orderPriority").value;
-    const urgentFee = priority === "urgent" ? urgentFeeOf(draftItems) : 0;
+    const urgentFee = draftItems.some((it) => it.urgent) ? urgentFeeOf(draftItems) : 0;
     return { itemsTotal, extras, extrasTotal, subtotal: round3(itemsTotal + extrasTotal), urgentFee };
   }
   function currentTotals() {
@@ -4268,8 +4290,9 @@
     }
   }
   document.getElementById("orderPriorityToggle").addEventListener("change", (e) => {
-    document.getElementById("orderPriority").value = e.target.checked ? "urgent" : "normal";
-    updateSummary();
+    draftUrgentAll = e.target.checked;
+    draftItems.forEach((it) => { it.urgent = draftUrgentAll && !urgentBlocked(it); });
+    renderOrderItemsTable(); updateSummary();
   });
   function clearDraftCode(notify) {
     draftCode = null;
@@ -4482,7 +4505,7 @@
   function saveCurrentOrder(andPrint) {
     if (!draftCustomerId) { toast(t("toast_pick_customer")); openPosCustomerPicker(); return; }
     if (draftItems.length === 0) { toast(t("toast_add_one_item")); return; }
-    const noUrgent = document.getElementById("orderPriority").value === "urgent" ? draftItems.filter(urgentBlocked) : [];
+    const noUrgent = draftItems.filter((it) => it.urgent && urgentBlocked(it));
     if (noUrgent.length) { toast(`الخدمة المستعجلة غير متوفرة لـ: ${[...new Set(noUrgent.map((it) => clothingName(it.clothingId)))].join("، ")} — اجعل الطلب عادياً أو افصل هذه القطع في طلب عادي`); return; }
     const tt = currentTotals();
     const reason = document.getElementById("discountReason").value.trim();
@@ -4704,8 +4727,9 @@
     document.getElementById("discountAmount").value = s.discount || "0";
     const drr = document.getElementById("discountReason"); if (drr) drr.value = s.discountReason || "";
     if (s.employeeId) { const sel = document.getElementById("orderEmployeeSelect"); if (sel) sel.value = s.employeeId; }
-    document.getElementById("orderPriority").value = s.priority || "normal";
-    document.getElementById("orderPriorityToggle").checked = s.priority === "urgent";
+    draftUrgentAll = s.priority === "urgent" && !draftItems.some((it) => it.urgent === true);
+    if (draftUrgentAll) draftItems.forEach((it) => { it.urgent = !urgentBlocked(it); });
+    syncDraftPriority();
     suspendedOrders = suspendedOrders.filter((x) => x.id !== id);
     save("l997_suspended_orders", suspendedOrders);
     renderOrderItemsTable();
@@ -4874,7 +4898,7 @@
     const lines = [`🧾 ${shop} — ${L("إيصال الطلب", "Receipt — Order")} #${order.number}`, `📅 ${fmtDT(order.createdAt)}`];
     if (cust) lines.push(`👤 ${cust.name}`);
     lines.push("");
-    order.items.forEach((it) => lines.push(`• ${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty} = ${it.fromPackageId ? L("من الباقة", "from package") : money(it.total)}`));
+    order.items.forEach((it) => lines.push(`• ${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty} = ${it.fromPackageId ? L("من الباقة", "from package") : money(it.total)}`));
     (order.extras || []).forEach((l) => lines.push(`➕ ${extraLabel(l)}${l.per === "piece" ? ` × ${l.qty}` : ""} = ${extraVal(l)}`));
     lines.push(`👕 ${L("عدد القطع", "Pieces")}: ${piecesOf(order)}`, "──────────");
     lines.push(`${L("المجموع الأساسي", "Subtotal")}: ${money(p.subtotal)}`);
@@ -4902,7 +4926,7 @@
     const iso = (x) => "\u2066" + x + "\u2069"; // رقم أو نص إنجليزي داخل سطر عربي يبقى بترتيبه الصحيح
     const en = lang === "en" || lang === "ur", L = (ar, eng) => (en ? eng : ar);
     const p = order.payment, profile = loadProfile();
-    const rows = order.items.map((it) => ({ a: `${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}`, q: it.qty, v: it.fromPackageId ? L("من الباقة", "Package") : money(it.total) }));
+    const rows = order.items.map((it) => ({ a: `${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}`, q: it.qty, v: it.fromPackageId ? L("من الباقة", "Package") : money(it.total) }));
     (order.extras || []).forEach((l) => rows.push({ a: `+ ${extraLabel(l)}`, q: l.per === "piece" ? l.qty : "", v: extraVal(l) }));
     const totals = [[L("المجموع الأساسي", "Subtotal"), money(p.subtotal)]], paidRows = [];
     if (p.urgentFee > 0) totals.push([L("رسوم الاستعجال", "Urgent fee"), money(p.urgentFee)]);
@@ -5171,7 +5195,7 @@
 
         <table>
           <thead><tr><th>${t("th_cloth")}</th><th>${t("th_service")}</th><th>${t("th_qty")}</th><th>${t("th_total")}</th></tr></thead>
-          <tbody>${order.items.map((it) => `<tr><td>${clothingName(it.clothingId)}</td><td>${serviceName(it.serviceId)}</td><td>${it.qty}</td><td>${money(it.total)}</td></tr>`).join("")}${(order.extras || []).map((l) => `<tr><td>${esc(extraLabel(l))}</td><td>—</td><td>${l.qty}</td><td>${extraVal(l)}</td></tr>`).join("")}</tbody>
+          <tbody>${order.items.map((it) => `<tr><td>${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)}</td><td>${serviceName(it.serviceId)}</td><td>${it.qty}</td><td>${money(it.total)}</td></tr>`).join("")}${(order.extras || []).map((l) => `<tr><td>${esc(extraLabel(l))}</td><td>—</td><td>${l.qty}</td><td>${extraVal(l)}</td></tr>`).join("")}</tbody>
         </table>
         ${order.notes ? `<div class="receipt-notes"><strong>⚠ ${t("dlg_notes")}:</strong> ${esc(order.notes)}</div>` : ""}
         ${orderPackageLines(order).map((l) => `<div class="receipt-notes">🎟 ${esc(l)}</div>`).join("")}
@@ -5520,7 +5544,7 @@
     if (order.status !== "received" || order.paymentConfirmed) { toast(lang === "en" ? "Only unpaid received orders can be edited" : "يمكن تعديل الطلب فقط قبل تأكيد الدفع"); return; }
     if (!can("create_order")) { denied(); return; }
     const toLocalInput = (iso) => { if (!iso) return ""; const d = new Date(iso); if (isNaN(d)) return iso; return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
-    const fields = order.items.map((it, i) => ({ id: "q" + i, label: `${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}${it.fromPackageId ? " (باقة)" : ` (${money(it.unit)})`}`, type: "number", step: "1", value: it.qty, min: 0 }));
+    const fields = order.items.map((it, i) => ({ id: "q" + i, label: `${it.urgent ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}${it.fromPackageId ? " (باقة)" : ` (${money(it.unit)})`}`, type: "number", step: "1", value: it.qty, min: 0 }));
     fields.push(
       { id: "priority", label: t("th_priority"), type: "select", value: order.priority, options: [{ value: "normal", label: t("opt_normal") }, { value: "urgent", label: t("opt_urgent") }] },
       { id: "expected", label: "موعد التسليم المتوقع", type: "datetime-local", value: toLocalInput(order.expectedDelivery) },
@@ -5534,7 +5558,8 @@
         if (!v.reason) { toast("اكتب سبب التعديل"); return false; }
         const newQty = order.items.map((it, i) => Math.max(0, Math.floor(Number(v["q" + i]) || 0)));
         if (newQty.every((q) => q === 0)) { toast("لا يمكن حذف كل الأصناف — استخدم إلغاء الطلب بدلاً من ذلك"); return false; }
-        const blockedU = v.priority === "urgent" ? order.items.filter((it, i) => newQty[i] > 0 && urgentBlocked(it)) : [];
+        const flagged = order.items.some((it) => it.urgent === true);
+        const blockedU = v.priority === "urgent" && !(flagged && order.priority === "urgent") ? order.items.filter((it, i) => newQty[i] > 0 && urgentBlocked(it)) : [];
         if (blockedU.length) { toast(`الخدمة المستعجلة غير متوفرة لـ: ${[...new Set(blockedU.map((it) => clothingName(it.clothingId)))].join("، ")}`); return false; }
         // الباقات: الزيادة يجب أن تتوفر بالرصيد المتبقي للباقة
         for (let i = 0; i < order.items.length; i++) {
@@ -5558,6 +5583,8 @@
             it.total = round3(it.unit * it.qty);
           });
           order.items = order.items.filter((it) => it.qty > 0);
+          if (v.priority !== order.priority) order.items.forEach((it) => { if (flagged || v.priority === "normal") it.urgent = v.priority === "urgent" && !urgentBlocked(it); });
+          else if (flagged && !order.items.some((it) => it.urgent)) v.priority = "normal"; // the urgent lines were removed
           order.priority = v.priority === "urgent" ? "urgent" : "normal";
           order.expectedDelivery = v.expected || null;
           order.notes = v.notes;
@@ -5603,6 +5630,15 @@
     if (!rows.length) return "";
     return `<div class="details-box full-span" style="grid-column:1/-1"><h4>سجل المسؤولية</h4>${rows.map((r) => `<div class="details-line"><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join("")}</div>`;
   }
+  // طلب فيه قطع مستعجلة وقطع عادية: موعدان للتجهيز
+  function urgentSplitNote(order) {
+    const u = order.items.filter((it) => it.urgent === true);
+    if (!u.length || u.length === order.items.length) return "";
+    const base = new Date((order.statusHistory && order.statusHistory[0] && order.statusHistory[0].at) || order.createdAt || Date.now()).getTime();
+    const at = (h) => fmtDT(new Date(base + h * 3600e3).toISOString());
+    const n = (list) => list.reduce((a, it) => a + it.qty, 0);
+    return `<div class="details-line" style="background:var(--warning-soft,#fff6e0);border-radius:8px;padding:6px 8px"><span>⚡ ${n(u)} ${lang === "en" ? "urgent — ready by" : "قطعة مستعجلة — جاهزة قبل"} <b>${at(settings.urgentHours)}</b> · ${n(order.items.filter((it) => !it.urgent))} ${lang === "en" ? "normal — by" : "عادية — قبل"} <b>${at(settings.normalHours)}</b></span></div>`;
+  }
   function renderOrderDialog() {
     const order = orders.find((o) => o.id === currentOrderDialogId);
     if (!order) { orderDialog.close(); return; }
@@ -5621,7 +5657,8 @@
       <div class="order-details-grid">
         <div class="details-box">
           <h4>${t("dlg_items")}</h4>
-          ${order.items.map((it) => `<div class="details-line"><span>${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty}</span><strong>${money(it.total)}</strong></div>`).join("")}
+          ${urgentSplitNote(order)}
+          ${order.items.map((it) => `<div class="details-line"><span>${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty}</span><strong>${money(it.total)}</strong></div>`).join("")}
           ${(order.extras || []).map((l) => `<div class="details-line"><span>➕ ${esc(extraLabel(l))}${l.per === "piece" ? ` × ${l.qty}` : ""}</span><strong>${extraVal(l)}</strong></div>`).join("")}${order.delivery ? `<div class="details-line"><span>🚚 ${esc(dlvStatusText(order))}</span><strong>${esc(order.delivery.address || "—")}</strong></div>` : ""}
         </div>
         <div class="details-box">

@@ -693,6 +693,8 @@
 "طلب جديد منذ آخر نسخة احتياطية": "new orders since the last backup",
 "طلب جديد منذ ذلك الوقت": "new orders since then",
 "طلب مستعجل (رسوم إضافية تلقائية": "Urgent order (extra fee added automatically",
+"الطلب كله مستعجل (رسوم إضافية تلقائية": "Whole order urgent (extra fee added automatically",
+"بعض القطع فقط مستعجلة؟ اضغط ⚡ بجانب كل قطعة مستعجلة في السلة.": "Only some pieces urgent? Tap ⚡ next to each urgent piece in the cart.",
 "طلبات": "orders",
 "طلبات + الطلبات المعلّقة": "orders + held orders",
 "طلبات / مبيعات": "Orders / sales",
