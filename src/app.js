@@ -5547,6 +5547,12 @@
     if (!can("create_order")) { denied(); return; }
     const toLocalInput = (iso) => { if (!iso) return ""; const d = new Date(iso); if (isNaN(d)) return iso; return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
     const fields = order.items.map((it, i) => ({ id: "q" + i, label: `${it.urgent ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}${it.fromPackageId ? " (باقة)" : ` (${money(it.unit)})`}`, type: "number", step: "1", value: it.qty, min: 0 }));
+    // إضافة أصناف جديدة للطلب (حتى 3 في كل تعديل): الصنف + الخدمة بسعر القائمة الحالي، والكمية
+    const addOpts = [{ value: "", label: lang === "en" ? "— Add an item (optional) —" : "— إضافة صنف (اختياري) —" }];
+    SERVICES_DEFAULT.forEach((sv) => activeGarments().forEach((g) => { const pr = offerPrice(g.id, sv.id); if (pr > 0) addOpts.push({ value: `${g.id}|${sv.id}`, label: `${clothingName(g.id)} (${money(pr)})`, group: serviceName(sv.id) }); }));
+    for (let k = 0; k < 3; k++) fields.push(
+      { id: "add" + k, label: `＋ ${lang === "en" ? "New item" : "صنف جديد"} ${k + 1}`, type: "select", value: "", options: addOpts },
+      { id: "addq" + k, label: lang === "en" ? "Quantity" : "الكمية", type: "number", step: "1", value: 1, min: 1 });
     fields.push(
       { id: "priority", label: t("th_priority"), type: "select", value: order.priority, options: [{ value: "normal", label: t("opt_normal") }, { value: "urgent", label: t("opt_urgent") }] },
       { id: "expected", label: "موعد التسليم المتوقع", type: "datetime-local", value: toLocalInput(order.expectedDelivery) },
@@ -5554,12 +5560,13 @@
       { id: "reason", label: "سبب التعديل (إلزامي)", type: "text", value: "" },
     );
     openQuickForm({
-      title: `✏️ تعديل الطلب #${order.number}`, sub: `غيّر الكمية أو اجعلها 0 لحذف الصنف. الإجمالي يُعاد حسابه تلقائياً.${can("edit_order") ? "" : " تقليل القطع يحتاج موافقة مشرف."}`,
+      title: `✏️ تعديل الطلب #${order.number}`, sub: `غيّر الكمية أو اجعلها 0 لحذف الصنف، أو أضف أصنافاً جديدة من القوائم. الإجمالي يُعاد حسابه تلقائياً.${can("edit_order") ? "" : " تقليل القطع يحتاج موافقة مشرف."}`,
       fields, submitLabel: "حفظ التعديل",
       onSubmit: (v) => {
         if (!v.reason) { toast("اكتب سبب التعديل"); return false; }
         const newQty = order.items.map((it, i) => Math.max(0, Math.floor(Number(v["q" + i]) || 0)));
-        if (newQty.every((q) => q === 0)) { toast("لا يمكن حذف كل الأصناف — استخدم إلغاء الطلب بدلاً من ذلك"); return false; }
+        const adds = [0, 1, 2].map((k) => { const [cl, sv] = String(v["add" + k] || "").split("|"); const q = Math.floor(Number(v["addq" + k]) || 0); return cl && sv && q > 0 ? { clothingId: cl, serviceId: sv, qty: q, unit: offerPrice(cl, sv) } : null; }).filter((a) => a && a.unit > 0);
+        if (newQty.every((q) => q === 0) && !adds.length) { toast("لا يمكن حذف كل الأصناف — استخدم إلغاء الطلب بدلاً من ذلك"); return false; }
         const flagged = order.items.some((it) => it.urgent === true);
         const blockedU = v.priority === "urgent" && !(flagged && order.priority === "urgent") ? order.items.filter((it, i) => newQty[i] > 0 && urgentBlocked(it)) : [];
         if (blockedU.length) { toast(`الخدمة المستعجلة غير متوفرة لـ: ${[...new Set(blockedU.map((it) => clothingName(it.clothingId)))].join("، ")}`); return false; }
@@ -5584,6 +5591,15 @@
             it.qty = newQty[i];
             it.total = round3(it.unit * it.qty);
           });
+          // الأصناف الجديدة: نفس الصنف والخدمة بنفس السعر → تُضاف للسطر الموجود، وإلا سطر جديد (مستعجل إذا كان الطلب كله مستعجلاً)
+          const wholeUrgent = order.priority === "urgent" && order.items.every((x) => x.urgent !== false);
+          adds.forEach((a) => {
+            const same = order.items.find((x) => !x.fromPackageId && x.clothingId === a.clothingId && x.serviceId === a.serviceId && Number(x.unit) === a.unit && x.qty > 0);
+            if (same) { same.qty += a.qty; same.total = round3(same.unit * same.qty); return; }
+            const it = { id: uid(), clothingId: a.clothingId, serviceId: a.serviceId, qty: a.qty, unit: a.unit, total: round3(a.unit * a.qty), note: "" };
+            if (order.items.some((x) => x.urgent !== undefined)) it.urgent = wholeUrgent && !urgentBlocked(it);
+            order.items.push(it);
+          });
           order.items = order.items.filter((it) => it.qty > 0);
           if (v.priority !== order.priority) order.items.forEach((it) => { if (flagged || v.priority === "normal") it.urgent = v.priority === "urgent" && !urgentBlocked(it); });
           else if (flagged && !order.items.some((it) => it.urgent)) v.priority = "normal"; // the urgent lines were removed
@@ -5593,7 +5609,7 @@
           recomputeOrderTotals(order);
           const after = { pieces: order.items.reduce((a, it) => a + it.qty, 0), total: order.payment.total, priority: order.priority };
           (order.editHistory = order.editHistory || []).push({ at: new Date().toISOString(), by: me ? me.name : "", approvedBy: overridden ? sup.name : "", reason: v.reason, before, after });
-          logActivity(`تعديل الطلب #${order.number} — ${before.pieces}→${after.pieces} قطعة، ${money(before.total)}→${money(after.total)} — السبب: ${v.reason}${overridden ? " — اعتمده " + sup.name : ""}`, after.total);
+          logActivity(`تعديل الطلب #${order.number} — ${before.pieces}→${after.pieces} قطعة، ${money(before.total)}→${money(after.total)}${adds.length ? ` — أُضيف: ${adds.map((a) => `${clothingName(a.clothingId)} (${serviceName(a.serviceId)}) × ${a.qty}`).join("، ")}` : ""} — السبب: ${v.reason}${overridden ? " — اعتمده " + sup.name : ""}`, after.total);
           persistAll();
           renderOrderDialog();
           renderOrdersPage();

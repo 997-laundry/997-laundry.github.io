@@ -71,6 +71,20 @@ function check(name, cond, detail) {
   check("edit to normal: no urgent pieces, no fee", o1b.priority === "normal" && !o1b.items.some((i) => i.urgent) && !(o1b.payment.urgentFee > 0), JSON.stringify({ p: o1b.priority, fee: o1b.payment.urgentFee }));
   await closeAll();
 
+  // edit: add new item types (a new kind + more of an existing one, merged into its line)
+  await nav("orders"); await wait(200);
+  await page.click(`#ordersBody tr:has-text("#${o1.number}") [data-view]`); await wait(300);
+  await page.click("#editOrderBtn"); await wait(150);
+  await page.selectOption("#qf_add0", "pants_long|washiron"); await page.fill("#qf_addq0", "2");
+  await page.selectOption("#qf_add1", "shirt|washiron"); await page.fill("#qf_addq1", "1");
+  await page.fill("#qf_reason", "customer brought more"); await page.click("#quickFormSubmitBtn"); await wait(400);
+  const o1c = (await ls("l997_orders")).find((o) => o.id === o1.id);
+  const pants = o1c.items.find((i) => i.clothingId === "pants_long"), shirts = o1c.items.find((i) => i.clothingId === "shirt");
+  const exp1c = Math.round((4 * P("shirt_washiron") + 2 * P("thob_cotton_washiron") + 2 * P("pants_long_washiron")) * 1000) / 1000;
+  check("edit adds a new item type and merges more of an existing one; total recalculated", pants && pants.qty === 2 && shirts.qty === 4 && o1c.items.length === 3 && Math.abs(o1c.payment.total - exp1c) < 0.0005, JSON.stringify({ items: o1c.items.map((i) => [i.clothingId, i.qty]), total: o1c.payment.total, exp1c }));
+  check("…the addition is recorded in the order's edit history", (o1c.editHistory || []).length === 2 && o1c.editHistory[1].after.pieces === 8, JSON.stringify(o1c.editHistory && o1c.editHistory[1]));
+  await closeAll();
+
   // 2) the whole-order switch still marks everything (and new pieces added after it)
   await pick();
   await page.check("#orderPriorityToggle"); await wait(100);
