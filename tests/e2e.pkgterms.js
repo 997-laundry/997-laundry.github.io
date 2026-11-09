@@ -95,7 +95,9 @@ function check(name, cond, detail) { console.log(`${cond ? "PASS" : "FAIL"}  ${n
 
   /* 5) permanent package with default trips (4 a month) */
   await closeAll(); await page.evaluate(() => window.openCustomerProfile997("c2")); await wait(200);
-  await page.click("#cpSellPkg"); await page.waitForSelector("#qf_defId"); await page.selectOption("#qf_defId", defs[1].id); await wait(100);
+  await page.click("#cpSellPkg"); await page.waitForSelector("#qf_defId"); await page.selectOption("#qf_defId", defs[1].id);
+  // the form refills its terms after the choice — wait for that instead of a fixed delay
+  await page.waitForFunction(() => document.getElementById("qf_expiresAt").value === "" && document.getElementById("qf_dlvTrips").value === "", null, { timeout: 3000 }).catch(() => {});
   check("choosing the permanent package clears the expiry date", (await page.inputValue("#qf_expiresAt")) === "" && (await page.inputValue("#qf_dlvTrips")) === "");
   await submit(); await later();
   await fresh(); await pick("33660002"); await page.click('#posProductGrid [data-cloth="shirt"]'); await page.check("#dlvDrop"); await wait(150);
