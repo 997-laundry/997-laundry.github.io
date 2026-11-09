@@ -2880,7 +2880,9 @@
         cacheLocalPassword(emp, pw);
       } else if (c.error === "bad-credentials") {
         const r0 = attemptLogin(ident, "\u0000" + pw); // تُحسب محاولة فاشلة (والقفل بعد 5)
-        setErr(r0.err || AX("e_bad")); $a("au_pass").value = ""; $a("au_pass").focus();
+        // دخلت باسم الدخول؟ إذا أضاف صاحب الحساب بريد استرداد صار هو بريد الدخول في السحابة — جهاز لم يتزامن بعد لا يعرفه
+        const tip = !String(ident).includes("@") && isAdminRole(emp.role) ? (lang === "en" ? " — if you added a recovery e-mail, sign in with that e-mail instead" : " — إذا أضفت بريداً لاسترداد كلمة المرور، ادخل بالبريد بدل اسم الدخول") : "";
+        setErr((r0.err || AX("e_bad")) + tip); $a("au_pass").value = ""; $a("au_pass").focus();
         return;
       }
     }
