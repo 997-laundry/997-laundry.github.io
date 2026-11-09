@@ -2981,7 +2981,10 @@ body.auth-locked .top-logout{display:none!important}
       return null;
     }
   }
-  const msgOf = (e) => (e.offline ? "offline" : e.status === 400 || e.status === 401 ? "bad-credentials" : e.message || "error");
+  const msgOf = (e) => (e.offline ? "offline"
+    : e.data && e.data.error_code === "email_not_confirmed" ? "email-unconfirmed"
+    : e.status === 429 || (e.data && /rate|too many/i.test(String(e.data.error_code || e.data.msg || ""))) ? "too-many"
+    : e.status === 400 || e.status === 401 ? "bad-credentials" : e.message || "error");
 
   /* ---------- رفع التغييرات ---------- */
   // مجموعة يكتب فيها الدور ولا يقرأها (مثل سجل النشاط للعامل) — تُضاف عبر دالة الإضافة فقط
@@ -3319,13 +3322,19 @@ body.auth-locked .top-logout{display:none!important}
       if (e && e.cloudEmail) out.push(String(e.cloudEmail).toLowerCase());
     } catch (e) { /* ignore */ }
     out.push(emailOf(u));
+    // «997 laundry» بدل «997-laundry»: نجرب الاسم بشرطة وبدون مسافات
+    if (/\s/.test(u)) { out.push(emailOf(u.replace(/\s+/g, "-"))); out.push(emailOf(u.replace(/\s+/g, ""))); }
     return [...new Set(out)];
   }
+  // كلمة مرور كُتبت والكيبورد عربي (نفس الأزرار): نحوّلها لحروف الكيبورد الإنجليزي كمحاولة ثانية
+  const AR_KEYS = { "ض": "q", "ص": "w", "ث": "e", "ق": "r", "ف": "t", "غ": "y", "ع": "u", "ه": "i", "خ": "o", "ح": "p", "ج": "[", "د": "]", "ش": "a", "س": "s", "ي": "d", "ب": "f", "ل": "g", "ا": "h", "ت": "j", "ن": "k", "م": "l", "ك": ";", "ط": "'", "ئ": "z", "ء": "x", "ؤ": "c", "ر": "v", "ى": "n", "ة": "m", "و": ",", "ز": ".", "ظ": "/", "ذ": "`", "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9" };
+  const latinPw = (pw) => String(pw).replace(/لا/g, "b").replace(/[\u0600-\u06FF\u0660-\u0669]/g, (c) => AR_KEYS[c] || c);
   async function passwordToken(username, password) {
     let last = null;
-    for (const email of emailsFor(username)) {
-      try { return await api("/auth/v1/token?grant_type=password", { method: "POST", auth: false, body: { email, password } }); }
-      catch (e) { last = e; if (e.status !== 400) throw e; }
+    const pws = [password]; if (/[\u0600-\u06FF]/.test(String(password))) pws.push(latinPw(password));
+    for (const pw of [...new Set(pws)]) for (const email of emailsFor(username)) {
+      try { return await api("/auth/v1/token?grant_type=password", { method: "POST", auth: false, body: { email, password: pw } }); }
+      catch (e) { last = e; if (e.status !== 400) throw e; if (e.data && e.data.error_code === "email_not_confirmed") throw e; }
     }
     throw last;
   }
@@ -6568,7 +6577,9 @@ body.auth-locked .top-logout{display:none!important}
   const cloudOn = () => !!(CLOUD && CLOUD.isLinked());
   const CLOUD_ERR = {
     offline: "لا يوجد اتصال بالإنترنت — هذه العملية تحتاج إنترنت",
-    "bad-credentials": "اسم الدخول أو كلمة المرور غير صحيحة",
+    "bad-credentials": "اسم الدخول أو كلمة المرور غير صحيحة — تأكد أن الكيبورد إنجليزي واسم الدخول بالشرطة (997-laundry)",
+    "email-unconfirmed": "البريد لم يُؤكَّد بعد — افتح بريدك واضغط رابط «Confirm» ثم أعد المحاولة، أو ادخل باسم الدخول",
+    "too-many": "محاولات كثيرة — انتظر 5 دقائق ثم أعد المحاولة",
     "username-taken": "اسم الدخول مستخدم مسبقاً في السحابة — اختر اسماً آخر",
     "not-member": "هذا الحساب غير مضاف للمحل في السحابة أو معطّل — راجع المالك",
     "cloud-has-data": "السحابة فيها بيانات مسبقاً — لا يمكن رفع بيانات هذا الجهاز فوقها",
@@ -6670,6 +6681,25 @@ body.auth-locked .top-logout{display:none!important}
     const ident = $a("au_user").value, pw = $a("au_pass").value;
     const emp = findAccount(ident);
     let cloudRes = null;
+    // الحساب غير موجود في قائمة هذا الجهاز (بريد الدخول، اسم تغيّر، أو بيانات الجهاز قديمة): نتحقق من السحابة مباشرة،
+    // وعند النجاح نُنزّل بيانات المحل من جديد (نفس «ربط جهاز») — بدل «اسم أو كلمة مرور غير صحيحة» من بيانات قديمة
+    if (!emp && String(ident).trim() && pw && !lockLeftMs("u:" + toLatinDigits(ident).trim().toLowerCase())) {
+      const btn = $a("au_form").querySelector("button[type=submit]");
+      btn.disabled = true; setErr(lang === "en" ? "☁ Checking with the cloud…" : "☁ جاري التحقق من السحابة…");
+      // تغييرات على هذا الجهاز لم تُرفع بعد؟ تُحفظ في ملف قبل تنزيل نسخة السحابة
+      try { if (CLOUD.status && (CLOUD.status().pending || 0) > 0) downloadLocalBackup("before-relink"); } catch (e) { /* تجاهل */ }
+      const j = await CLOUD.joinDevice(String(ident).trim(), pw);
+      btn.disabled = false;
+      if (!j.error) {
+        const list = JSON.parse(localStorage.getItem("l997_employees") || "[]");
+        const e2 = list.find((x) => x.cloudUserId === j.uid) || list.find((x) => String(x.username || "").toLowerCase() === String(ident).trim().toLowerCase());
+        if (e2) { e2.cloudUserId = j.uid; e2.salt = randHex(16); e2.passHash = hashPw(pw, e2.salt); localStorage.setItem("l997_employees", JSON.stringify(list)); }
+        try { localStorage.setItem("l997_cloud_joined_notice", "1"); } catch (e) { /* تجاهل */ }
+        window.location.reload();
+        return;
+      }
+      if (j.error !== "bad-credentials") { setErr(cloudErr(j.error)); return; }
+    }
     if (emp && emp.username && pw && emp.active !== false && lockLeftMs("u:" + emp.id) <= 0) {
       const btn = $a("au_form").querySelector("button[type=submit]");
       btn.disabled = true; setErr("☁ …");
@@ -6688,6 +6718,8 @@ body.auth-locked .top-logout{display:none!important}
       }
     }
     const r = attemptLogin(ident, pw);
+    // السحابة لم ترد (شبكة محجوبة/لا إنترنت) وكلمة المرور المحفوظة على الجهاز قديمة: قل السبب الحقيقي
+    if (r.err && cloudRes && cloudRes.error && cloudRes.error !== "bad-credentials") { setErr(`${r.err} — ${cloudErr(cloudRes.error)}`); $a("au_pass").value = ""; $a("au_pass").focus(); return; }
     if (r.err) { setErr(r.err); $a("au_pass").value = ""; $a("au_pass").focus(); return; }
     // التحقق بخطوتين لحسابات الإدارة
     const admin = isAdminRole(r.emp.role), signed = cloudRes && !cloudRes.error;

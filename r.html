@@ -191,7 +191,10 @@
       return null;
     }
   }
-  const msgOf = (e) => (e.offline ? "offline" : e.status === 400 || e.status === 401 ? "bad-credentials" : e.message || "error");
+  const msgOf = (e) => (e.offline ? "offline"
+    : e.data && e.data.error_code === "email_not_confirmed" ? "email-unconfirmed"
+    : e.status === 429 || (e.data && /rate|too many/i.test(String(e.data.error_code || e.data.msg || ""))) ? "too-many"
+    : e.status === 400 || e.status === 401 ? "bad-credentials" : e.message || "error");
 
   /* ---------- رفع التغييرات ---------- */
   // مجموعة يكتب فيها الدور ولا يقرأها (مثل سجل النشاط للعامل) — تُضاف عبر دالة الإضافة فقط
@@ -529,13 +532,19 @@
       if (e && e.cloudEmail) out.push(String(e.cloudEmail).toLowerCase());
     } catch (e) { /* ignore */ }
     out.push(emailOf(u));
+    // «997 laundry» بدل «997-laundry»: نجرب الاسم بشرطة وبدون مسافات
+    if (/\s/.test(u)) { out.push(emailOf(u.replace(/\s+/g, "-"))); out.push(emailOf(u.replace(/\s+/g, ""))); }
     return [...new Set(out)];
   }
+  // كلمة مرور كُتبت والكيبورد عربي (نفس الأزرار): نحوّلها لحروف الكيبورد الإنجليزي كمحاولة ثانية
+  const AR_KEYS = { "ض": "q", "ص": "w", "ث": "e", "ق": "r", "ف": "t", "غ": "y", "ع": "u", "ه": "i", "خ": "o", "ح": "p", "ج": "[", "د": "]", "ش": "a", "س": "s", "ي": "d", "ب": "f", "ل": "g", "ا": "h", "ت": "j", "ن": "k", "م": "l", "ك": ";", "ط": "'", "ئ": "z", "ء": "x", "ؤ": "c", "ر": "v", "ى": "n", "ة": "m", "و": ",", "ز": ".", "ظ": "/", "ذ": "`", "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9" };
+  const latinPw = (pw) => String(pw).replace(/لا/g, "b").replace(/[\u0600-\u06FF\u0660-\u0669]/g, (c) => AR_KEYS[c] || c);
   async function passwordToken(username, password) {
     let last = null;
-    for (const email of emailsFor(username)) {
-      try { return await api("/auth/v1/token?grant_type=password", { method: "POST", auth: false, body: { email, password } }); }
-      catch (e) { last = e; if (e.status !== 400) throw e; }
+    const pws = [password]; if (/[\u0600-\u06FF]/.test(String(password))) pws.push(latinPw(password));
+    for (const pw of [...new Set(pws)]) for (const email of emailsFor(username)) {
+      try { return await api("/auth/v1/token?grant_type=password", { method: "POST", auth: false, body: { email, password: pw } }); }
+      catch (e) { last = e; if (e.status !== 400) throw e; if (e.data && e.data.error_code === "email_not_confirmed") throw e; }
     }
     throw last;
   }
