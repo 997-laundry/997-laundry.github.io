@@ -2869,6 +2869,25 @@
     const ident = $a("au_user").value, pw = $a("au_pass").value;
     const emp = findAccount(ident);
     let cloudRes = null;
+    // الحساب غير موجود في قائمة هذا الجهاز (بريد الدخول، اسم تغيّر، أو بيانات الجهاز قديمة): نتحقق من السحابة مباشرة،
+    // وعند النجاح نُنزّل بيانات المحل من جديد (نفس «ربط جهاز») — بدل «اسم أو كلمة مرور غير صحيحة» من بيانات قديمة
+    if (!emp && String(ident).trim() && pw && !lockLeftMs("u:" + toLatinDigits(ident).trim().toLowerCase())) {
+      const btn = $a("au_form").querySelector("button[type=submit]");
+      btn.disabled = true; setErr(lang === "en" ? "☁ Checking with the cloud…" : "☁ جاري التحقق من السحابة…");
+      // تغييرات على هذا الجهاز لم تُرفع بعد؟ تُحفظ في ملف قبل تنزيل نسخة السحابة
+      try { if (CLOUD.status && (CLOUD.status().pending || 0) > 0) downloadLocalBackup("before-relink"); } catch (e) { /* تجاهل */ }
+      const j = await CLOUD.joinDevice(String(ident).trim(), pw);
+      btn.disabled = false;
+      if (!j.error) {
+        const list = JSON.parse(localStorage.getItem("l997_employees") || "[]");
+        const e2 = list.find((x) => x.cloudUserId === j.uid) || list.find((x) => String(x.username || "").toLowerCase() === String(ident).trim().toLowerCase());
+        if (e2) { e2.cloudUserId = j.uid; e2.salt = randHex(16); e2.passHash = hashPw(pw, e2.salt); localStorage.setItem("l997_employees", JSON.stringify(list)); }
+        try { localStorage.setItem("l997_cloud_joined_notice", "1"); } catch (e) { /* تجاهل */ }
+        window.location.reload();
+        return;
+      }
+      if (j.error !== "bad-credentials") { setErr(cloudErr(j.error)); return; }
+    }
     if (emp && emp.username && pw && emp.active !== false && lockLeftMs("u:" + emp.id) <= 0) {
       const btn = $a("au_form").querySelector("button[type=submit]");
       btn.disabled = true; setErr("☁ …");
@@ -2887,6 +2906,8 @@
       }
     }
     const r = attemptLogin(ident, pw);
+    // السحابة لم ترد (شبكة محجوبة/لا إنترنت) وكلمة المرور المحفوظة على الجهاز قديمة: قل السبب الحقيقي
+    if (r.err && cloudRes && cloudRes.error && cloudRes.error !== "bad-credentials") { setErr(`${r.err} — ${cloudErr(cloudRes.error)}`); $a("au_pass").value = ""; $a("au_pass").focus(); return; }
     if (r.err) { setErr(r.err); $a("au_pass").value = ""; $a("au_pass").focus(); return; }
     // التحقق بخطوتين لحسابات الإدارة
     const admin = isAdminRole(r.emp.role), signed = cloudRes && !cloudRes.error;

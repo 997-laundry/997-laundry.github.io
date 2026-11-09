@@ -328,6 +328,27 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   const numsAfter = (await a.ls("l997_orders")).map((o) => o.number);
   check("'new number' button removes the duplicate", new Set(numsAfter).size === numsAfter.length, numsAfter.join(","));
 
+  // a device whose staff list is out of date (e.g. the owner's login changed elsewhere): the owner can still sign in —
+  // the device checks the cloud, downloads the shop's data again, and then signs in normally
+  await helpers(C).closeDialogs(); await C.click("#logoutBtn"); await C.waitForTimeout(400);
+  for (let k = 0; k < 3 && !(await C.isVisible("#au_user")); k++) {
+    const dlg = await C.evaluate(() => [...document.querySelectorAll("dialog[open]")].map((d) => d.id + ": " + d.textContent.replace(/\s+/g, " ").slice(0, 160)).join(" | "));
+    if (k === 0) console.log("  (sign-out dialogs) " + dlg);
+    await C.evaluate(() => { const sel = document.querySelector("#quickFormFields select"); if (sel) { const o = [...sel.options].find((x) => /استراحة|break|temporary/i.test(x.textContent)); if (o) { sel.value = o.value; sel.dispatchEvent(new Event("change", { bubbles: true })); } } });
+    for (const b of ["#quickFormSubmitBtn", "#confirmOkBtn"]) if (await C.isVisible(b).catch(() => false)) { await C.click(b); break; }
+    await C.waitForTimeout(500);
+  }
+  await C.waitForSelector("#au_user");
+  await C.evaluate(() => { const l = JSON.parse(localStorage.getItem("l997_employees")); localStorage.setItem("l997_employees", JSON.stringify(l.filter((e) => e.role !== "owner"))); });
+  await C.fill("#au_user", "owner"); await C.fill("#au_pass", OWNER_PW);
+  await Promise.all([C.waitForEvent("load", { timeout: 30000 }).catch(() => {}), C.click("#au_form button[type=submit]")]);
+  await C.waitForTimeout(800);
+  if (await C.isVisible("#au_user").catch(() => false)) { await C.fill("#au_user", "owner"); await C.fill("#au_pass", OWNER_PW); await C.click("#au_form button[type=submit]"); }
+  if (await C.waitForSelector("#au_saved", { timeout: 8000 }).then(() => true).catch(() => false)) { await C.check("#au_saved"); await C.click("#au_next"); }
+  const inC = await C.waitForSelector("body:not(.auth-locked)", { timeout: 20000 }).then(() => true).catch(() => false);
+  const who = inC ? await C.evaluate(() => localStorage.getItem("l997_user")) : await C.evaluate(() => (document.querySelector(".auth-err") || {}).textContent || document.body.innerText.slice(0, 200)).catch(() => "?");
+  check("stale device: the owner (missing from its staff list) signs in after a cloud check and fresh download", inC && /Owner/.test(who || "") && (await helpers(C).ls("l997_employees")).some((e) => e.role === "owner"), JSON.stringify({ inC, who }));
+
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();
   await cloud.close();
