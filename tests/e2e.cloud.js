@@ -349,6 +349,9 @@ const OWNER_PW = "Owner#2026pass", WORKER_NEW_PW = "Worker#2026new";
   const who = inC ? await C.evaluate(() => localStorage.getItem("l997_user")) : await C.evaluate(() => (document.querySelector(".auth-err") || {}).textContent || document.body.innerText.slice(0, 200)).catch(() => "?");
   check("stale device: the owner (missing from its staff list) signs in after a cloud check and fresh download", inC && /Owner/.test(who || "") && (await helpers(C).ls("l997_employees")).some((e) => e.role === "owner"), JSON.stringify({ inC, who }));
 
+  const spaced = await C.evaluate((pw) => window.L997Cloud.verifyPassword("ow ner", pw), OWNER_PW);
+  const wrong = await C.evaluate(() => window.L997Cloud.verifyPassword("owner", "nope-nope-1"));
+  check("a login typed with a space is matched («997 laundry» → 997-laundry); a wrong password is still refused", spaced.ok === true && !wrong.ok && wrong.error === "bad-credentials", JSON.stringify({ spaced, wrong }));
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();
   await cloud.close();
