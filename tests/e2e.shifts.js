@@ -108,6 +108,10 @@ function check(name, cond, detail) {
   check("opening different from handover needs a note", (await shifts()).filter((x) => !x.endAt).length === 0);
   await page.fill("#qf_note", "owner took 1"); await submit();
   check("second shift opened", (await shifts()).filter((x) => !x.endAt).length === 1);
+  // the worker's closures page: their open shift (expected cash) and their own past shift with its difference — no shop totals
+  await closeDialogs(); await nav("closures"); await page.waitForTimeout(250);
+  const mine = (await page.textContent("#shiftsPanel")).replace(/\s+/g, " ");
+  check("worker's «my shift»: open shift with expected cash, past shift 15.800 / 15.000 / −0.800, no daily-close button", /ورديتي/.test(mine) && /النقد المتوقع في الدرج/.test(mine) && /15\.800/.test(mine) && /-0\.800/.test(mine) && !(await page.isVisible("#closeDayBtn")), mine.slice(0, 260));
   await closeDialogs();
   // break logout keeps the shift open
   await page.click("#logoutBtn"); await page.waitForTimeout(200);

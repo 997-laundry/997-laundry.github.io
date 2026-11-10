@@ -23,10 +23,11 @@ function check(name, cond, detail) {
     window.print = () => {}; window.open = (url) => { if (/whatsapp/.test(url || "")) sessionStorage.setItem("__wa", decodeURIComponent(String(url).split("text=")[1] || "")); return { closed: false }; };
     if (localStorage.getItem("l997_customers")) return;
     const now = new Date().toISOString();
-    localStorage.setItem("l997_customers", JSON.stringify([{ id: "c1", name: "Pkg Cust", phone: "97333990011", balance: 0, createdAt: now }, { id: "c2", name: "Iron Cust", phone: "97333990022", balance: 0, createdAt: now }]));
+    localStorage.setItem("l997_customers", JSON.stringify([{ id: "c1", name: "Pkg Cust", phone: "97333990011", balance: 0, createdAt: now }, { id: "c2", name: "Iron Cust", phone: "97333990022", balance: 0, createdAt: now }, { id: "c3", name: "Abaya Cust", phone: "97333990033", balance: 0, createdAt: now }]));
     localStorage.setItem("l997_customer_packages", JSON.stringify([
       { id: "cp1", customerId: "c1", defId: "pd_wi", name: "باقة 20", serviceType: "washiron", garments: [], totalPieces: 20, remainingPieces: 20, price: 5, purchasedAt: now },
-      { id: "cp2", customerId: "c2", defId: "pd_ir", name: "باقة كوي 10", serviceType: "iron", garments: [], totalPieces: 10, remainingPieces: 10, price: 2, purchasedAt: now }]));
+      { id: "cp2", customerId: "c2", defId: "pd_ir", name: "باقة كوي 10", serviceType: "iron", garments: [], totalPieces: 10, remainingPieces: 10, price: 2, purchasedAt: now },
+      { id: "cp3", customerId: "c3", defId: "pd_ab", name: "باقة العبايات", serviceType: "washiron", garments: ["abaya_plain"], totalPieces: 25, remainingPieces: 25, price: 20, purchasedAt: now }]));
   });
   await page.goto(await serve(file));
   const PW = "Owner#2026pass";
@@ -123,6 +124,11 @@ function check(name, cond, detail) {
   const curt = await page.evaluate(() => document.getElementById("orderItemsBody").textContent.replace(/\s+/g, " "));
   check("owner-added «ستائر» item is outside packages (normal price 3.000)", /ستائر/.test(curt) && !/من الباقة/.test(curt) && /3\.000/.test(curt), curt.slice(0, 200));
 
+  // a package made for one item (abayas only): each abaya uses 1 piece of it, not the open-package weight of 2
+  await pick("97333990033"); await tap("abaya_plain"); await tap("abaya_plain"); await tap("abaya_plain");
+  const oAb = await saveOrder();
+  const abLine = oAb.items.find((i) => i.clothingId === "abaya_plain");
+  check("abaya-only package: 3 abayas use 3 pieces (25 → 22), no charge for them", (await pkg("cp3")).remainingPieces === 22 && abLine && abLine.qty === 3 && abLine.unit === 0 && abLine.pkgW === 1, JSON.stringify({ left: (await pkg("cp3")).remainingPieces, abLine }));
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();
   console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL PACKAGE-WEIGHT CHECKS PASSED");

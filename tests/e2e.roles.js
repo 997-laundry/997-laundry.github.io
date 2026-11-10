@@ -83,7 +83,15 @@ function check(name, cond, detail) {
   // Worker must not see money figures or restricted pages
   await nav("dashboard");
   check("worker cannot open the home page (money figures) at all", !(await page.evaluate(() => document.getElementById("page-dashboard").classList.contains("active"))) && !(await page.isVisible('.nav-item[data-page="dashboard"]')));
-  for (const pg of ["reports", "finance", "closures", "settings", "access", "audit", "employees"]) {
+  // closures: a worker opens the page but sees only their own shift — no shop totals, register or closure history
+  {
+    await page.evaluate(() => { const b = document.querySelector('.nav-item[data-page="closures"]'); if (b) b.click(); });
+    await page.waitForTimeout(250);
+    const vis = await page.evaluate(() => { const pg = document.getElementById("page-closures"); const shown = (el) => !!el && getComputedStyle(el).display !== "none" && el.offsetParent !== null;
+      return { active: pg.classList.contains("active"), mine: /ورديتي|My shift/.test(document.getElementById("shiftsPanel").textContent), daily: shown(document.getElementById("closeDayBtn")), history: shown(document.getElementById("closuresList")), register: shown(document.getElementById("registerDetailsBody")) }; });
+    check("worker's closures page shows only «my shift» (no daily/monthly totals, register or history)", vis.active && vis.mine && !vis.daily && !vis.history && !vis.register, JSON.stringify(vis));
+  }
+  for (const pg of ["reports", "finance", "settings", "access", "audit", "employees"]) {
     await nav(pg);
     const active = await page.evaluate(() => document.querySelector(".page.active")?.id);
     check(`worker blocked from ${pg}`, active !== "page-" + pg, active);
