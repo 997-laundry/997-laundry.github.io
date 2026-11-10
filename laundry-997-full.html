@@ -5590,6 +5590,7 @@ body.auth-locked .top-logout{display:none!important}
         if (!isEdit && !wantsLogin) { v.username = ""; v.password = ""; }
         if (wantsLogin && !v.username) { toast("أدخل اسم الدخول، أو اختر «موظف بدون دخول»"); return false; }
         if (v.salary < 0 || v.commission < 0) { toast("الراتب والعمولة لا يمكن أن يكونا سالبين"); return false; }
+        if (String(v.phone || "").trim() && !validPhone(v.phone)) { toast(lang === "en" ? "Phone number is not valid — Bahraini 8 digits (e.g. 39100555) or international starting with +" : "رقم الهاتف غير صحيح — بحريني 8 أرقام (مثل 39100555) أو دولي يبدأ بـ +"); return false; }
         if (v.email && !EMAIL_RE.test(v.email)) { toast(AX("e_email_fmt")); return false; }
         const selfId = existing && existing.id;
         if ((v.username && identTaken(v.username, selfId)) || (v.email && identTaken(v.email, selfId))) { toast(AX("e_user_taken")); return false; }
@@ -5755,7 +5756,7 @@ body.auth-locked .top-logout{display:none!important}
     { id: "view_reports", grp: "page", label: "التقارير والمالية", en: "Reports & finance", worker: false, accountant: true, manager: true },
     { id: "add_expense", grp: "page", label: "المخزون والمشتريات (عرض وإضافة)", en: "Inventory & purchases (view and add)", worker: false, accountant: true, manager: true },
     { id: "payroll", grp: "page", label: "الموظفون والرواتب", en: "Employees & payroll", worker: false, accountant: true, manager: true },
-    { id: "view_closures", grp: "page", label: "الإغلاقات", en: "Closures", worker: false, accountant: true, manager: true },
+    { id: "view_closures", grp: "page", label: "الإغلاقات (العامل يرى ورديته فقط)", en: "Closures (a worker sees only their own shift)", worker: true, accountant: true, manager: true, rev: 2 },
     { id: "audit_log", grp: "page", label: "سجل النشاط", en: "Activity log", worker: false, accountant: true, manager: true },
     { id: "security_center", grp: "page", label: "مركز الأمان (محاولات الدخول، الجلسات، التنبيهات)", en: "Security center (logins, sessions, alerts)", worker: false, accountant: false, manager: true },
     { id: "admin_settings", grp: "page", label: "ملف المنشأة والإعدادات", en: "Company profile & settings", worker: false, accountant: false, manager: true },
@@ -7746,7 +7747,7 @@ body.auth-locked .top-logout{display:none!important}
     if (!match) { notice.innerHTML = ""; quickAddUsePackage = false; return; }
     quickAddUsePackage = true;
     notice.innerHTML = `<label class="package-notice"><input type="checkbox" id="quickAddPackageCheckbox" checked />
-      خصم من باقة «${esc(match.name)}»${pkgWLabel(pkgWeight(quickAddClothingId, quickAddServiceId))} — متبقي ${Math.max(0, pkgLeftInDraft(match))} من ${match.totalPieces} قطعة</label>`;
+      خصم من باقة «${esc(match.name)}»${pkgWLabel(pkgWeightFor(match, quickAddClothingId, quickAddServiceId))} — متبقي ${Math.max(0, pkgLeftInDraft(match))} من ${match.totalPieces} قطعة</label>`;
     document.getElementById("quickAddPackageCheckbox").addEventListener("change", (e) => { quickAddUsePackage = e.target.checked; });
   }
 
@@ -7775,11 +7776,13 @@ body.auth-locked .top-logout{display:none!important}
     return 1;
   }
   // القطع المستهلكة من الباقة لبند في الطلب (الوزن محفوظ بالبند وقت الإضافة — تغيير الأوزان لاحقاً لا يمس الطلبات القديمة)
+  const pkgDedicated = (cp, clothingId) => Array.isArray(cp && cp.garments) && cp.garments.length > 0 && cp.garments.length <= 3 && cp.garments.includes(clothingId);
+  function pkgWeightFor(cp, clothingId, serviceId) { return pkgDedicated(cp, clothingId) ? 1 : pkgWeight(clothingId, serviceId); }
   function pkgUnits(it) { return (Number(it.qty) || 0) * (it.pkgW > 0 ? it.pkgW : 1); }
   const pkgWLabel = (w) => (w > 1 ? (lang === "en" ? ` (each = ${w} pcs)` : ` (القطعة = ${w})`) : "");
   // الباقة تغطي الصنف والخدمة، وفيها رصيد كافٍ لقطعة واحدة على الأقل بوزنها
   function pkgFits(cp, clothingId, serviceId) {
-    const w = pkgWeight(clothingId, serviceId);
+    const w = pkgWeightFor(cp, clothingId, serviceId);
     return w > 0 && pkgCovers(cp, clothingId, serviceId) && pkgLeftInDraft(cp) >= w;
   }
   // باقة العميل المناسبة لهذا الصنف: خدمة الباقة متاحة له ولا تزال فيها قطع
@@ -7809,7 +7812,7 @@ body.auth-locked .top-logout{display:none!important}
     // تحقق أولاً من وجود باقة نشطة للعميل تغطي هذه الخدمة تحديداً — قبل تحصيل السعر الكامل
     const activePkg = draftCustomerId ? activePackagesForCustomer(draftCustomerId).find((cp) => pkgFits(cp, clothingId, svc)) : null;
     if (activePkg) {
-      const w = pkgWeight(clothingId, svc);
+      const w = pkgWeightFor(activePkg, clothingId, svc);
       const existingPkgItem = draftItems.find((it) => it.clothingId === clothingId && it.serviceId === svc && it.fromPackageId === activePkg.id && (it.pkgW || 1) === w);
       if (existingPkgItem) existingPkgItem.qty += 1;
       else draftItems.push({ id: uid(), clothingId, serviceId: svc, qty: 1, unit: 0, total: 0, note: "", fromPackageId: activePkg.id, packageName: activePkg.name, pkgW: w });
@@ -7821,7 +7824,7 @@ body.auth-locked .top-logout{display:none!important}
       return;
     }
     if (draftCustomerId) {
-      const w0 = pkgWeight(clothingId, svc), cov = activePackagesForCustomer(draftCustomerId).find((cp) => pkgCovers(cp, clothingId, svc));
+      const cov = activePackagesForCustomer(draftCustomerId).find((cp) => pkgCovers(cp, clothingId, svc)), w0 = cov ? pkgWeightFor(cov, clothingId, svc) : pkgWeight(clothingId, svc);
       if (cov && w0 === 0) toast(`«${clothingName(clothingId)}» خارج نظام الباقات — يُحسب بالسعر العادي`);
       else if (cov && pkgLeftInDraft(cov) < w0) toast(`رصيد باقة «${cov.name}» (${Math.max(0, pkgLeftInDraft(cov))}) لا يكفي لـ«${clothingName(clothingId)}» (= ${w0} قطع) — بالسعر العادي`);
     }
@@ -7880,7 +7883,7 @@ body.auth-locked .top-logout{display:none!important}
     if (quickAddUsePackage) {
       usedPackage = activePackagesForCustomer(draftCustomerId).find((cp) => pkgFits(cp, quickAddClothingId, quickAddServiceId));
     }
-    const qw = pkgWeight(quickAddClothingId, quickAddServiceId) || 1;
+    const qw = (usedPackage ? pkgWeightFor(usedPackage, quickAddClothingId, quickAddServiceId) : pkgWeight(quickAddClothingId, quickAddServiceId)) || 1;
     const left = usedPackage ? Math.max(0, pkgLeftInDraft(usedPackage)) : 0;
     const fromPkg = Math.min(Math.floor(left / qw), quickQty), paidQty = quickQty - fromPkg;
     if (fromPkg > 0) draftItems.push({ id: uid(), clothingId: quickAddClothingId, serviceId: quickAddServiceId, qty: fromPkg, unit: 0, total: 0, note, fromPackageId: usedPackage.id, packageName: usedPackage.name, pkgW: qw });
@@ -8273,7 +8276,7 @@ body.auth-locked .top-logout{display:none!important}
     // حماية الباقات: لا يُسمح باستهلاك أكثر من المتبقي، ولا باستخدام باقة عميل آخر (مثلاً طلب معلّق قديم)
     const pkgUse = {};
     draftItems.forEach((it) => { if (it.fromPackageId) pkgUse[it.fromPackageId] = (pkgUse[it.fromPackageId] || 0) + pkgUnits(it); });
-    const uncovered = draftItems.find((it) => { if (!it.fromPackageId) return false; const cp = customerPackages.find((p) => p.id === it.fromPackageId); return cp && (!pkgCovers(cp, it.clothingId, it.serviceId) || pkgWeight(it.clothingId, it.serviceId) === 0); });
+    const uncovered = draftItems.find((it) => { if (!it.fromPackageId) return false; const cp = customerPackages.find((p) => p.id === it.fromPackageId); return cp && (!pkgCovers(cp, it.clothingId, it.serviceId) || pkgWeightFor(cp, it.clothingId, it.serviceId) === 0); });
     if (uncovered) { toast(`«${clothingName(uncovered.clothingId)}» غير مشمول بباقة «${uncovered.packageName || ""}» — احذفه من السلة وأضفه بالسعر العادي`); return null; }
     for (const [pid, qty] of Object.entries(pkgUse)) {
       const cp = customerPackages.find((p) => p.id === pid);
@@ -10969,7 +10972,7 @@ body.auth-locked .top-logout{display:none!important}
   function pkgRulesText(def) {
     const ids = (Array.isArray(def.garments) && def.garments.length ? def.garments : activeGarments().map((g) => g.id)).filter((id) => priceFor(id, def.serviceType) > 0);
     const heavy = {}, out = [];
-    ids.forEach((id) => { const w = pkgWeight(id, def.serviceType); if (w > 1) (heavy[w] = heavy[w] || []).push(clothingName(id)); });
+    ids.forEach((id) => { const w = pkgWeightFor(def, id, def.serviceType); if (w > 1) (heavy[w] = heavy[w] || []).push(clothingName(id)); });
     // الأصناف المستثناة تُذكر دائماً (ستارة، أحذية…) حتى لو لم يكن لها سعر بخدمة هذه الباقة — لتفادي أي سوء فهم
     activeGarments().forEach((g) => { if (pkgWeight(g.id, def.serviceType) === 0 && SERVICES_DEFAULT.some((x) => priceFor(g.id, x.id) > 0)) out.push(clothingName(g.id)); });
     const en = lang === "en";
@@ -11687,6 +11690,7 @@ body.auth-locked .top-logout{display:none!important}
         saveShifts();
         logActivity(`بدء وردية — ${me.name} — نقد الاستلام ${money(opening)}${diff ? ` (فرق عن التسليم ${money(diff)}: ${v.note})` : ""}`, opening);
         refreshShiftUi();
+        if (typeof window.renderClosures997 === "function" && document.getElementById("page-closures").classList.contains("active")) window.renderClosures997();
         toast("تم بدء الوردية — بالتوفيق");
         if (after) setTimeout(after, 250);
       },
@@ -11759,6 +11763,24 @@ body.auth-locked .top-logout{display:none!important}
       },
     });
   }
+  // صفحة الإغلاقات للعامل: ورديته فقط (المبيعات والتحصيل باسمه والنقد المتوقع) — بدون أرقام المحل اليومية أو الشهرية
+  function renderMyShifts() {
+    const el = document.getElementById("shiftsPanel"); if (!el || !me) return;
+    const sh = myShift(), live = sh ? FIN.shiftSummary(finData(), sh) : null;
+    const L = (ar, en) => (lang === "en" ? en : ar);
+    const stat = (l, v, st) => `<div class="mini-stat"><span>${l}</span><b${st ? ` style="${st}"` : ""}>${v}</b></div>`;
+    const mine = shifts.filter((x) => x.employeeId === me.id && x.endAt).sort((a, b) => String(b.endAt).localeCompare(String(a.endAt))).slice(0, 14);
+    el.innerHTML = `<div class="panel-header"><div><h3>🕐 ${L("ورديتي", "My shift")}</h3><p>${L("ابدأ ورديتك أول الدوام، وأغلقها آخره: عُدّ النقد في الدرج وأدخله", "Start your shift when you begin and close it when you finish: count the cash in the drawer and enter it")}</p></div>
+        <button type="button" class="primary-btn" id="myShiftBtn">${sh ? L("⏹ إغلاق ورديتي", "⏹ Close my shift") : L("▶ بدء ورديتي", "▶ Start my shift")}</button></div>
+      ${sh ? stat(L("بدأت", "Started"), `${fmtDT(sh.startAt)} (${durTxt(live.hours)})`) + stat(L("طلبات دفعتها في ورديتي", "Orders paid on my shift"), `${live.orders} / ${money(live.sales)}`) + stat(L("المحصّل", "Collected"), methodTxt(live.inBy))
+          + (live.refunds ? stat(L("مرتجع نقدي", "Cash refunds"), money(live.refunds)) : "") + (live.expenses ? stat(L("مصروفات", "Expenses"), money(live.expenses)) : "")
+          + stat(L("نقد الاستلام", "Opening cash"), money(live.opening)) + stat(`<strong>${L("💵 النقد المتوقع في الدرج", "💵 Expected cash in the drawer")}</strong>`, money(live.expectedCash), "font-size:17px;color:var(--success)")
+        : `<div class="empty-state compact">${L("لا توجد وردية مفتوحة — ابدأ ورديتك أول الدوام", "No open shift — start your shift when you begin work")}</div>`}
+      <h4 style="margin:16px 0 6px">${L("وردياتي السابقة", "My past shifts")}</h4>
+      <div class="table-wrap"><table><thead><tr><th>${L("البداية", "Start")}</th><th>${L("النهاية", "End")}</th><th>${L("طلبات / مبيعات", "Orders / sales")}</th><th>${L("المتوقع", "Expected")}</th><th>${L("الفعلي", "Counted")}</th><th>${L("الفرق", "Difference")}</th></tr></thead><tbody>
+      ${mine.map((x) => { const sm = x.summary || {}; return `<tr><td>${fmtDT(x.startAt)}</td><td>${fmtDT(x.endAt)}</td><td>${sm.orders || 0} / ${money(sm.sales || 0)}</td><td>${money(x.expectedCash)}</td><td>${money(x.countedCash)}</td><td style="font-weight:800;color:${x.variance ? "var(--danger)" : "var(--success)"}">${money(x.variance)}</td></tr>`; }).join("") || `<tr><td colspan="6" class="empty-state compact">${L("لا توجد ورديات مغلقة بعد", "No closed shifts yet")}</td></tr>`}</tbody></table></div>`;
+    document.getElementById("myShiftBtn").addEventListener("click", shiftButton);
+  }
   // لوحة الورديات في صفحة الإغلاقات (للمدير): ورديات اليوم المختار + المفتوحة
   function renderShiftsPanel(dayStr) {
     const el = document.getElementById("shiftsPanel"); if (!el) return;
@@ -11779,7 +11801,7 @@ body.auth-locked .top-logout{display:none!important}
     el.querySelectorAll("[data-force-close]").forEach((b) => b.addEventListener("click", () => { const x = shifts.find((y) => y.id === b.dataset.forceClose); if (x) openCloseShift(x); }));
   }
   window.L997Shift = {
-    guard: shiftGuard, renderPanel: renderShiftsPanel,
+    guard: shiftGuard, renderPanel: renderShiftsPanel, renderMine: renderMyShifts,
     list: () => shifts,
     hoursInMonth: (empId, monthKey) => Math.round(shifts.filter((x) => x.employeeId === empId && x.endAt && FIN.localDay(x.startAt).slice(0, 7) === monthKey).reduce((a, x) => a + ((x.summary && x.summary.hours) || 0), 0) * 10) / 10,
     daysInMonth: (empId, monthKey) => new Set(shifts.filter((x) => x.employeeId === empId && FIN.localDay(x.startAt).slice(0, 7) === monthKey).map((x) => FIN.localDay(x.startAt))),
@@ -12241,6 +12263,10 @@ body.auth-locked .top-logout{display:none!important}
  function closureFor(type,key){return L997Enterprise.data.closures.find(c=>c.type===type&&(type==='daily'?c.forDate===key:c.forMonth===key))}
  let clsMonth=null;
  function renderClosures(){
+  // بدون صلاحية «اعتماد الإغلاق»: لا أرقام المحل (اليومية/الشهرية/السجل) — فقط وردية الموظف نفسه
+  const mgr=CAN('approve_closing'), pgc=document.getElementById('page-closures');
+  if(pgc) pgc.querySelectorAll(':scope > .content-grid, :scope > .panel:not(#shiftsPanel)').forEach(e=>{e.style.display=mgr?'':'none'});
+  if(!mgr){ if(window.L997Shift&&window.L997Shift.renderMine) window.L997Shift.renderMine(); return; }
   if(!q('closureDate').value) q('closureDate').value=FIN.todayStr();
   const selDate=q('closureDate').value;
   if(!clsMonth)clsMonth=FIN.todayStr().slice(0,7);
