@@ -181,6 +181,31 @@ function check(name, cond, detail) { console.log(`${cond ? "PASS" : "FAIL"}  ${n
   await page.click("#applyPkgTipsBtn"); await wait(200);
   check("✨ recommendations leave the published packages alone", JSON.stringify((await ls("l997_settings")).packageDefs.filter((p) => p.catalogKey).map((p) => [p.validDays, p.dlvTrips])) === JSON.stringify(got3.map((r) => [r[3], r[4]])));
 
+  /* the shop's real list: a wide 50-piece package (56 items), iron 50–150 with delivery, item-only packages and a special one */
+  await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem("l997_settings"));
+    const wide = Array.from({ length: 56 }, (_, i) => "g" + i), D = (id, name, st, n, pr, d, t, extra) => ({ id, name, serviceType: st, pieceCount: n, price: pr, validDays: d, dlvTrips: t, dlvPeriod: "total", bonus: "", garments: [], ...extra });
+    s.packageDefs = [D("w50", "Package 50ps", "washiron", 50, 16.9, 30, 4, { garments: wide }), D("w80", "Package 80ps", "washiron", 80, 25, 75, 6), D("w100", "Package 100ps", "washiron", 100, 30, 90, 8, { bonus: "لحاف مجاني" }),
+      D("w120", "Package - 120", "washiron", 120, 35, 105, 10), D("w150", "Package - 150", "washiron", 150, 42, 120, 12),
+      D("i50", "كوي 50 قطعة", "iron", 50, 10.9, 60, 4), D("i80", "كوي 80 قطعة", "iron", 80, 16.9, 75, 6), D("i100", "كوي 100 قطعة", "iron", 100, 21.9, 90, 8), D("i120", "كوي 120 قطعة", "iron", 120, 23.9, 105, 10), D("i150", "كوي 150 قطعة", "iron", 150, 31.9, 120, 12),
+      D("ab", "باقة العبايات", "washiron", 25, 20, 30, null, { garments: ["abaya_plain"], dlvPeriod: "month" }), D("th", "باقة الثوب", "washiron", 25, 9.9, 30, null, { garments: ["thob_cotton"], dlvPeriod: "month" }),
+      D("bs", "B-spc", "iron", 150, 30, 0, 4, { dlvPeriod: "month" })];
+    localStorage.setItem("l997_settings", JSON.stringify(s));
+  });
+  await page.reload(); await page.waitForSelector("#au_user, body:not(.auth-locked)");
+  if (await page.isVisible("#au_user")) { await page.fill("#au_user", "owner"); await page.fill("#au_pass", PW); await page.click("#au_form button[type=submit]"); await page.waitForSelector("body:not(.auth-locked)"); }
+  await closeAll(); await nav("settings"); await page.evaluate(() => document.querySelector('[data-settings-tab="packages"]').click()); await wait(150);
+  await page.click("#addIronPkgsBtn"); await page.waitForSelector("#quickFormSubmitBtn", { state: "visible" });
+  check("dialog names the special packages that stay", /B-spc/.test(await page.textContent("#quickFormSub")) && /باقة العبايات/.test(await page.textContent("#quickFormSub")));
+  await submit();
+  const st4 = await ls("l997_settings"), byId = (id) => st4.packageDefs.find((p) => p.id === id);
+  check("wide 50-piece package becomes «wash & iron 50» (all items, 60 days) — no duplicate", byId("w50") && byId("w50").catalogKey === "wi_50" && byId("w50").validDays === 60 && byId("w50").garments.length === 0 && st4.packageDefs.filter((p) => p.catalogKey === "wi_50").length === 1);
+  check("wash & iron 120 → 8 deliveries, 150 → 10", byId("w120").dlvTrips === 8 && byId("w150").dlvTrips === 10);
+  check("iron 50/100/150 with delivery keep their ids at 10.9/19.9/27.9", byId("i50").catalogKey === "iron_dlv_50" && byId("i100").price === 19.9 && byId("i150").price === 27.9 && byId("i150").dlvTrips === 8);
+  check("pick-up iron packages are new (8.5/15.9/22.5, no deliveries)", JSON.stringify(st4.packageDefs.filter((p) => /iron_pick/.test(p.catalogKey || "")).map((p) => [p.price, p.dlvTrips])) === JSON.stringify([[8.5, 0], [15.9, 0], [22.5, 0]]));
+  check("iron 80 and 120 removed; abaya/thobe/B-spc untouched", !byId("i80") && !byId("i120") && byId("ab").price === 20 && byId("th").price === 9.9 && byId("bs").name === "B-spc" && byId("bs").price === 30);
+  check("12 published + 3 special = 15 packages", st4.packageDefs.length === 15, st4.packageDefs.length);
+
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();
   console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL PACKAGE-TERMS CHECKS PASSED");
