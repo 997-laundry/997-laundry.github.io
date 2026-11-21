@@ -7117,28 +7117,82 @@
     const [, days, trips] = tiers.find(([max]) => pieces <= max);
     return { validDays: days, dlvTrips: trips, dlvPeriod: "total" };
   }
-  // باقات «كوي فقط» كما في البروشور المنشور: 50/80/100/120/150 قطعة — دائمة بدون تاريخ انتهاء، كل الأصناف
-  const IRON_PKGS_997 = [[50, 8.9], [80, 13.5], [100, 16], [120, 18.5], [150, 22]];
+  /* 🗂 قائمة الباقات المنشورة (بروشور الكوي + بروشور الغسيل والكوي) — بضغطة واحدة بعد عرض التغييرات:
+     • كوي فقط «استلام من المحل»: 50/100/150 قطعة بدون مشاوير مجانية
+     • كوي فقط «مع التوصيل»: نفس الأحجام بسعر أعلى ومع مشاوير مجانية للباقة كاملة
+     • غسيل وكوي: 50/80/100/120/150/200 مع مشاوير مجانية، واللحاف هدية من 100 قطعة (لحافان مع 200)
+     الأوزان: العباية والجلابية = قطعتان (كوي وغسيل)، اللحاف والشرشف الدبل = قطعتان في الكوي، الأحذية خارج الباقات.
+     تُحدَّث الباقات الموجودة بنفس الحجم والخدمة (يبقى معرّفها)، وتُحذف التعريفات العامة غير الموجودة في القائمة
+     (الباقات الخاصة بأصناف محددة تبقى). الباقات المباعة للعملاء سابقاً لا تتغير. */
+  const PKGS_997 = [
+    { key: "iron_pick_50", name: "كوي 50 قطعة — استلام من المحل", serviceType: "iron", pieceCount: 50, price: 8.5, validDays: 60, dlvTrips: 0, bonus: "" },
+    { key: "iron_pick_100", name: "كوي 100 قطعة — استلام من المحل", serviceType: "iron", pieceCount: 100, price: 15.9, validDays: 90, dlvTrips: 0, bonus: "" },
+    { key: "iron_pick_150", name: "كوي 150 قطعة — استلام من المحل", serviceType: "iron", pieceCount: 150, price: 22.5, validDays: 120, dlvTrips: 0, bonus: "" },
+    { key: "iron_dlv_50", name: "كوي 50 قطعة — مع التوصيل", serviceType: "iron", pieceCount: 50, price: 10.9, validDays: 60, dlvTrips: 4, bonus: "" },
+    { key: "iron_dlv_100", name: "كوي 100 قطعة — مع التوصيل", serviceType: "iron", pieceCount: 100, price: 19.9, validDays: 90, dlvTrips: 6, bonus: "" },
+    { key: "iron_dlv_150", name: "كوي 150 قطعة — مع التوصيل", serviceType: "iron", pieceCount: 150, price: 27.9, validDays: 120, dlvTrips: 8, bonus: "" },
+    { key: "wi_50", name: "غسيل وكوي 50 قطعة", serviceType: "washiron", pieceCount: 50, price: 16.9, validDays: 60, dlvTrips: 4, bonus: "" },
+    { key: "wi_80", name: "غسيل وكوي 80 قطعة", serviceType: "washiron", pieceCount: 80, price: 25, validDays: 75, dlvTrips: 6, bonus: "" },
+    { key: "wi_100", name: "غسيل وكوي 100 قطعة", serviceType: "washiron", pieceCount: 100, price: 30, validDays: 90, dlvTrips: 8, bonus: "لحاف مجاني" },
+    { key: "wi_120", name: "غسيل وكوي 120 قطعة", serviceType: "washiron", pieceCount: 120, price: 35, validDays: 105, dlvTrips: 8, bonus: "لحاف مجاني" },
+    { key: "wi_150", name: "غسيل وكوي 150 قطعة", serviceType: "washiron", pieceCount: 150, price: 42, validDays: 120, dlvTrips: 10, bonus: "لحاف مجاني" },
+    { key: "wi_200", name: "غسيل وكوي 200 قطعة", serviceType: "washiron", pieceCount: 200, price: 54, validDays: 150, dlvTrips: 12, bonus: "لحافان مجاناً" },
+  ];
+  const PKG_W_997 = { abaya_plain: { washiron: 2, iron: 2 }, abaya_emb: { washiron: 2, iron: 2 }, jalabiya: { washiron: 2, iron: 2 }, duvet: { iron: 2 }, bedsheet_double: { iron: 2 }, shoes: { washiron: 0, iron: 0 } };
+  function planPkgs997(defs) {
+    const used = new Set(), plan = [];
+    const general = (p) => !(Array.isArray(p.garments) && p.garments.length);
+    const isDlv = (p) => /توصيل/.test(p.name || "") || pkgTrips(p).n > 0;
+    PKGS_997.forEach((t0) => {
+      const free = (p) => !used.has(p.id) && general(p) && p.serviceType === t0.serviceType && Number(p.pieceCount) === t0.pieceCount;
+      let ex = defs.find((p) => !used.has(p.id) && p.catalogKey === t0.key);
+      if (!ex && t0.serviceType === "iron") ex = defs.find((p) => free(p) && !p.catalogKey && isDlv(p) === t0.key.startsWith("iron_dlv"));
+      if (!ex && t0.serviceType === "iron" && t0.key.startsWith("iron_pick")) ex = defs.find((p) => free(p) && !p.catalogKey);
+      if (!ex && t0.serviceType === "washiron") ex = defs.find((p) => free(p) && !p.catalogKey);
+      if (ex) used.add(ex.id);
+      plan.push({ t0, ex });
+    });
+    const drop = defs.filter((p) => !used.has(p.id) && general(p) && (p.serviceType === "iron" || p.serviceType === "washiron"));
+    return { plan, drop };
+  }
   document.getElementById("addIronPkgsBtn")?.addEventListener("click", () => {
     if (!can("edit_pricing")) { denied(); return; }
     settings.packageDefs = settings.packageDefs || [];
-    const exists = (n) => settings.packageDefs.some((p) => p.serviceType === "iron" && Number(p.pieceCount) === n);
-    const todo = IRON_PKGS_997.filter(([n]) => !exists(n));
-    if (!todo.length) { toast("باقات الكوي الخمس موجودة مسبقاً"); return; }
+    const { plan, drop } = planPkgs997(settings.packageDefs);
+    const line = (t0) => `${t0.name}: ${money(t0.price)} · ${t0.validDays} يوم · ${t0.dlvTrips ? `${t0.dlvTrips} توصيلات` : "بدون توصيل"}${t0.bonus ? ` · 🎁 ${t0.bonus}` : ""}`;
+    const same = (t0, p) => p && p.name === t0.name && round3(p.price) === round3(t0.price) && Number(p.validDays) === t0.validDays && pkgTrips(p).n === t0.dlvTrips && pkgTrips(p).period === "total" && (p.bonus || "") === t0.bonus;
+    const changes = plan.filter(({ t0, ex }) => !same(t0, ex));
+    if (!changes.length && !drop.length) { toast("✓ الباقات مطابقة للقائمة المنشورة"); return; }
+    const sub = [
+      ...changes.map(({ t0, ex }) => `${ex ? "✎" : "＋"} ${line(t0)}${ex ? ` (كانت: ${money(ex.price)})` : ""}`),
+      ...drop.map((p) => `✕ حذف «${p.name}» (${money(p.price)}) — غير موجودة في القائمة`),
+      "• الأوزان: العباية والجلابية = قطعتان · اللحاف والشرشف الدبل في الكوي = قطعتان · الأحذية خارج الباقات",
+      "• الباقات المباعة للعملاء سابقاً تبقى كما هي (التغيير للمبيعات الجديدة فقط).",
+    ].join("\n");
     openQuickForm({
-      title: "＋ باقات الكوي (حسب البروشور)", sub: todo.map(([n, pr]) => `• كوي ${n} قطعة — ${money(pr)} (${money(pr / n)} للقطعة)`).join("\n") + "\n• كل الأصناف · بدون تاريخ انتهاء · المشاوير المجانية حسب الإعدادات (عدّلها لكل باقة إن أردت)",
-      fields: [], submitLabel: `إضافة ${todo.length} باقات`,
+      title: "🗂 تطبيق قائمة الباقات المنشورة", sub, fields: [], submitLabel: "تطبيق",
       onSubmit: () => {
-        todo.forEach(([n, pr]) => settings.packageDefs.push({ id: uid(), name: `كوي ${n} قطعة`, serviceType: "iron", pieceCount: n, price: round3(pr), bonus: "", garments: [], validDays: 0, dlvPeriod: "month" }));
+        plan.forEach(({ t0, ex }) => {
+          const data = { name: t0.name, serviceType: t0.serviceType, pieceCount: t0.pieceCount, price: round3(t0.price), bonus: t0.bonus, validDays: t0.validDays, dlvTrips: t0.dlvTrips, dlvPeriod: "total", catalogKey: t0.key };
+          if (ex) Object.assign(ex, data); else settings.packageDefs.push({ id: uid(), garments: [], ...data });
+        });
+        const dropIds = new Set(drop.map((p) => p.id));
+        settings.packageDefs = settings.packageDefs.filter((p) => !dropIds.has(p.id));
+        const order = PKGS_997.map((t0) => t0.key);
+        settings.packageDefs.sort((x, y) => (order.indexOf(x.catalogKey) + 1 || 99) - (order.indexOf(y.catalogKey) + 1 || 99));
+        const w = { ...(settings.packageWeights || PACKAGE_WEIGHTS_997) };
+        Object.entries(PKG_W_997).forEach(([id, v]) => { w[id] = { ...(typeof w[id] === "object" && w[id] ? w[id] : {}), ...v }; });
+        settings.packageWeights = w;
         persistAll();
-        logActivity(`إضافة باقات الكوي (البروشور): ${todo.map(([n, pr]) => `${n} قطعة ${money(pr)}`).join("، ")}`);
-        renderPackageDefs(); toast(`✓ أُضيفت ${todo.length} باقات كوي`);
+        logActivity(`تطبيق قائمة الباقات المنشورة — ${changes.map(({ t0, ex }) => `${ex ? "تعديل" : "إضافة"} ${t0.name} ${money(t0.price)}`).join("، ")}${drop.length ? ` — حذف: ${drop.map((p) => p.name).join("، ")}` : ""}`);
+        renderPackageDefs(); renderPackageWeights();
+        toast(`✓ طُبّقت القائمة: ${PKGS_997.length} باقة`);
       },
     });
   });
   document.getElementById("applyPkgTipsBtn")?.addEventListener("click", () => {
     if (!can("edit_pricing")) { denied(); return; }
-    const defs = settings.packageDefs || [];
+    const defs = (settings.packageDefs || []).filter((p) => !p.catalogKey); // باقات القائمة المنشورة لها شروطها المعلنة — لا تُغيّرها التوصيات
     if (!defs.length) { toast("لا توجد باقات لتطبيق التوصيات عليها"); return; }
     const gift = (p) => (p.pieceCount >= 100 ? p.bonus : /لحاف/.test(p.bonus || "") ? "" : p.bonus);
     const lines = defs.map((p) => { const t0 = pkgTipFor(p.pieceCount); return `• ${p.name}: صلاحية ${t0.validDays} يوم · ${t0.dlvTrips} مشاوير مجانية للباقة كاملة${gift(p) !== p.bonus ? " · بدون هدية اللحاف" : ""}`; });

@@ -157,13 +157,29 @@ function check(name, cond, detail) { console.log(`${cond ? "PASS" : "FAIL"}  ${n
   check("weights: comforter 4, double bedsheet 3", st2.packageWeights.duvet.washiron === 4 && st2.packageWeights.bedsheet_double.washiron === 3, JSON.stringify(st2.packageWeights.duvet));
   check("packages already sold to customers are not changed", JSON.stringify((await ls("l997_customer_packages")).map((p) => [p.expiresAt, p.dlvTrips])) === soldBefore);
 
-  /* published iron-only packages: one tap adds the 5 from the flyer, no duplicates */
+  /* published package list (both flyers): one tap updates matching sizes, adds the rest, removes general sizes not on the list */
+  await page.evaluate(() => { const s = JSON.parse(localStorage.getItem("l997_settings")); s.packageDefs.push({ id: "ir80", name: "كوي 80 قطعة", serviceType: "iron", pieceCount: 80, price: 13.5, bonus: "", garments: [], validDays: 0 }, { id: "abOnly", name: "عبايات 20", serviceType: "washiron", pieceCount: 20, price: 9, bonus: "", garments: ["abaya_plain"], validDays: 0 }); localStorage.setItem("l997_settings", JSON.stringify(s)); });
+  await page.reload(); await page.waitForSelector("#au_user, body:not(.auth-locked)");
+  if (await page.isVisible("#au_user")) { await page.fill("#au_user", "owner"); await page.fill("#au_pass", PW); await page.click("#au_form button[type=submit]"); await page.waitForSelector("body:not(.auth-locked)"); }
+  const soldBefore2 = JSON.stringify(await ls("l997_customer_packages"));
   await closeAll(); await nav("settings"); await page.evaluate(() => document.querySelector('[data-settings-tab="packages"]').click()); await wait(150);
-  await page.click("#addIronPkgsBtn"); await page.waitForSelector("#quickFormSubmitBtn", { state: "visible" }); await submit();
-  const iron = (await ls("l997_settings")).packageDefs.filter((p) => p.serviceType === "iron").map((p) => [p.pieceCount, p.price, p.validDays]);
-  check("iron packages added as published: 50=8.900, 80=13.500, 100=16.000, 120=18.500, 150=22.000, no expiry", JSON.stringify(iron) === JSON.stringify([[50, 8.9, 0], [80, 13.5, 0], [100, 16, 0], [120, 18.5, 0], [150, 22, 0]]), JSON.stringify(iron));
+  await page.click("#addIronPkgsBtn"); await page.waitForSelector("#quickFormSubmitBtn", { state: "visible" });
+  check("the dialog lists every change before applying", /استلام من المحل/.test(await page.textContent("#quickFormSub")) && /حذف «كوي 80 قطعة»/.test(await page.textContent("#quickFormSub")));
+  await submit();
+  const st3 = await ls("l997_settings");
+  const got3 = st3.packageDefs.filter((p) => p.catalogKey).map((p) => [p.serviceType, p.pieceCount, p.price, p.validDays, p.dlvTrips, p.bonus]);
+  check("12 packages exactly as published",
+    JSON.stringify(got3) === JSON.stringify([["iron", 50, 8.5, 60, 0, ""], ["iron", 100, 15.9, 90, 0, ""], ["iron", 150, 22.5, 120, 0, ""], ["iron", 50, 10.9, 60, 4, ""], ["iron", 100, 19.9, 90, 6, ""], ["iron", 150, 27.9, 120, 8, ""],
+      ["washiron", 50, 16.9, 60, 4, ""], ["washiron", 80, 25, 75, 6, ""], ["washiron", 100, 30, 90, 8, "لحاف مجاني"], ["washiron", 120, 35, 105, 8, "لحاف مجاني"], ["washiron", 150, 42, 120, 10, "لحاف مجاني"], ["washiron", 200, 54, 150, 12, "لحافان مجاناً"]]), JSON.stringify(got3));
+  check("existing sizes keep their id (updated, not duplicated)", ["pk50", "pk80", "pk100", "pk120", "pk150"].every((id) => st3.packageDefs.some((p) => p.id === id && p.catalogKey)));
+  check("general sizes not on the list are removed; item-specific packages stay", !st3.packageDefs.some((p) => p.id === "ir80") && st3.packageDefs.some((p) => p.id === "abOnly") && st3.packageDefs.length === 13);
+  const W = st3.packageWeights;
+  check("weights: abaya/jalabiya 2, comforter & double sheet 2 when ironing, shoes outside", W.abaya_plain.iron === 2 && W.jalabiya.washiron === 2 && W.duvet.iron === 2 && W.bedsheet_double.iron === 2 && W.shoes.washiron === 0 && W.duvet.washiron === 4);
+  check("packages already sold are not changed", JSON.stringify(await ls("l997_customer_packages")) === soldBefore2);
   await page.click("#addIronPkgsBtn"); await wait(200);
-  check("…pressing again does not duplicate them", (await ls("l997_settings")).packageDefs.filter((p) => p.serviceType === "iron").length === 5);
+  check("…pressing again changes nothing", !(await page.isVisible("#quickFormSubmitBtn")) && (await ls("l997_settings")).packageDefs.length === 13);
+  await page.click("#applyPkgTipsBtn"); await wait(200);
+  check("✨ recommendations leave the published packages alone", JSON.stringify((await ls("l997_settings")).packageDefs.filter((p) => p.catalogKey).map((p) => [p.validDays, p.dlvTrips])) === JSON.stringify(got3.map((r) => [r[3], r[4]])));
 
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();
