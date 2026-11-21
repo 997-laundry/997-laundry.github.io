@@ -125,6 +125,11 @@ const CATALOG = Number((/const CATALOG_VERSION = (\d+)/.exec(fs.readFileSync(pat
   check("package message: name, 10 pieces, price 1.500, bonus", /باقة قمصان 10/.test(m.text) && /عدد القطع: 10/.test(m.text) && /1\.500/.test(m.text) && /كوي غترة مجاناً/.test(m.text), m.text);
   const o4 = await order("", "36667788", 3, true); await sendPrompt(); m = await last();
   check("order from the package: 'fully covered by your package' and 7 of 10 left", /مغطاة بالكامل من الباقة/.test(m.text) && /استُخدم 3 قطع — متبقي 7 من 10/.test(m.text) && o4.payment.total === 0, m.text);
+  await closeAll(); await openOrder(o4.id); await wait(150);
+  const dlgTxt = await page.textContent("#orderDialogContent");
+  const it4 = (await ls("l997_orders")).find((o) => o.id === o4.id).items[0], val4 = (it4.listUnit * it4.qty).toFixed(3);
+  check("order details show the package items' value and that the package covered it", it4.listUnit > 0 && dlgTxt.includes(val4) && /قيمة قطع الباقة بالسعر العادي/.test(dlgTxt) && /مغطاة من الباقة \(3 قطعة\)/.test(dlgTxt) && /قيمتها بسعر الباقة/.test(dlgTxt), val4);
+  await closeAll();
 
   /* 9) statement on WhatsApp: balance in words */
   await closeAll(); await page.evaluate((id) => window.openCustomerProfile997(id), cust.id); await wait(200);

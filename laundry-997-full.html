@@ -7779,6 +7779,14 @@ body.auth-locked .top-logout{display:none!important}
   const pkgDedicated = (cp, clothingId) => Array.isArray(cp && cp.garments) && cp.garments.length > 0 && cp.garments.length <= 3 && cp.garments.includes(clothingId);
   function pkgWeightFor(cp, clothingId, serviceId) { return pkgDedicated(cp, clothingId) ? 1 : pkgWeight(clothingId, serviceId); }
   function pkgUnits(it) { return (Number(it.qty) || 0) * (it.pkgW > 0 ? it.pkgW : 1); }
+  // قيمة بند الباقة بالسعر العادي (للعرض والحساب فقط — لا تُحصَّل من العميل): السعر المحفوظ وقت الإضافة، وإلا السعر الحالي
+  function pkgLineValue(it) { const u = Number(it.listUnit) > 0 ? Number(it.listUnit) : priceFor(it.clothingId, it.serviceId); return round3(u * (Number(it.qty) || 0)); }
+  // قيمتها من سعر الباقة المدفوع مقدماً: (سعر الباقة ÷ عدد قطعها) × القطع المخصومة
+  function pkgLineCost(it) { const cp = customerPackages.find((p) => p.id === it.fromPackageId); return cp && cp.totalPieces > 0 ? round3((Number(cp.price) || 0) / cp.totalPieces * pkgUnits(it)) : 0; }
+  function pkgSummary(items) {
+    const pk = (items || []).filter((it) => it.fromPackageId);
+    return { n: pk.length, pieces: pk.reduce((a, it) => a + pkgUnits(it), 0), value: round3(pk.reduce((a, it) => a + pkgLineValue(it), 0)), cost: round3(pk.reduce((a, it) => a + pkgLineCost(it), 0)) };
+  }
   const pkgWLabel = (w) => (w > 1 ? (lang === "en" ? ` (each = ${w} pcs)` : ` (القطعة = ${w})`) : "");
   // الباقة تغطي الصنف والخدمة، وفيها رصيد كافٍ لقطعة واحدة على الأقل بوزنها
   function pkgFits(cp, clothingId, serviceId) {
@@ -7815,7 +7823,7 @@ body.auth-locked .top-logout{display:none!important}
       const w = pkgWeightFor(activePkg, clothingId, svc);
       const existingPkgItem = draftItems.find((it) => it.clothingId === clothingId && it.serviceId === svc && it.fromPackageId === activePkg.id && (it.pkgW || 1) === w);
       if (existingPkgItem) existingPkgItem.qty += 1;
-      else draftItems.push({ id: uid(), clothingId, serviceId: svc, qty: 1, unit: 0, total: 0, note: "", fromPackageId: activePkg.id, packageName: activePkg.name, pkgW: w });
+      else draftItems.push({ id: uid(), clothingId, serviceId: svc, qty: 1, unit: 0, total: 0, listUnit: priceFor(clothingId, svc), note: "", fromPackageId: activePkg.id, packageName: activePkg.name, pkgW: w });
       const left = pkgLeftInDraft(activePkg);
       toast(left > 0 ? `من باقة «${activePkg.name}»${pkgWLabel(w)} — متبقي ${left} قطعة` : `آخر قطعة في باقة «${activePkg.name}» — القطع التالية بالسعر العادي`);
       renderOrderItemsTable();
@@ -7886,7 +7894,7 @@ body.auth-locked .top-logout{display:none!important}
     const qw = (usedPackage ? pkgWeightFor(usedPackage, quickAddClothingId, quickAddServiceId) : pkgWeight(quickAddClothingId, quickAddServiceId)) || 1;
     const left = usedPackage ? Math.max(0, pkgLeftInDraft(usedPackage)) : 0;
     const fromPkg = Math.min(Math.floor(left / qw), quickQty), paidQty = quickQty - fromPkg;
-    if (fromPkg > 0) draftItems.push({ id: uid(), clothingId: quickAddClothingId, serviceId: quickAddServiceId, qty: fromPkg, unit: 0, total: 0, note, fromPackageId: usedPackage.id, packageName: usedPackage.name, pkgW: qw });
+    if (fromPkg > 0) draftItems.push({ id: uid(), clothingId: quickAddClothingId, serviceId: quickAddServiceId, qty: fromPkg, unit: 0, total: 0, listUnit: priceFor(quickAddClothingId, quickAddServiceId), note, fromPackageId: usedPackage.id, packageName: usedPackage.name, pkgW: qw });
     if (paidQty > 0) {
       const unit = priceFor(quickAddClothingId, quickAddServiceId);
       draftItems.push({ id: uid(), clothingId: quickAddClothingId, serviceId: quickAddServiceId, qty: paidQty, unit, total: round3(unit * paidQty), note });
@@ -7928,7 +7936,7 @@ body.auth-locked .top-logout{display:none!important}
           <div class="pos-cart-row-title">${clothingName(it.clothingId)}</div>
           <div class="pos-cart-row-sub">
             ${it.fromPackageId
-              ? `<span style="color:var(--success);font-weight:800">🎟 من الباقة (${esc(it.packageName)})${pkgWLabel(it.pkgW || 1)}${(() => { const cp = customerPackages.find((p) => p.id === it.fromPackageId); return cp ? ` — متبقي ${Math.max(0, pkgLeftInDraft(cp))}` : ""; })()}</span>`
+              ? `<span style="color:var(--success);font-weight:800">🎟 من الباقة (${esc(it.packageName)})${pkgWLabel(it.pkgW || 1)}${(() => { const cp = customerPackages.find((p) => p.id === it.fromPackageId); return cp ? ` — متبقي ${Math.max(0, pkgLeftInDraft(cp))}` : ""; })()}</span> · <span class="inv-muted">${lang === "en" ? "value" : "قيمتها"} ${money(pkgLineValue(it))}</span>`
               : `<select class="pos-cart-row-service-select" data-service-change="${it.id}">
                   ${SERVICES_DEFAULT.filter((s) => offerPrice(it.clothingId, s.id) > 0 || s.id === it.serviceId).map((s) => `<option value="${s.id}" ${s.id === it.serviceId ? "selected" : ""}>${t(s.key)}</option>`).join("")}
                 </select> · ${money(it.unit)} × ${it.qty}`}
@@ -8739,7 +8747,7 @@ body.auth-locked .top-logout{display:none!important}
     const lines = [`🧾 ${shop} — ${L("إيصال الطلب", "Receipt — Order")} #${order.number}`, `📅 ${fmtDT(order.createdAt)}`];
     if (cust) lines.push(`👤 ${cust.name}`);
     lines.push("");
-    order.items.forEach((it) => lines.push(`• ${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty} = ${it.fromPackageId ? L("من الباقة", "from package") : money(it.total)}`));
+    order.items.forEach((it) => lines.push(`• ${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty} = ${it.fromPackageId ? `${money(pkgLineValue(it))} (${L("من الباقة", "from package")})` : money(it.total)}`));
     (order.extras || []).forEach((l) => lines.push(`➕ ${extraLabel(l)}${l.per === "piece" ? ` × ${l.qty}` : ""} = ${extraVal(l)}`));
     lines.push(`👕 ${L("عدد القطع", "Pieces")}: ${piecesOf(order)}`, "──────────");
     lines.push(`${L("المجموع الأساسي", "Subtotal")}: ${money(p.subtotal)}`);
@@ -8767,9 +8775,11 @@ body.auth-locked .top-logout{display:none!important}
     const iso = (x) => "\u2066" + x + "\u2069"; // رقم أو نص إنجليزي داخل سطر عربي يبقى بترتيبه الصحيح
     const en = lang === "en" || lang === "ur", L = (ar, eng) => (en ? eng : ar);
     const p = order.payment, profile = loadProfile();
-    const rows = order.items.map((it) => ({ a: `${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}`, q: it.qty, v: it.fromPackageId ? L("من الباقة", "Package") : money(it.total) }));
+    const rows = order.items.map((it) => ({ a: `${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)}`, q: it.qty, v: it.fromPackageId ? `${money(pkgLineValue(it))} ${L("باقة", "Pkg")}` : money(it.total) }));
     (order.extras || []).forEach((l) => rows.push({ a: `+ ${extraLabel(l)}`, q: l.per === "piece" ? l.qty : "", v: extraVal(l) }));
-    const totals = [[L("المجموع الأساسي", "Subtotal"), money(p.subtotal)]], paidRows = [];
+    const totals = [], paidRows = [], ps = pkgSummary(order.items);
+    if (ps.n) totals.push([`🎟 ${L("قيمة قطع الباقة", "Package items value")}`, money(ps.value)], [`${L("مغطاة من الباقة", "Covered by package")} (${ps.pieces})`, "−" + money(ps.value)]);
+    totals.push([L("المجموع الأساسي", "Subtotal"), money(p.subtotal)]);
     if (p.urgentFee > 0) totals.push([L("رسوم الاستعجال", "Urgent fee"), money(p.urgentFee)]);
     if (p.discount > 0) totals.push([L("الخصم", "Discount") + (order.discountCode ? " · " + iso(order.discountCode) : ""), en ? "−" + money(p.discount) : money(p.discount)]);
     if (p.vat > 0) totals.push([`${L("ضريبة القيمة المضافة", "VAT")} ${p.vatPercent}%`, money(p.vat)]);
@@ -9515,12 +9525,21 @@ body.auth-locked .top-logout{display:none!important}
         <div class="details-box">
           <h4>${t("dlg_items")}</h4>
           ${urgentSplitNote(order)}
-          ${order.items.map((it) => `<div class="details-line"><span>${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty}</span><strong>${money(it.total)}</strong></div>`).join("")}
+          ${order.items.map((it) => `<div class="details-line"><span>${it.urgent || (order.priority === "urgent" && !order.items.some((x) => x.urgent === true)) ? "⚡ " : ""}${clothingName(it.clothingId)} — ${serviceName(it.serviceId)} × ${it.qty}</span><strong>${it.fromPackageId ? `${money(pkgLineValue(it))} <small style="color:var(--success)">🎟 ${lang === "en" ? "package" : "من الباقة"}</small>` : money(it.total)}</strong></div>`).join("")}
           ${(order.extras || []).map((l) => `<div class="details-line"><span>➕ ${esc(extraLabel(l))}${l.per === "piece" ? ` × ${l.qty}` : ""}</span><strong>${extraVal(l)}</strong></div>`).join("")}${order.delivery ? `<div class="details-line"><span>🚚 ${esc(dlvStatusText(order))}</span><strong>${esc(order.delivery.address || "—")}</strong></div>` : ""}
         </div>
         <div class="details-box">
           <h4>${t("dlg_payment")}</h4>
           <div class="details-line"><span>${t("dlg_payment_method")}</span><strong>${orderPayLabel(order)}</strong></div>
+          ${(() => {
+            const ps = pkgSummary(order.items);
+            if (!ps.n) return "";
+            const en = lang === "en";
+            return `<div class="details-line"><span>🎟 ${en ? "Package items at regular prices" : "قيمة قطع الباقة بالسعر العادي"}</span><strong>${money(ps.value)}</strong></div>
+            <div class="details-line"><span>${en ? "Covered by the package" : "مغطاة من الباقة"} (${ps.pieces} ${en ? "pcs" : "قطعة"})</span><strong style="color:var(--success)">−${money(ps.value)}</strong></div>
+            <div class="details-line"><span class="inv-muted">${en ? "Worth at package price (prepaid)" : "قيمتها بسعر الباقة (مدفوعة مسبقاً)"}</span><span>${money(ps.cost)}</span></div>
+            ${orderPackageLines(order).map((x) => `<div class="details-line"><span class="inv-muted">${esc(x)}</span></div>`).join("")}`;
+          })()}
           <div class="details-line"><span>${t("dlg_total")}</span><strong>${money(order.payment.total)}</strong></div>
           ${(() => {
             // المدفوع والمتبقي «الآن» — يشمل أي سداد لاحق على الطلب (لا الرقم المجمّد وقت أول دفعة)
