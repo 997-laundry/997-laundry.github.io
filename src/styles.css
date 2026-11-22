@@ -771,3 +771,24 @@ body.auth-locked .top-logout{display:none!important}
   .wa-quick{display:none}
   .wa-compose textarea{min-height:40px}
 }
+/* 🚚 delivery: driver route, WhatsApp intake, linked bookings */
+.dlv-icons{grid-template-columns:repeat(auto-fit,minmax(56px,1fr))}
+.dlv-hero-act{display:flex;flex-direction:column;gap:8px;align-items:stretch}
+.dlv-mine{display:flex;align-items:center;gap:6px;font-weight:700;font-size:13px;justify-content:center}
+.dlv-src{font-size:11.5px;font-weight:800;color:#128c7e;background:#e7f7f1;border-radius:999px;padding:2px 8px}
+.dlv-sub{display:flex;gap:6px;flex-wrap:wrap}.dlv-sub .mini-btn{flex:1;min-height:38px}
+.dlv-drv{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--muted)}.dlv-drv select{flex:1;min-height:34px}
+.dlv-missed{color:var(--danger);font-weight:700;font-size:12.5px}
+.dlv-dup{margin-top:6px;padding:8px 10px;border-radius:10px;background:#fff3e0;color:#9a5b00;font-weight:800;font-size:13px}
+.dlv-go{background:var(--primary);color:#fff;border-color:var(--primary)}.dlv-go small{color:#fff}
+.dlv-route-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.dlv-stops{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.dlv-stop{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:12px;padding:9px 10px;background:var(--panel)}
+.dlv-stop.moving{border-color:var(--warning);background:var(--warning-soft,#fff6e0)}
+.dlv-stop-n{width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+.dlv-stop-info{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;font-size:13px}.dlv-stop-info b{font-size:14px}
+.dlv-stop-act{display:flex;gap:6px;align-items:center}.dlv-stop-act .primary-btn{min-height:40px;padding:8px 14px;text-decoration:none}
+.dlv-card.flash{outline:3px solid var(--primary);outline-offset:2px}
+.pos-dlv-link{margin:6px 0;padding:8px 10px;border-radius:10px;background:var(--primary-soft);font-weight:700;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.wa-intake-chip{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:60;border:0;border-radius:999px;padding:10px 18px;background:#128c7e;color:#fff;font-family:inherit;font-size:14px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.22);cursor:pointer;max-width:calc(100vw - 32px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:640px){.dlv-stop{flex-wrap:wrap}.dlv-stop-act{width:100%}.dlv-stop-act .primary-btn{flex:1;justify-content:center}.wa-intake-chip{top:auto;bottom:84px;font-size:13px}}

@@ -194,6 +194,14 @@ async function runTool(name, input, ctx) {
       await D.post("records", { shop_id: shop, collection: "customers", record_id: c.id, data: c }, "return=minimal");
       ctx.cust = c;
     }
+    // موعد مفتوح لنفس العميل؟ لا نكرره — نبلغ الموظف بالتعديل المطلوب بدلاً من حجز ثانٍ
+    const open = (await records(D, shop, "suspended_orders", `&data->>customerId=eq.${enc(c.id)}&data->>kind=eq.pickup`).catch(() => []))[0];
+    if (open) {
+      ctx.flag = "pickup";
+      ctx.patch = { ...(ctx.patch || {}), waiting: true };
+      ctx.note = `📥 العميل عنده موعد استلام مفتوح (${open.date || "بأقرب وقت"} ${SLOTS[open.slot] || ""}) — طلب عبر واتساب: ${[input.area, input.address].filter((x) => String(x || "").trim()).join(" — ")} — ${day} ${SLOTS[input.slot] || input.slot}${input.notes ? ` — ${input.notes}` : ""}`;
+      return { ok: true, status: "ALREADY BOOKED — this customer already has an open pickup request; staff were told about the requested change. Do not say a second pickup was booked.", existing_day: open.date || "", existing_slot: SLOTS[open.slot] || "" };
+    }
     const now = new Date().toISOString(), id = uid();
     const req = { id, kind: "pickup", source: "whatsapp", needsConfirm: true, customerId: c.id, customerName: c.name, address: [input.area, input.address].filter((x) => String(x || "").trim()).join(" — "), date: day, slot: input.slot, drop: !!input.deliver_back, notes: input.notes || "", status: "new", items: [], extras: [], createdAt: now, suspendedAt: now, createdBy: "WhatsApp" };
     await D.post("records", { shop_id: shop, collection: "suspended_orders", record_id: id, data: req }, "return=minimal");
@@ -205,6 +213,17 @@ async function runTool(name, input, ctx) {
     const day = input.day === "today" ? today : input.day === "tomorrow" ? addDays(today, 1) : /^\d{4}-\d{2}-\d{2}$/.test(input.day) ? input.day : "";
     if (!day || day < today) return { ok: false, error: "Ask for a valid day (today, tomorrow or a date)." };
     if (!String(input.address || "").trim() && !String(input.area || "").trim()) return { ok: false, error: "Ask for the address." };
+    // يظهر في صفحة التوصيل كطلب توصيل بانتظار تأكيد الموظف (مربوط بالطلب إن عُرف)
+    if (cust) {
+      const mine = (await records(D, shop, "orders", `&data->>customerId=eq.${enc(cust.id)}&order=updated_at.desc&limit=10`).catch(() => [])).filter((o) => !["delivered", "cancelled"].includes(o.status));
+      const num = String(input.order_number || "").replace(/\D/g, "");
+      const ord = num ? mine.find((o) => String(o.number).replace(/\D/g, "").replace(/^0+/, "") === num.replace(/^0+/, "")) : mine.length === 1 ? mine[0] : null;
+      const dup = (await records(D, shop, "suspended_orders", `&data->>customerId=eq.${enc(cust.id)}&data->>kind=eq.dropreq`).catch(() => [])).find((r) => !ord || r.orderId === ord.id);
+      if (!dup) {
+        const now = new Date().toISOString(), id = uid();
+        await D.post("records", { shop_id: shop, collection: "suspended_orders", record_id: id, data: { id, kind: "dropreq", source: "whatsapp", needsConfirm: true, customerId: cust.id, customerName: cust.name, orderId: ord ? ord.id : "", orderNumber: ord ? ord.number : num, address: [input.area, input.address].filter((x) => String(x || "").trim()).join(" — "), date: day, slot: input.slot, notes: input.notes || "", status: "new", items: [], extras: [], createdAt: now, suspendedAt: now, createdBy: "WhatsApp" } }, "return=minimal");
+      }
+    }
     ctx.flag = "pickup";
     ctx.patch = { ...(ctx.patch || {}), waiting: true };
     ctx.note = `🚚 طلب توصيل${input.order_number ? ` للطلب #${input.order_number}` : ""} — ${[input.area, input.address].filter((x) => String(x || "").trim()).join(" — ")} — ${day} ${SLOTS[input.slot] || input.slot}${input.notes ? ` — ${input.notes}` : ""}`;

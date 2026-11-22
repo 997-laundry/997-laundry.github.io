@@ -4391,6 +4391,15 @@
     const expiredPk = customerPackages.filter((cp) => cp.customerId === cust.id && cp.remainingPieces > 0 && pkgExpired(cp));
     if (expiredPk.length && !activePackagesForCustomer(cust.id).length && !silent) toast(`⛔ باقة «${expiredPk[0].name}» منتهية الصلاحية منذ ${expiredPk[0].expiresAt} (متبقي ${expiredPk[0].remainingPieces} قطعة) — مددها من ملف العميل إن أردت`);
     if (!draftDelivery.address && (cust.address || cust.area)) draftDelivery.address = [cust.area, cust.address].filter(Boolean).join(" — ");
+    // موعد استلام مفتوح لهذا العميل (من واتساب أو من المحل)؟ يُربط الطلب به تلقائياً — لا يتكرر الطلب ولا يبقى الموعد معلّقاً
+    if (draftDelivery.reqId) { const r0 = suspendedOrders.find((x) => x.id === draftDelivery.reqId); if (!r0 || r0.customerId !== cust.id) { draftDelivery.reqId = null; draftDelivery.pickup = false; } }
+    if (draftDelivery.noLink && draftDelivery.noLink !== cust.id) draftDelivery.noLink = null;
+    const openReq = !draftDelivery.reqId && draftDelivery.noLink !== cust.id ? openPickupFor(cust.id) : null;
+    if (openReq) {
+      Object.assign(draftDelivery, { pickup: true, drop: openReq.drop !== false, address: openReq.address || draftDelivery.address, reqId: openReq.id });
+      if (openReq.notes && !document.getElementById("orderNotes").value) document.getElementById("orderNotes").value = openReq.notes;
+      if (!silent) toast(DL(`📥 ${cust.name} عنده موعد استلام ${openReq.source === "whatsapp" ? "من واتساب " : ""}(${whenLabel(openReq.date, openReq.slot)}) — رُبط هذا الطلب به حتى لا يتكرر`, `📥 ${cust.name} has a pickup booking${openReq.source === "whatsapp" ? " from WhatsApp" : ""} (${whenLabel(openReq.date, openReq.slot)}) — this order is linked to it so it isn't duplicated`));
+    }
     renderPosDelivery();
     const card = document.getElementById("selectedCustomerCard");
     card.classList.remove("empty-state", "compact");
@@ -4531,7 +4540,11 @@
     const cust = customers.find((c) => c.id === draftCustomerId);
     if (order.delivery) {
       if (cust && order.delivery.address && !cust.address) cust.address = order.delivery.address;
-      if (order.delivery.reqId) { suspendedOrders = suspendedOrders.filter((x) => x.id !== order.delivery.reqId); save("l997_suspended_orders", suspendedOrders); }
+      if (order.delivery.reqId) {
+        const r0 = suspendedOrders.find((x) => x.id === order.delivery.reqId);
+        if (r0) Object.assign(order.delivery, { pickupDriver: r0.driver || "", pickupDriverId: r0.driverId || "", pickupAt: r0.collectedAt || r0.onwayAt || "", bags: r0.bags || undefined, source: r0.source || undefined });
+        suspendedOrders = suspendedOrders.filter((x) => x.id !== order.delivery.reqId); save("l997_suspended_orders", suspendedOrders);
+      }
       const dl = (order.extras || []).filter((l) => String(l.id).startsWith("dlv_"));
       logActivity(`🚚 الطلب #${number}: ${[order.delivery.pickup ? "استلام من البيت" : "", order.delivery.drop ? "توصيل للبيت" : ""].filter(Boolean).join(" + ")} — ${dl.map((l) => (l.free ? `مجاني (${l.free === "package" ? "ضمن الباقة" : "فوق الحد"})` : money(l.total))).join("، ")}`);
     }
@@ -4626,6 +4639,16 @@
         ar: () => `هلا ${n} 🛵\nالمندوب في الطريق لك الحين لاستلام ملابسك 🧺\n📍 ${d.address || ""}\n\nجهّز الملابس لو سمحت، وشكراً لك 🌷\n${SIGN.ar}`,
         en: () => `Hi ${n} 🛵\nOur driver is on the way now to collect your clothes 🧺\n📍 ${d.address || ""}\n\nPlease have them ready — thank you 🌷\n${SIGN.en}`,
         ur: () => `السلام علیکم ${n} 🛵\nہمارا ڈرائیور آپ کے کپڑے لینے کے لیے روانہ ہو چکا ہے 🧺\n📍 ${d.address || ""}\n\nبراہ کرم کپڑے تیار رکھیں — شکریہ 🌷\n${SIGN.ur}`,
+      },
+      drop_booked: {
+        ar: () => `هلا ${n} 🚚\nتم تأكيد توصيل طلبك رقم #${d.number} للبيت ✅\n\n📅 الموعد: ${d.when}\n📍 العنوان: ${d.address || "—"}\n\nبنبلغك أول ما يطلع المندوب 🛵\n${SIGN.ar}`,
+        en: () => `Hi ${n} 🚚\nHome delivery of your order #${d.number} is confirmed ✅\n\n📅 When: ${d.when}\n📍 Address: ${d.address || "—"}\n\nWe'll let you know when the driver is on the way 🛵\n${SIGN.en}`,
+        ur: () => `السلام علیکم ${n} 🚚\nآپ کے آرڈر #${d.number} کی گھر ڈیلیوری طے ہو گئی ✅\n\n📅 وقت: ${d.when}\n📍 پتہ: ${d.address || "—"}\n\nڈرائیور روانہ ہوتے ہی اطلاع دیں گے 🛵\n${SIGN.ur}`,
+      },
+      dlv_missed: {
+        ar: () => `هلا ${n} 🌷\nحاول المندوب ${d.kind === "drop" ? `يوصل طلبك رقم #${d.number}` : "يستلم ملابسك"} اليوم وما قدرنا نوصل لك 🙏\n📅 الموعد الجديد: ${d.when}\n\nإذا يناسبك وقت ثاني ردّ علينا هنا 😊\n${SIGN.ar}`,
+        en: () => `Hi ${n} 🌷\nOur driver tried to ${d.kind === "drop" ? `deliver your order #${d.number}` : "collect your clothes"} today but couldn't reach you 🙏\n📅 New time: ${d.when}\n\nIf another time suits you better, just reply here 😊\n${SIGN.en}`,
+        ur: () => `السلام علیکم ${n} 🌷\nہمارے ڈرائیور نے آج ${d.kind === "drop" ? `آپ کا آرڈر #${d.number} پہنچانے` : "آپ کے کپڑے لینے"} کی کوشش کی مگر رابطہ نہ ہو سکا 🙏\n📅 نیا وقت: ${d.when}\n\nکوئی اور وقت مناسب ہو تو یہاں جواب دیں 😊\n${SIGN.ur}`,
       },
       drop_onway: {
         ar: () => `هلا ${n} 🛵\nطلبك رقم #${d.number} (${arPcs(d.pieces)}) طلع مع المندوب وفي الطريق لبيتك 🚚✨\n${d.due > 0 ? `💰 المبلغ المستحق عند الاستلام: ${d.dueTxt} (نقداً أو Benefit Pay)` : "✅ مدفوع بالكامل"}\n\nنشوفك على خير 🌷\n${SIGN.ar}`,
@@ -7487,7 +7510,9 @@
     if (!dlvCfg().on) { box.style.display = "none"; draftDelivery.pickup = draftDelivery.drop = false; return; }
     box.style.display = "";
     const d = draftDelivery, any = d.pickup || d.drop, E = lang !== "ar";
+    const linked = d.reqId ? suspendedOrders.find((x) => x.id === d.reqId) : null;
     box.innerHTML = `<div class="pos-dlv-head">🚚 ${E ? "Pickup & delivery" : "الاستلام والتوصيل"}</div>
+      ${linked ? `<div class="pos-dlv-link">🔗 ${E ? `Linked to the pickup booking${linked.source === "whatsapp" ? " from WhatsApp" : ""}` : `مربوط بموعد الاستلام${linked.source === "whatsapp" ? " (من واتساب)" : ""}`} · ${esc(whenLabel(linked.date, linked.slot))}${linked.bags ? ` · 🛍 ${linked.bags}` : ""} <button type="button" class="mini-btn" id="dlvUnlink">${E ? "Separate order" : "طلب منفصل"}</button></div>` : ""}
       <label class="pos-urgent-toggle pos-extra-toggle"><input type="checkbox" id="dlvPickup" ${d.pickup ? "checked" : ""} /> 📥 ${E ? "Picked up from the customer's home" : "استلمناها من بيت العميل"}</label>
       <label class="pos-urgent-toggle pos-extra-toggle"><input type="checkbox" id="dlvDrop" ${d.drop ? "checked" : ""} /> 📦 ${E ? "Deliver home when ready" : "توصيل للبيت بعد التجهيز"}</label>
       <div class="pos-dlv-more" style="${any ? "" : "display:none"}">
@@ -7497,6 +7522,7 @@
       <div class="pos-dlv-quote" id="dlvQuote"></div>`;
     const on = () => { d.pickup = box.querySelector("#dlvPickup").checked; d.drop = box.querySelector("#dlvDrop").checked; box.querySelector(".pos-dlv-more").style.display = d.pickup || d.drop ? "" : "none"; updateSummary(); };
     box.querySelector("#dlvPickup").addEventListener("change", on);
+    box.querySelector("#dlvUnlink")?.addEventListener("click", () => { Object.assign(d, { reqId: null, noLink: draftCustomerId, pickup: false }); renderPosDelivery(); updateSummary(); });
     box.querySelector("#dlvDrop").addEventListener("change", on);
     box.querySelector("#dlvAddress").addEventListener("input", (e) => { d.address = e.target.value.trim(); });
     box.querySelector("#dlvDate").addEventListener("change", (e) => { d.date = e.target.value; });
@@ -7561,6 +7587,8 @@
         }
         if (!c) { toast(DL("اختر العميل من القائمة أو اكتب رقم جواله", "Pick the customer from the list or type their phone number")); return false; }
         if (!v.address) { toast(DL("اكتب عنوان الاستلام", "Enter the pickup address")); document.getElementById("qf_address")?.focus(); return false; }
+        const dup = openPickupFor(c.id);
+        if (dup) { toast(DL(`⚠ ${c.name} عنده موعد استلام مفتوح ${whenLabel(dup.date, dup.slot)}${dup.source === "whatsapp" ? " (من واتساب)" : ""} — لا حاجة لحجز ثانٍ. عدّله من صفحة التوصيل.`, `⚠ ${c.name} already has an open pickup ${whenLabel(dup.date, dup.slot)}${dup.source === "whatsapp" ? " (from WhatsApp)" : ""} — no second booking needed. Edit it on the delivery page.`)); return false; }
         const now = new Date().toISOString();
         const req = { id: uid(), kind: "pickup", customerId: c.id, customerName: c.name, address: v.address, date: v.date, slot: v.slot, drop: v.drop !== "no", notes: v.notes, status: "new",
           items: [], extras: [], createdAt: now, suspendedAt: now, createdBy: me ? me.name : "" };
@@ -7583,12 +7611,12 @@
     const box = document.createElement("div"); box.className = "dlv-suggest"; inp.closest("label").insertAdjacentElement("afterend", box);
     const show = () => {
       const q = inp.value.trim(); box.innerHTML = ""; nnWrap.style.display = "none";
-      if (picked && q === picked.name) { box.innerHTML = `<div class="dlv-picked">✓ ${esc(picked.name)} · <span dir="ltr">${esc(fmtPhone(picked.phone))}</span> ${pkgBadge(picked.id)}</div>`; return; }
+      if (picked && q === picked.name) { const dup = openPickupFor(picked.id); box.innerHTML = `<div class="dlv-picked">✓ ${esc(picked.name)} · <span dir="ltr">${esc(fmtPhone(picked.phone))}</span> ${pkgBadge(picked.id)}</div>${dup ? `<div class="dlv-dup">⚠ ${DL(`عنده موعد مفتوح ${esc(whenLabel(dup.date, dup.slot))}${dup.source === "whatsapp" ? " (من واتساب)" : ""} — لا تحجز مرة ثانية`, `Already booked ${esc(whenLabel(dup.date, dup.slot))}${dup.source === "whatsapp" ? " (from WhatsApp)" : ""} — don't book twice`)}</div>` : ""}`; return; }
       picked = null;
       if (q.length < 2) return;
-      const ql = normDigits(q.toLowerCase());
-      const hits = customers.filter((x) => String(x.name || "").toLowerCase().includes(ql) || phoneMatches(x.phone, q) || cleanPhone(x.phone).includes(normDigits(q).replace(/\D/g, "") || "§")).slice(0, 6);
-      box.innerHTML = hits.map((x) => `<button type="button" class="dlv-hit" data-cid="${x.id}"><b>${esc(x.name)}</b> <span dir="ltr">${esc(fmtPhone(x.phone))}</span>${activePackagesForCustomer(x.id).length ? " 🎟" : ""}</button>`).join("")
+      const ql = q.toLowerCase().replace(/\s+/g, " ");
+      const hits = customers.filter((x) => String(x.name || "").toLowerCase().replace(/\s+/g, " ").includes(ql) || phoneMatches(x.phone, q) || cleanPhone(x.phone).includes(normDigits(q).replace(/\D/g, "") || "§")).slice(0, 6);
+      box.innerHTML = hits.map((x) => `<button type="button" class="dlv-hit" data-cid="${x.id}"><b>${esc(x.name)}</b> <span dir="ltr">${esc(fmtPhone(x.phone))}</span>${activePackagesForCustomer(x.id).length ? " 🎟" : ""}${openPickupFor(x.id) ? " 📥" : ""}</button>`).join("")
         || (validPhone(q) ? `<div class="dlv-new">➕ ${DL("رقم جديد — اكتب اسم العميل بالأسفل ويُضاف تلقائياً", "New number — type the customer's name below and they'll be added")}</div>` : `<div class="section-note">${DL("لا يوجد عميل بهذا الاسم — اكتب رقم جواله لإضافته", "No customer by that name — type their phone number to add them")}</div>`);
       if (!hits.length && validPhone(q)) nnWrap.style.display = "";
       box.querySelectorAll("[data-cid]").forEach((b) => (b.onclick = () => {
@@ -7602,6 +7630,33 @@
     if (!picked) setTimeout(() => inp.focus(), 60);
   }
   function pickupRequests() { return suspendedOrders.filter((x) => x.kind === "pickup"); }
+  function dropRequests() { return suspendedOrders.filter((x) => x.kind === "dropreq"); }
+  function openPickupFor(custId) { return custId ? pickupRequests().find((r) => r.customerId === custId) : null; }
+  // 🧭 الملاحة: رابط اتجاهات قوقل ماب (إحداثيات من رابط الموقع إن وُجدت، أو العنوان نصاً)
+  const coordsOf = (a) => { const m = String(a || "").match(/(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{1,3}\.\d{3,})/); return m ? `${m[1]},${m[2]}` : ""; };
+  const stopPoint = (a) => { const t = String(a || "").trim(); if (!t) return ""; const c = coordsOf(t); if (c) return c; return /^https?:\/\//i.test(t) ? "" : `${t} Bahrain`; };
+  const navUrl = (a) => { const t = String(a || "").trim(), pt = stopPoint(t); return pt ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pt)}&travelmode=driving` : mapsUrl(t); };
+  function routeUrl(addrs) {
+    const pts = addrs.map(stopPoint).filter(Boolean); if (!pts.length) return "";
+    const dest = pts.pop();
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}${pts.length ? `&waypoints=${pts.slice(0, 9).map(encodeURIComponent).join("%7C")}` : ""}&travelmode=driving`;
+  }
+  const drivers = () => emps().filter((e) => e.active !== false);
+  const SLOT_ORDER = { morning: 0, noon: 1, evening: 2, night: 3 };
+  // 📲 تنبيه فوري بطلبات واتساب الجديدة (استلام/توصيل) على كل الأجهزة — حتى لا يحجز الموظف مرة ثانية وهو لا يدري
+  function waIntakeAlert() {
+    const pend = suspendedOrders.filter((r) => r.source === "whatsapp" && r.needsConfirm);
+    let chip = document.getElementById("waIntakeChip");
+    if (!pend.length || currentPage === "delivery" || !me) { if (chip) chip.remove(); return; }
+    let seen; try { seen = new Set(JSON.parse(localStorage.getItem("l997_wa_seen") || "[]")); } catch (e) { seen = new Set(); }
+    const fresh = pend.filter((r) => !seen.has(r.id));
+    if (!chip) { chip = document.createElement("button"); chip.type = "button"; chip.id = "waIntakeChip"; chip.className = "wa-intake-chip"; document.body.appendChild(chip); chip.onclick = () => openPage("delivery"); }
+    chip.innerHTML = `📲 ${DL(`${pend.length} ${pend.length === 1 ? "طلب" : "طلبات"} من واتساب بانتظار التأكيد`, `${pend.length} WhatsApp request${pend.length === 1 ? "" : "s"} waiting`)} — <b>${esc(pend.map((r) => r.customerName).slice(0, 2).join("، "))}</b> · ${DL("عرض", "Open")} ›`;
+    if (fresh.length) {
+      toast(DL(`📲 طلب جديد من واتساب: ${fresh.map((r) => `${r.kind === "dropreq" ? "توصيل" : "استلام"} — ${r.customerName}`).join("، ")}`, `📲 New WhatsApp request: ${fresh.map((r) => `${r.kind === "dropreq" ? "delivery" : "pickup"} — ${r.customerName}`).join(", ")}`));
+      try { localStorage.setItem("l997_wa_seen", JSON.stringify([...seen, ...fresh.map((r) => r.id)].slice(-200))); } catch (e) { /* ignore */ }
+    }
+  }
   // الملابس وصلت المحل: يتحول الموعد إلى طلب جديد بنفس العميل والعنوان (المشوار يُحسب عند حفظ الطلب)
   function convertPickup(id) {
     const r = suspendedOrders.find((x) => x.id === id); if (!r) return;
@@ -7618,19 +7673,26 @@
   function updateDeliveryBadge() {
     const btn = document.querySelector('.nav-item[data-page="delivery"]'); if (!btn) return;
     btn.style.display = dlvCfg().on ? "" : "none";
-    const n = pickupRequests().length + orders.filter((o) => o.delivery && o.delivery.drop && o.status === "ready" && o.delivery.dropStatus !== "done").length;
+    const n = pickupRequests().length + dropRequests().length + orders.filter((o) => o.delivery && o.delivery.drop && o.status === "ready" && o.delivery.dropStatus !== "done").length;
     let b = btn.querySelector(".nav-count");
     if (!b) { b = document.createElement("span"); b.className = "nav-count"; btn.appendChild(b); }
     b.textContent = n; b.style.display = n ? "" : "none";
+    try { waIntakeAlert(); } catch (e) { /* ignore */ }
   }
 
   function renderDeliveryPage() {
     const root = document.getElementById("deliveryRoot"); if (!root) return;
-    const cfg = dlvCfg(), month = todayStr().slice(0, 7);
+    const cfg = dlvCfg(), month = todayStr().slice(0, 7), today = todayStr();
+    // فتح الصفحة = رأى الموظف طلبات واتساب الجديدة
+    try { const seen = new Set(JSON.parse(localStorage.getItem("l997_wa_seen") || "[]")); suspendedOrders.forEach((r) => { if (r.source === "whatsapp") seen.add(r.id); }); localStorage.setItem("l997_wa_seen", JSON.stringify([...seen].slice(-200))); } catch (e) { /* ignore */ }
     const custOf = (id) => customers.find((c) => c.id === id) || { name: "—", phone: "" };
-    const reqs = pickupRequests().slice().sort((a, b) => (a.status === "onway" ? 0 : 1) - (b.status === "onway" ? 0 : 1) || String(a.date || "9").localeCompare(String(b.date || "9")) || String(a.createdAt).localeCompare(String(b.createdAt)));
+    const mine = (() => { try { return localStorage.getItem("l997_dlv_mine") === "1"; } catch (e) { return false; } })();
+    const isMine = (drvId, drvName) => !mine || !me || drvId === me.id || (!drvId && drvName === me.name) || (!drvId && !drvName);
+    const RANK = { onway: 0, collected: 1, new: 2 };
+    const reqs = pickupRequests().filter((r) => isMine(r.driverId, r.driver)).sort((a, b) => (RANK[a.status] ?? 2) - (RANK[b.status] ?? 2) || String(a.date || "9").localeCompare(String(b.date || "9")) || (SLOT_ORDER[a.slot] ?? 9) - (SLOT_ORDER[b.slot] ?? 9) || String(a.createdAt).localeCompare(String(b.createdAt)));
+    const dreqs = dropRequests();
     const dropOrders = orders.filter((o) => o.delivery && o.delivery.drop && o.status !== "cancelled");
-    const toDeliver = dropOrders.filter((o) => o.status === "ready" && o.delivery.dropStatus !== "done").sort((a, b) => (a.delivery.dropStatus === "onway" ? 0 : 1) - (b.delivery.dropStatus === "onway" ? 0 : 1));
+    const toDeliver = dropOrders.filter((o) => o.status === "ready" && o.delivery.dropStatus !== "done" && isMine(o.delivery.driverId, o.delivery.driver)).sort((a, b) => (a.delivery.dropStatus === "onway" ? 0 : 1) - (b.delivery.dropStatus === "onway" ? 0 : 1) || String(a.delivery.date || "9").localeCompare(String(b.delivery.date || "9")) || (SLOT_ORDER[a.delivery.slot] ?? 9) - (SLOT_ORDER[b.delivery.slot] ?? 9));
     const working = dropOrders.filter((o) => !["ready", "delivered", "cancelled"].includes(o.status));
     const monthOrders = orders.filter((o) => o.status !== "cancelled" && monthOf(o.createdAt) === month);
     const legs = monthOrders.flatMap((o) => (o.extras || []).filter((l) => String(l.id).startsWith("dlv_")));
@@ -7638,48 +7700,97 @@
     // المواعيد الثابتة (أسبوعية) لباقات سارية — اليوم وبكرة، ما لم يُحجز لها موعد بنفس اليوم
     const regular = [];
     [0, 1].forEach((plus) => {
-      const date = FIN.addDays(todayStr(), plus), wd = new Date(date + "T12:00:00").getDay();
+      const date = FIN.addDays(today, plus), wd = new Date(date + "T12:00:00").getDay();
       customerPackages.filter((cp) => cp.schedule && Number(cp.schedule.day) === wd && cp.remainingPieces > 0 && !pkgExpired(cp)).forEach((cp) => {
         const c = customers.find((x) => x.id === cp.customerId); if (!c) return;
-        if (reqs.some((r) => r.customerId === c.id && (r.date || todayStr()) === date)) return;
+        if (pickupRequests().some((r) => r.customerId === c.id && (r.date || today) === date)) return;
         if (orders.some((o) => o.customerId === c.id && o.delivery && o.delivery.pickup && FIN.localDay(o.createdAt) === date)) return;
         if (regular.some((x) => x.c.id === c.id && x.date === date)) return;
         regular.push({ c, cp, date });
       });
     });
     const onwayN = reqs.filter((r) => r.status === "onway").length + toDeliver.filter((o) => o.delivery.dropStatus === "onway").length;
+    // 🧭 مشاوير اليوم: كل استلام/تسليم موعده اليوم أو متأخر أو بدون موعد — مرتبة حسب الوقت
+    const due = (date) => !date || date <= today;
+    const stops = [
+      ...reqs.filter((r) => r.status !== "collected" && !r.needsConfirm && due(r.date)).map((r) => ({ type: "pickup", id: r.id, c: custOf(r.customerId), address: r.address, date: r.date, slot: r.slot, status: r.status, driver: r.driver, collect: 0 })),
+      ...toDeliver.filter((o) => due(o.delivery.date)).map((o) => ({ type: "drop", id: o.id, no: o.number, c: custOf(o.customerId), address: o.delivery.address, date: o.delivery.date, slot: o.delivery.slot, status: o.delivery.dropStatus, driver: o.delivery.driver, collect: orderOwedNow(o), pcs: o.items.reduce((n, it) => n + it.qty, 0) })),
+    ].sort((a, b) => (a.status === "onway" ? 0 : 1) - (b.status === "onway" ? 0 : 1) || String(a.date || "").localeCompare(String(b.date || "")) || (SLOT_ORDER[a.slot] ?? 9) - (SLOT_ORDER[b.slot] ?? 9));
+    const route = routeUrl(stops.map((x) => x.address));
+    const cashToCollect = round3(stops.reduce((a, x) => a + (x.collect || 0), 0));
     const kpi = (ic, lbl, v, color, note) => `<div class="metric-card"><div class="metric-top"><span>${lbl}</span><span class="metric-icon">${ic}</span></div><div class="metric-value" style="${color ? `color:${color}` : ""}">${v}</div>${note ? `<div class="metric-note">${note}</div>` : ""}</div>`;
     const icons = (phone, address, orderId, delId) => `<div class="dlv-icons">
+        <a class="dlv-ic dlv-go" target="_blank" rel="noopener" href="${esc(navUrl(address))}" title="${DL("ابدأ الملاحة", "Navigate")}">🧭<small>${DL("اذهب", "Go")}</small></a>
         <a class="dlv-ic" target="_blank" rel="noopener" href="${esc(mapsUrl(address))}" title="${DL("الخريطة", "Map")}">📍<small>${DL("الخريطة", "Map")}</small></a>
         <button type="button" class="dlv-ic" data-dlv-call="${esc(phone)}">📞<small>${DL("اتصال", "Call")}</small></button>
+        <button type="button" class="dlv-ic" data-dlv-wa="${esc(phone)}">💬<small>${DL("واتساب", "WhatsApp")}</small></button>
         ${orderId ? `<button type="button" class="dlv-ic" data-dlv-view="${orderId}">🧾<small>${DL("الطلب", "Order")}</small></button>` : ""}
         ${delId ? `<button type="button" class="dlv-ic danger" data-req-del="${delId}">✕<small>${DL("إلغاء", "Cancel")}</small></button>` : ""}</div>`;
     const steps = (n, labels) => `<div class="dlv-steps">${labels.map((l, i) => `<span class="${i < n ? "done" : i === n ? "now" : ""}">${i < n ? "✓" : `${i + 1}.`} ${l}</span>`).join("")}</div>`;
+    const drvSel = (kind, id, cur) => `<label class="dlv-drv">🛵 ${DL("المندوب", "Driver")} <select data-drv="${kind}|${id}"><option value="">—</option>${drivers().map((e) => `<option value="${e.id}" ${e.id === cur ? "selected" : ""}>${esc(e.name)}</option>`).join("")}</select></label>`;
+    const tries = (x) => (x.attempts && x.attempts.length ? `<div class="dlv-line dlv-missed">⚠ ${DL(`محاولات لم تتم: ${x.attempts.length}`, `Missed attempts: ${x.attempts.length}`)} — ${esc(x.attempts[x.attempts.length - 1].reason || "")}</div>` : "");
     const reqCard = (r) => {
-      const c = custOf(r.customerId), late = r.date && r.date < todayStr(), onway = r.status === "onway";
-      return `<div class="dlv-card ${late ? "late" : ""} ${onway ? "moving" : ""}">
-        <div class="dlv-card-top"><b>${esc(c.name)}</b>${pkgBadge(r.customerId)}</div>
-        ${steps(onway ? 1 : 0, [DL("موعد", "Booked"), DL("في الطريق", "On the way"), DL("وصلت المحل", "At the shop")])}
+      const c = custOf(r.customerId), late = r.date && r.date < today, st = r.status || "new";
+      const n = st === "onway" ? 1 : st === "collected" ? 2 : 0;
+      return `<div class="dlv-card ${late ? "late" : ""} ${st !== "new" ? "moving" : ""}" data-card="${r.id}">
+        <div class="dlv-card-top"><b>${esc(c.name)}</b>${r.source === "whatsapp" ? `<span class="dlv-src">📲 ${DL("واتساب", "WhatsApp")}</span>` : ""}${pkgBadge(r.customerId)}</div>
+        ${steps(n, [DL("موعد", "Booked"), DL("في الطريق", "On the way"), DL("مع المندوب", "With driver"), DL("وصلت المحل", "At the shop")])}
         <div class="dlv-line">📍 ${esc(r.address || "—")}</div>
         <div class="dlv-line">⏰ <b>${esc(whenLabel(r.date, r.slot))}</b>${late ? ` · <b style="color:var(--danger)">${DL("متأخر", "Late")}</b>` : ""} · ${r.drop !== false ? DL("📦 مع توصيل", "📦 with delivery back") : DL("🏪 يستلم من المحل", "🏪 collects at shop")}</div>
         ${r.notes ? `<div class="dlv-line section-note">📝 ${esc(r.notes)}</div>` : ""}
+        ${st === "collected" ? `<div class="dlv-line">🛍 <b>${r.bags || "?"}</b> ${DL("أكياس", "bags")}${r.pcsEst ? ` · ~${r.pcsEst} ${DL("قطعة", "pcs")}` : ""} · ${esc(r.driver || "")} · ${fmtDT(r.collectedAt)}</div>` : ""}
+        ${tries(r)}
         ${r.needsConfirm ? `<div class="dlv-wa">📲 ${DL("طلب من واتساب (المساعد الذكي) — بانتظار تأكيدك للعميل", "Request from WhatsApp (AI assistant) — waiting for you to confirm")}</div><button type="button" class="primary-btn dlv-main" data-req-confirm="${r.id}">✓ ${DL("تأكيد الموعد للعميل", "Confirm the pickup to the customer")}</button>`
-          : onway ? `<button type="button" class="primary-btn dlv-main" data-req-done="${r.id}">✓ ${DL("استلمنا الملابس ← أدخل القطع", "Clothes collected → add items")}</button>`
-          : `<button type="button" class="primary-btn dlv-main" data-req-onway="${r.id}">🛵 ${DL("المندوب طالع الحين", "Driver leaving now")}</button>`}
+          : st === "collected" ? `<button type="button" class="primary-btn dlv-main" data-req-done="${r.id}">🧺 ${DL("وصلت المحل ← أدخل القطع", "At the shop → add items")}</button>`
+          : st === "onway" ? `<button type="button" class="primary-btn dlv-main" data-req-collected="${r.id}">🛍 ${DL("استلمت الملابس من العميل", "Collected from the customer")}</button>
+              <div class="dlv-sub"><button type="button" class="mini-btn" data-req-done="${r.id}">🧺 ${DL("أدخل القطع الآن", "Add items now")}</button><button type="button" class="mini-btn danger-mini" data-req-miss="${r.id}">⚠ ${DL("ما حصلنا العميل", "Customer not reached")}</button></div>`
+          : `<button type="button" class="primary-btn dlv-main" data-req-onway="${r.id}">🛵 ${DL("اذهب للاستلام — المندوب طالع الحين", "Go to pickup — driver leaving now")}</button>
+              <div class="dlv-sub"><button type="button" class="mini-btn" data-req-edit="${r.id}">✎ ${DL("تعديل الموعد", "Change time")}</button><button type="button" class="mini-btn danger-mini" data-req-miss="${r.id}">⚠ ${DL("تأجيل / ما حصلناه", "Postpone / not reached")}</button></div>`}
+        ${drvSel("req", r.id, r.driverId)}
         ${icons(c.phone, r.address, null, r.id)}</div>`;
     };
+    const dreqCard = (r) => {
+      const c = custOf(r.customerId), o = orders.find((x) => x.id === r.orderId) || orders.find((x) => r.orderNumber && String(x.number).replace(/^0+/, "") === String(r.orderNumber).replace(/^0+/, "") && x.customerId === r.customerId);
+      return `<div class="dlv-card">
+        <div class="dlv-card-top"><b>${esc(c.name)}</b>${o ? `<span class="dlv-no">#${esc(o.number)}</span>` : ""}<span class="dlv-src">📲 ${DL("واتساب", "WhatsApp")}</span></div>
+        <div class="dlv-wa">📲 ${DL("العميل طلب توصيل طلبه للبيت — بانتظار تأكيدك", "Customer asked for home delivery — waiting for you to confirm")}</div>
+        <div class="dlv-line">📍 ${esc(r.address || "—")}</div>
+        <div class="dlv-line">⏰ <b>${esc(whenLabel(r.date, r.slot))}</b>${o ? ` · <span class="status-badge status-${o.status}">${esc(statusLabel(o.status))}</span>` : ` · <b style="color:var(--danger)">${DL("لم يُحدد الطلب", "Order not identified")}</b>`}</div>
+        ${r.notes ? `<div class="dlv-line section-note">📝 ${esc(r.notes)}</div>` : ""}
+        ${o ? `<button type="button" class="primary-btn dlv-main" data-dreq-ok="${r.id}|${o.id}">✓ ${DL("تأكيد التوصيل للعميل", "Confirm delivery to the customer")}</button>` : ""}
+        ${icons(c.phone, r.address, o ? o.id : null, r.id)}</div>`;
+    };
     const dropCard = (o) => {
-      const c = custOf(o.customerId), d = o.delivery, due = orderOwedNow(o), onway = d.dropStatus === "onway";
-      return `<div class="dlv-card ${onway ? "moving" : ""}">
+      const c = custOf(o.customerId), d = o.delivery, owe = orderOwedNow(o), onway = d.dropStatus === "onway";
+      return `<div class="dlv-card ${onway ? "moving" : ""}" data-card="${o.id}">
         <div class="dlv-card-top"><b>${esc(c.name)}</b><span class="dlv-no">#${esc(o.number)}</span></div>
         ${steps(onway ? 1 : 0, [DL("جاهز", "Ready"), DL("في الطريق", "On the way"), DL("تم التسليم", "Delivered")])}
         <div class="dlv-line">📍 ${esc(d.address || "—")}</div>
-        <div class="dlv-line">👕 ${o.items.reduce((n, it) => n + it.qty, 0)} ${DL("قطعة", "pcs")} · ${due > 0 ? `💰 ${DL("يُحصّل", "Collect")} <b>${money(due)}</b>` : `✅ ${DL("مدفوع", "Paid")}`}${d.date || d.slot ? ` · ⏰ ${esc(whenLabel(d.date, d.slot))}` : ""}</div>
+        <div class="dlv-line">👕 ${o.items.reduce((n, it) => n + it.qty, 0)} ${DL("قطعة", "pcs")}${d.bags ? ` · 🛍 ${d.bags}` : ""} · ${owe > 0 ? `💰 ${DL("يُحصّل", "Collect")} <b>${money(owe)}</b>` : `✅ ${DL("مدفوع", "Paid")}`}${d.date || d.slot ? ` · ⏰ ${esc(whenLabel(d.date, d.slot))}` : ""}</div>
         ${onway ? `<div class="dlv-line section-note">🛵 ${esc(d.driver || "")} · ${fmtDT(d.onwayAt)}</div>` : ""}
-        ${onway ? `<button type="button" class="primary-btn dlv-main" data-drop-done="${o.id}">✓ ${DL("تم التوصيل — تسليم الطلب", "Delivered — hand over")}</button>`
-          : `<button type="button" class="primary-btn dlv-main" data-drop-onway="${o.id}">🛵 ${DL("خرج للتوصيل", "Out for delivery")}</button>`}
+        ${tries(d)}
+        ${onway ? `<button type="button" class="primary-btn dlv-main" data-drop-done="${o.id}">✓ ${DL("تم التوصيل — تسليم الطلب", "Delivered — hand over")}${owe > 0 ? ` · ${money(owe)}` : ""}</button>
+            <div class="dlv-sub"><button type="button" class="mini-btn danger-mini" data-drop-miss="${o.id}">⚠ ${DL("ما حصلنا العميل", "Customer not reached")}</button></div>`
+          : `<button type="button" class="primary-btn dlv-main" data-drop-onway="${o.id}">🛵 ${DL("اذهب للتسليم — خرج للتوصيل", "Go to deliver — out for delivery")}</button>
+            <div class="dlv-sub"><button type="button" class="mini-btn" data-drop-edit="${o.id}">✎ ${DL("تعديل الموعد/العنوان", "Change time/address")}</button></div>`}
+        ${drvSel("drop", o.id, d.driverId)}
         ${icons(c.phone, d.address, o.id, null)}</div>`;
     };
+    const stopRow = (x, i) => `<div class="dlv-stop ${x.status === "onway" ? "moving" : ""}">
+        <span class="dlv-stop-n">${i + 1}</span>
+        <div class="dlv-stop-info"><b>${x.type === "pickup" ? `📥 ${DL("استلام", "Pickup")}` : `📦 ${DL("تسليم", "Deliver")} #${esc(x.no)}`} · ${esc(x.c.name)}</b>
+          <span>⏰ ${esc(whenLabel(x.date, x.slot))}${x.date && x.date < today ? ` · <b style="color:var(--danger)">${DL("متأخر", "Late")}</b>` : ""}${x.status === "onway" ? ` · 🛵 ${DL("في الطريق", "on the way")}` : ""}${x.collect > 0 ? ` · 💰 ${money(x.collect)}` : ""}${x.pcs ? ` · 👕 ${x.pcs}` : ""}</span>
+          <span class="section-note">📍 ${esc(x.address || "—")}</span></div>
+        <div class="dlv-stop-act"><a class="primary-btn" target="_blank" rel="noopener" href="${esc(navUrl(x.address))}">🧭 ${DL("اذهب", "Go")}</a><button type="button" class="mini-btn" data-dlv-call="${esc(x.c.phone)}">📞</button><button type="button" class="mini-btn" data-jump="${x.id}">›</button></div></div>`;
+    // أداء المندوبين هذا الشهر
+    const perf = {};
+    const bump = (name, k) => { if (!name) return; perf[name] = perf[name] || { p: 0, d: 0, m: 0 }; perf[name][k]++; };
+    orders.filter((o) => o.delivery && o.status !== "cancelled").forEach((o) => {
+      if (o.delivery.pickup && o.delivery.pickupDriver && monthOf(o.delivery.pickupAt || o.createdAt) === month) bump(o.delivery.pickupDriver, "p");
+      if (o.status === "delivered" && o.delivery.drop && o.delivery.driver && monthOf(o.deliveredAt) === month) bump(o.delivery.driver, "d");
+      (o.delivery.attempts || []).forEach((a) => { if (monthOf(a.at) === month) bump(a.by, "m"); });
+    });
+    pickupRequests().forEach((r) => (r.attempts || []).forEach((a) => { if (monthOf(a.at) === month) bump(a.by, "m"); }));
     const col = (title, sub, n, body, empty) => `<div class="panel dlv-col"><div class="dlv-col-head"><h3>${title}${n ? ` <span class="nav-count">${n}</span>` : ""}</h3><p>${sub}</p></div><div class="dlv-list">${body || `<div class="empty-state compact">${empty}</div>`}</div></div>`;
     root.innerHTML = `
       ${cfg.on ? "" : `<div class="panel" style="border-color:var(--warning)"><b>⚠ ${DL("خدمة التوصيل متوقفة", "Delivery service is off")}</b> — ${DL("فعّلها من الإعدادات ← إعدادات التشغيل", "turn it on in Settings → Operating settings")}.</div>`}
@@ -7687,49 +7798,166 @@
         <div class="dlv-hero-txt"><h3>${DL("الاستلام من البيت والتوصيل", "Home pickup & delivery")}</h3>
           <div class="dlv-policy"><span>🎟 ${DL(`عملاء الباقات: <b>${cfg.pkgFree}</b> مشاوير مجانية كل شهر${cfg.pkgFee > 0 ? ` ثم ${money(cfg.pkgFee)}` : ""}`, `Package customers: <b>${cfg.pkgFree}</b> free trips a month${cfg.pkgFee > 0 ? `, then ${money(cfg.pkgFee)}` : ""}`)}</span>
           <span>👤 ${DL(`بدون باقة: <b>${money(cfg.fee)}</b> للمشوار`, `No package: <b>${money(cfg.fee)}</b> per trip`)}</span>${cfg.freeOver > 0 ? `<span>🎁 ${DL(`مجاني للطلب من ${money(cfg.freeOver)}`, `Free for orders from ${money(cfg.freeOver)}`)}</span>` : ""}</div></div>
-        <button class="primary-btn dlv-book" id="newPickupBtn">＋ ${DL("حجز استلام من البيت", "Book a home pickup")}</button>
+        <div class="dlv-hero-act"><button class="primary-btn dlv-book" id="newPickupBtn">＋ ${DL("حجز استلام من البيت", "Book a home pickup")}</button>
+          <label class="dlv-mine"><input type="checkbox" id="dlvMine" ${mine ? "checked" : ""} /> 🛵 ${DL("مشاويري فقط", "My trips only")}</label></div>
       </div>
-      <div class="dlv-how">${[DL("احجز الموعد", "Book"), DL("المندوب يستلم", "Driver collects"), DL("أدخل القطع بالمحل", "Add items at shop"), DL("جاهز ← توصيل", "Ready → deliver")].map((x, i) => `<span><b>${i + 1}</b>${x}</span>`).join("<i>›</i>")}</div>
+      <div class="dlv-how">${[DL("احجز الموعد", "Book"), DL("اذهب للاستلام", "Go to pickup"), DL("أدخل القطع بالمحل", "Add items at shop"), DL("جاهز ← اذهب للتسليم", "Ready → go deliver")].map((x, i) => `<span><b>${i + 1}</b>${x}</span>`).join("<i>›</i>")}</div>
       <div class="metrics-grid metrics-grid-compact dlv-kpis">
         ${kpi("📥", DL("للاستلام", "To collect"), reqs.length, reqs.length ? "var(--primary)" : "")}
-        ${kpi("📦", DL("للتوصيل", "To deliver"), toDeliver.length, toDeliver.length ? "var(--warning)" : "")}
+        ${kpi("📦", DL("للتوصيل", "To deliver"), toDeliver.length + dreqs.length, toDeliver.length ? "var(--warning)" : "")}
         ${kpi("🛵", DL("في الطريق الآن", "On the way now"), onwayN)}
         ${kpi("📅", DL("وُصّلت هذا الشهر", "Delivered this month"), deliveredMonth, "var(--success)", `${DL("إيراد", "Income")} ${money(legs.reduce((a, l) => a + (Number(l.total) || 0), 0))} · ${legs.filter((l) => l.free).length} ${DL("مشوار مجاني", "free trips")}`)}
+      </div>
+      <div class="panel dlv-route">
+        <div class="dlv-col-head dlv-route-head"><div><h3>🧭 ${DL("مشاوير اليوم", "Today's trips")}${stops.length ? ` <span class="nav-count">${stops.length}</span>` : ""}</h3>
+          <p>${stops.length ? DL(`${stops.filter((x) => x.type === "pickup").length} استلام · ${stops.filter((x) => x.type === "drop").length} تسليم${cashToCollect > 0 ? ` · 💰 يُحصّل ${money(cashToCollect)}` : ""}`, `${stops.filter((x) => x.type === "pickup").length} pickups · ${stops.filter((x) => x.type === "drop").length} deliveries${cashToCollect > 0 ? ` · 💰 collect ${money(cashToCollect)}` : ""}`) : DL("لا مشاوير مستحقة اليوم", "No trips due today")}</p></div>
+          <div class="row-actions">${route ? `<a class="primary-btn" id="dlvRouteBtn" target="_blank" rel="noopener" href="${esc(route)}">🗺 ${DL("المسار كاملاً في خرائط قوقل", "Full route in Google Maps")}</a>` : ""}${stops.length ? `<button type="button" class="secondary-btn" id="dlvPrintBtn">🖨 ${DL("كشف المشاوير", "Trip sheet")}</button>` : ""}</div></div>
+        ${stops.length ? `<div class="dlv-stops">${stops.map(stopRow).join("")}</div>` : ""}
       </div>
       ${regular.length ? `<div class="panel dlv-regular"><div class="dlv-col-head"><h3>📅 ${DL("المواعيد الثابتة لعملاء الباقات", "Regular package pickups")} <span class="nav-count">${regular.length}</span></h3><p>${DL("عملاء لهم موعد استلام أسبوعي اليوم أو بكرة — احجز بضغطة", "Customers with a weekly pickup today or tomorrow — book with one tap")}</p></div>
         <div class="dlv-list dlv-list-row">${regular.map((x) => `<div class="dlv-card"><div class="dlv-card-top"><b>${esc(x.c.name)}</b>${pkgBadge(x.c.id)}</div>
           <div class="dlv-line">⏰ <b>${esc(whenLabel(x.date, x.cp.schedule.slot))}</b> · ${esc(x.cp.name)}</div><div class="dlv-line">📍 ${esc([x.c.area, x.c.address].filter(Boolean).join(" — ") || "—")}</div>
           <button type="button" class="primary-btn dlv-main" data-reg-book="${x.cp.id}|${x.date}">📥 ${DL("احجز الموعد", "Book this pickup")}</button></div>`).join("")}</div></div>` : ""}
       <div class="dlv-board">
-        ${col(`📥 ${DL("للاستلام من البيوت", "Pickups to collect")}`, DL("المندوب يطلع ← يستلم ← تدخل القطع", "Driver leaves → collects → add items"), reqs.length, reqs.map(reqCard).join(""), DL("لا توجد مواعيد — اضغط «حجز استلام من البيت»", "No bookings — press “Book a home pickup”"))}
-        ${col(`📦 ${DL("للتوصيل للبيوت", "Orders to deliver")}`, DL("الطلبات الجاهزة التي يريد أصحابها التوصيل", "Ready orders the customer wants delivered"), toDeliver.length, toDeliver.map(dropCard).join(""), DL("لا توجد طلبات جاهزة للتوصيل", "No ready orders to deliver"))}
+        ${col(`📥 ${DL("للاستلام من البيوت", "Pickups to collect")}`, DL("اذهب للاستلام ← استلمت الملابس ← أدخل القطع بالمحل", "Go to pickup → collected → add items at the shop"), reqs.length, reqs.map(reqCard).join(""), DL("لا توجد مواعيد — اضغط «حجز استلام من البيت»", "No bookings — press “Book a home pickup”"))}
+        ${col(`📦 ${DL("للتوصيل للبيوت", "Orders to deliver")}`, DL("الطلبات الجاهزة التي يريد أصحابها التوصيل", "Ready orders the customer wants delivered"), toDeliver.length + dreqs.length, dreqs.map(dreqCard).join("") + toDeliver.map(dropCard).join(""), DL("لا توجد طلبات جاهزة للتوصيل", "No ready orders to deliver"))}
       </div>
       ${working.length ? `<details class="panel dlv-working"><summary>⏳ ${DL(`طلبات توصيل قيد التنظيف (${working.length}) — تنتقل للتوصيل تلقائياً عندما تجهز`, `Delivery orders being cleaned (${working.length}) — move to “to deliver” automatically when ready`)}</summary>
-        <div class="dlv-rows">${working.map((o) => `<button type="button" class="dlv-row" data-dlv-view="${o.id}"><b>#${esc(o.number)}</b><span>${esc(custOf(o.customerId).name)}</span><span class="status-badge status-${o.status}">${esc(statusLabel(o.status))}</span><span class="section-note">${esc(o.delivery.address || "")}</span></button>`).join("")}</div></details>` : ""}`;
+        <div class="dlv-rows">${working.map((o) => `<button type="button" class="dlv-row" data-dlv-view="${o.id}"><b>#${esc(o.number)}</b><span>${esc(custOf(o.customerId).name)}</span><span class="status-badge status-${o.status}">${esc(statusLabel(o.status))}</span><span class="section-note">${esc(o.delivery.address || "")}</span></button>`).join("")}</div></details>` : ""}
+      ${Object.keys(perf).length ? `<details class="panel dlv-working"><summary>🏁 ${DL("أداء المندوبين هذا الشهر", "Drivers this month")}</summary>
+        <table class="data-table"><thead><tr><th>${DL("المندوب", "Driver")}</th><th>📥 ${DL("استلام", "Pickups")}</th><th>📦 ${DL("تسليم", "Deliveries")}</th><th>⚠ ${DL("لم تتم", "Missed")}</th></tr></thead>
+        <tbody>${Object.entries(perf).map(([n, v]) => `<tr><td>${esc(n)}</td><td>${v.p}</td><td>${v.d}</td><td>${v.m}</td></tr>`).join("")}</tbody></table></details>` : ""}`;
     const q = (sel) => root.querySelectorAll(sel);
+    const saveReqs = () => { save("l997_suspended_orders", suspendedOrders); persistAll(); };
+    const sendWa = async (phone, msg) => {
+      let sent = false;
+      if (cloudOn() && CLOUD.waBot) { const res = await CLOUD.waBot({ action: "reply", to: cleanPhone(phone), text: msg, keepBot: true }).catch(() => null); sent = !!(res && res.ok); }
+      if (!sent && phone) openWhatsApp(phone, msg);
+      return sent;
+    };
     root.querySelector("#newPickupBtn").onclick = () => openPickupForm(null);
+    root.querySelector("#dlvMine").onchange = (e) => { try { localStorage.setItem("l997_dlv_mine", e.target.checked ? "1" : "0"); } catch (x) { /* ignore */ } renderDeliveryPage(); };
+    root.querySelector("#dlvPrintBtn")?.addEventListener("click", () => printTripSheet(stops));
+    q("[data-jump]").forEach((b) => (b.onclick = () => { const el = root.querySelector(`[data-card="${b.dataset.jump}"]`); if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1200); } }));
     q("[data-dlv-call]").forEach((b) => (b.onclick = () => { if (b.dataset.dlvCall) window.location.href = `tel:+${cleanPhone(b.dataset.dlvCall)}`; }));
+    q("[data-dlv-wa]").forEach((b) => (b.onclick = () => { if (b.dataset.dlvWa) openWhatsApp(b.dataset.dlvWa, ""); }));
     q("[data-dlv-view]").forEach((b) => (b.onclick = () => openOrderDialog(b.dataset.dlvView)));
+    q("[data-drv]").forEach((sel) => (sel.onchange = () => {
+      const [kind, id] = sel.dataset.drv.split("|"), e = drivers().find((x) => x.id === sel.value);
+      const tgt = kind === "req" ? suspendedOrders.find((x) => x.id === id) : (orders.find((x) => x.id === id) || {}).delivery;
+      if (!tgt) return;
+      tgt.driverId = e ? e.id : ""; tgt.driver = e ? e.name : "";
+      saveReqs(); logActivity(`🛵 تعيين المندوب ${tgt.driver || "—"} — ${kind === "req" ? `استلام ${tgt.customerName || ""}` : `توصيل الطلب #${(orders.find((x) => x.id === id) || {}).number}`}`);
+      toast(DL("✓ تم تعيين المندوب", "✓ Driver assigned"));
+    }));
     q("[data-req-onway]").forEach((b) => (b.onclick = () => {
       const r = suspendedOrders.find((x) => x.id === b.dataset.reqOnway); if (!r) return;
-      r.status = "onway"; r.onwayAt = new Date().toISOString(); r.driver = me ? me.name : "";
-      save("l997_suspended_orders", suspendedOrders); logActivity(`🛵 المندوب في الطريق لاستلام ملابس ${r.customerName}`);
-      const c = custOf(r.customerId); if (c.phone) openWhatsApp(c.phone, waMsg("pickup_onway", { name: c.name, address: r.address }));
+      r.status = "onway"; r.onwayAt = new Date().toISOString(); if (!r.driverId && me) { r.driver = me.name; r.driverId = me.id; }
+      saveReqs(); logActivity(`🛵 المندوب ${r.driver || ""} في الطريق لاستلام ملابس ${r.customerName}`);
+      const c = custOf(r.customerId);
+      if (c.phone) openWhatsApp(c.phone, waMsg("pickup_onway", { name: c.name, address: r.address }));
+      window.open(navUrl(r.address), "_blank", "noopener");
       renderDeliveryPage();
+    }));
+    q("[data-req-collected]").forEach((b) => (b.onclick = () => {
+      const r = suspendedOrders.find((x) => x.id === b.dataset.reqCollected); if (!r) return;
+      openQuickForm({
+        title: DL(`🛍 استلام ملابس ${r.customerName}`, `🛍 Collected from ${r.customerName}`), sub: DL("سجّل ما استلمته — تُدخل القطع بالتفصيل عند الوصول للمحل", "Record what you collected — the items are entered at the shop"),
+        fields: [{ id: "bags", label: DL("عدد الأكياس", "Bags"), type: "number", step: "1", min: 1, value: 1 }, { id: "pcs", label: DL("عدد القطع التقريبي (اختياري)", "Approx. pieces (optional)"), type: "number", step: "1", min: 0, value: "" }, { id: "note", label: DL("ملاحظة (اختياري)", "Note (optional)"), type: "text", value: "" }],
+        submitLabel: DL("✓ تم الاستلام", "✓ Collected"),
+        onSubmit: (v) => {
+          r.status = "collected"; r.collectedAt = new Date().toISOString(); r.bags = Math.max(1, Math.floor(Number(v.bags) || 1)); r.pcsEst = Number(v.pcs) > 0 ? Math.floor(v.pcs) : undefined;
+          if (v.note) r.notes = [r.notes, v.note].filter(Boolean).join(" · ");
+          if (!r.driverId && me) { r.driver = me.name; r.driverId = me.id; }
+          saveReqs(); logActivity(`🛍 استلم ${r.driver || ""} ملابس ${r.customerName} — ${r.bags} أكياس${r.pcsEst ? ` (~${r.pcsEst} قطعة)` : ""}`);
+          renderDeliveryPage(); toast(DL("✓ سُجّل الاستلام — أدخل القطع عند الوصول للمحل", "✓ Collected — add the items at the shop"));
+        },
+      });
     }));
     q("[data-req-done]").forEach((b) => (b.onclick = () => convertPickup(b.dataset.reqDone)));
     q("[data-req-confirm]").forEach((b) => (b.onclick = async () => {
       const r = suspendedOrders.find((x) => x.id === b.dataset.reqConfirm); if (!r) return;
       const c = custOf(r.customerId), fee = tripFeeText(r.customerId);
-      const msg = waMsg("pickup_booked", { name: c.name, when: whenLabel(r.date, r.slot), address: r.address, fee });
-      let sent = false;
-      if (cloudOn() && CLOUD.waBot) { const res = await CLOUD.waBot({ action: "reply", to: cleanPhone(c.phone), text: msg, keepBot: true }); sent = !!(res && res.ok); }
-      if (!sent && c.phone) openWhatsApp(c.phone, msg);
+      const sent = await sendWa(c.phone, waMsg("pickup_booked", { name: c.name, when: whenLabel(r.date, r.slot), address: r.address, fee }));
       r.needsConfirm = false; r.confirmedAt = new Date().toISOString(); r.confirmedBy = me ? me.name : "";
-      save("l997_suspended_orders", suspendedOrders);
+      saveReqs();
       logActivity(`✓ تأكيد موعد استلام (من واتساب) — ${r.customerName} — ${whenLabel(r.date, r.slot)}`);
       toast(sent ? DL("✓ تأكد الموعد وأُرسل للعميل على واتساب", "✓ Confirmed and sent to the customer on WhatsApp") : DL("✓ تأكد الموعد — أرسل الرسالة من واتساب", "✓ Confirmed — send the message in WhatsApp"));
       renderDeliveryPage();
+    }));
+    // ✎ تعديل موعد الاستلام / التسليم
+    const editWhen = (title, cur, onSave) => {
+      const days = [0, 1, 2, 3, 4, 5, 6].map((n) => { const d = FIN.addDays(today, n); return { value: d, label: dayLabel(d) }; });
+      if (cur.date && !days.some((d) => d.value === cur.date)) days.unshift({ value: cur.date, label: dayLabel(cur.date) });
+      openQuickForm({ title, sub: "", fields: [
+        { id: "date", label: DL("📅 اليوم", "📅 Day"), type: "select", value: cur.date || today, options: days },
+        { id: "slot", label: DL("⏰ الوقت", "⏰ Time"), type: "select", value: cur.slot || nowSlot(), options: DLV_SLOTS.map((x) => ({ value: x.v, label: lang === "ar" ? x.ar : x.en })) },
+        { id: "address", label: DL("📍 العنوان أو رابط الموقع", "📍 Address or location link"), type: "text", value: cur.address || "" },
+        { id: "notify", label: DL("إبلاغ العميل على واتساب", "Tell the customer on WhatsApp"), type: "select", value: "yes", options: [{ value: "yes", label: DL("نعم", "Yes") }, { value: "no", label: DL("لا", "No") }] },
+      ], submitLabel: DL("حفظ", "Save"), onSubmit: (v) => onSave(v) });
+    };
+    q("[data-req-edit]").forEach((b) => (b.onclick = () => {
+      const r = suspendedOrders.find((x) => x.id === b.dataset.reqEdit); if (!r) return;
+      editWhen(DL(`✎ موعد استلام ${r.customerName}`, `✎ ${r.customerName}'s pickup`), r, (v) => {
+        Object.assign(r, { date: v.date, slot: v.slot, address: v.address || r.address });
+        saveReqs(); logActivity(`✎ تعديل موعد استلام ${r.customerName} — ${whenLabel(r.date, r.slot)}`);
+        const c = custOf(r.customerId);
+        if (v.notify === "yes" && c.phone) sendWa(c.phone, waMsg("pickup_booked", { name: c.name, when: whenLabel(r.date, r.slot), address: r.address, fee: tripFeeText(r.customerId) }));
+        renderDeliveryPage();
+      });
+    }));
+    q("[data-drop-edit]").forEach((b) => (b.onclick = () => {
+      const o = orders.find((x) => x.id === b.dataset.dropEdit); if (!o) return;
+      editWhen(DL(`✎ توصيل الطلب #${o.number}`, `✎ Deliver order #${o.number}`), o.delivery, (v) => {
+        Object.assign(o.delivery, { date: v.date, slot: v.slot, address: v.address || o.delivery.address });
+        persistAll(); logActivity(`✎ تعديل موعد توصيل الطلب #${o.number} — ${whenLabel(v.date, v.slot)}`);
+        const c = custOf(o.customerId);
+        if (v.notify === "yes" && c.phone) sendWa(c.phone, waMsg("drop_booked", { name: c.name, number: o.number, when: whenLabel(v.date, v.slot), address: o.delivery.address }));
+        renderDeliveryPage();
+      });
+    }));
+    // ⚠ ما حصلنا العميل: تُسجَّل المحاولة وسببها، ويُعاد الموعد ليوم/وقت جديد مع رسالة للعميل
+    const missed = (title, onSave) => {
+      const days = [0, 1, 2, 3, 4].map((n) => { const d = FIN.addDays(today, n); return { value: d, label: dayLabel(d) }; });
+      openQuickForm({ title, sub: DL("تُسجَّل المحاولة ويُنقل الموعد للوقت الجديد", "The attempt is recorded and the visit moves to the new time"), fields: [
+        { id: "reason", label: DL("السبب", "Reason"), type: "select", value: "noanswer", options: [{ value: "noanswer", label: DL("العميل ما رد على الاتصال", "Customer didn't answer") }, { value: "away", label: DL("العميل مو موجود بالبيت", "Customer not at home") }, { value: "asked", label: DL("العميل طلب التأجيل", "Customer asked to postpone") }, { value: "address", label: DL("العنوان غير واضح/خطأ", "Unclear / wrong address") }] },
+        { id: "date", label: DL("📅 الموعد الجديد", "📅 New day"), type: "select", value: FIN.addDays(today, 1), options: days },
+        { id: "slot", label: DL("⏰ الوقت", "⏰ Time"), type: "select", value: nowSlot(), options: DLV_SLOTS.map((x) => ({ value: x.v, label: lang === "ar" ? x.ar : x.en })) },
+        { id: "notify", label: DL("إبلاغ العميل على واتساب", "Tell the customer on WhatsApp"), type: "select", value: "yes", options: [{ value: "yes", label: DL("نعم", "Yes") }, { value: "no", label: DL("لا", "No") }] },
+      ], submitLabel: DL("حفظ وإعادة الجدولة", "Save & reschedule"), onSubmit: (v) => onSave(v, { noanswer: DL("ما رد على الاتصال", "no answer"), away: DL("مو موجود", "not at home"), asked: DL("طلب التأجيل", "asked to postpone"), address: DL("العنوان غير واضح", "unclear address") }[v.reason]) });
+    };
+    q("[data-req-miss]").forEach((b) => (b.onclick = () => {
+      const r = suspendedOrders.find((x) => x.id === b.dataset.reqMiss); if (!r) return;
+      missed(DL(`⚠ استلام ${r.customerName}`, `⚠ ${r.customerName}'s pickup`), (v, why) => {
+        r.attempts = [...(r.attempts || []), { at: new Date().toISOString(), by: me ? me.name : "", reason: why, from: whenLabel(r.date, r.slot) }];
+        Object.assign(r, { status: "new", date: v.date, slot: v.slot });
+        saveReqs(); logActivity(`⚠ لم يتم استلام ملابس ${r.customerName} (${why}) — الموعد الجديد ${whenLabel(v.date, v.slot)}`);
+        const c = custOf(r.customerId);
+        if (v.notify === "yes" && c.phone) sendWa(c.phone, waMsg("dlv_missed", { name: c.name, kind: "pickup", when: whenLabel(v.date, v.slot) }));
+        renderDeliveryPage();
+      });
+    }));
+    q("[data-drop-miss]").forEach((b) => (b.onclick = () => {
+      const o = orders.find((x) => x.id === b.dataset.dropMiss); if (!o) return;
+      missed(DL(`⚠ توصيل الطلب #${o.number}`, `⚠ Delivery of #${o.number}`), (v, why) => {
+        o.delivery.attempts = [...(o.delivery.attempts || []), { at: new Date().toISOString(), by: me ? me.name : "", reason: why, from: whenLabel(o.delivery.date, o.delivery.slot) }];
+        Object.assign(o.delivery, { dropStatus: "pending", date: v.date, slot: v.slot });
+        persistAll(); logActivity(`⚠ لم يتم توصيل الطلب #${o.number} (${why}) — الموعد الجديد ${whenLabel(v.date, v.slot)}`);
+        const c = custOf(o.customerId);
+        if (v.notify === "yes" && c.phone) sendWa(c.phone, waMsg("dlv_missed", { name: c.name, kind: "drop", number: o.number, when: whenLabel(v.date, v.slot) }));
+        renderDeliveryPage(); updateDeliveryBadge();
+      });
+    }));
+    // 📲 طلب توصيل من واتساب ← يُثبَّت على الطلب نفسه ويُبلَّغ العميل
+    q("[data-dreq-ok]").forEach((b) => (b.onclick = async () => {
+      const [rid, oid] = b.dataset.dreqOk.split("|"), r = suspendedOrders.find((x) => x.id === rid), o = orders.find((x) => x.id === oid); if (!r || !o) return;
+      o.delivery = { ...(o.delivery || { pickup: false }), drop: true, address: r.address || (o.delivery || {}).address || "", date: r.date || "", slot: r.slot || "", dropStatus: (o.delivery && o.delivery.dropStatus === "onway") ? "onway" : "pending", source: "whatsapp" };
+      suspendedOrders = suspendedOrders.filter((x) => x.id !== rid);
+      saveReqs(); logActivity(`✓ تأكيد توصيل الطلب #${o.number} (طلب من واتساب) — ${whenLabel(r.date, r.slot)} — ${r.address}`);
+      const c = custOf(o.customerId);
+      const sent = await sendWa(c.phone, waMsg("drop_booked", { name: c.name, number: o.number, when: whenLabel(r.date, r.slot), address: o.delivery.address }));
+      toast(sent ? DL("✓ تأكد التوصيل وأُرسل للعميل", "✓ Delivery confirmed and sent to the customer") : DL("✓ تأكد التوصيل", "✓ Delivery confirmed"));
+      renderDeliveryPage(); updateDeliveryBadge();
     }));
     q("[data-reg-book]").forEach((b) => (b.onclick = () => {
       const [cpId, date] = b.dataset.regBook.split("|"), cp = customerPackages.find((x) => x.id === cpId); if (!cp) return;
@@ -7748,21 +7976,35 @@
     }));
     q("[data-req-del]").forEach((b) => (b.onclick = () => {
       const r = suspendedOrders.find((x) => x.id === b.dataset.reqDel); if (!r) return;
-      confirmAction(DL(`إلغاء موعد استلام ${r.customerName}؟`, `Cancel ${r.customerName}'s pickup booking?`), () => {
+      confirmAction(DL(`إلغاء ${r.kind === "dropreq" ? "طلب توصيل" : "موعد استلام"} ${r.customerName}؟`, `Cancel ${r.customerName}'s ${r.kind === "dropreq" ? "delivery request" : "pickup booking"}?`), () => {
         suspendedOrders = suspendedOrders.filter((x) => x.id !== r.id); save("l997_suspended_orders", suspendedOrders);
-        logActivity(`إلغاء موعد استلام من البيت — ${r.customerName}`); renderDeliveryPage(); updateDeliveryBadge();
+        logActivity(`إلغاء ${r.kind === "dropreq" ? "طلب توصيل" : "موعد استلام من البيت"} — ${r.customerName}`); renderDeliveryPage(); updateDeliveryBadge();
       });
     }));
     q("[data-drop-onway]").forEach((b) => (b.onclick = () => {
       const o = orders.find((x) => x.id === b.dataset.dropOnway); if (!o) return;
-      o.delivery.dropStatus = "onway"; o.delivery.onwayAt = new Date().toISOString(); o.delivery.driver = me ? me.name : "";
+      o.delivery.dropStatus = "onway"; o.delivery.onwayAt = new Date().toISOString(); if (!o.delivery.driverId && me) { o.delivery.driver = me.name; o.delivery.driverId = me.id; }
       persistAll(); logActivity(`🛵 الطلب #${o.number} خرج للتوصيل مع ${o.delivery.driver}`);
-      const c = custOf(o.customerId), due = orderOwedNow(o);
-      if (c.phone) openWhatsApp(c.phone, waMsg("drop_onway", { name: c.name, number: o.number, pieces: o.items.reduce((n, it) => n + it.qty, 0), due, dueTxt: money(due) }));
+      const c = custOf(o.customerId), owe = orderOwedNow(o);
+      if (c.phone) openWhatsApp(c.phone, waMsg("drop_onway", { name: c.name, number: o.number, pieces: o.items.reduce((n, it) => n + it.qty, 0), due: owe, dueTxt: money(owe) }));
+      window.open(navUrl(o.delivery.address), "_blank", "noopener");
       renderDeliveryPage(); updateDeliveryBadge();
     }));
     q("[data-drop-done]").forEach((b) => (b.onclick = () => { openOrderDialog(b.dataset.dropDone); setTimeout(() => document.getElementById("advanceStatusBtn")?.click(), 150); }));
     updateDeliveryBadge();
+  }
+  // 🖨 كشف مشاوير اليوم للمندوب (ورقة واحدة: الترتيب، العميل، الجوال، العنوان، الوقت، المبلغ المطلوب تحصيله)
+  function printTripSheet(stops) {
+    const shop = loadProfile().nameAr || "مغسلة 997";
+    const rows = stops.map((x, i) => `<tr><td>${i + 1}</td><td>${x.type === "pickup" ? "📥 استلام" : `📦 تسليم #${esc(x.no)}`}</td><td><b>${esc(x.c.name)}</b><br><span dir="ltr">${esc(fmtPhone(x.c.phone))}</span></td><td>${esc(x.address || "—")}</td><td>${esc(whenLabel(x.date, x.slot))}</td><td>${x.collect > 0 ? money(x.collect) : "—"}</td><td></td></tr>`).join("");
+    const total = round3(stops.reduce((a, x) => a + (x.collect || 0), 0));
+    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>كشف المشاوير</title><style>body{font-family:Tahoma,Arial,sans-serif;padding:14px;color:#111}h2{margin:0 0 4px}table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}th,td{border:1px solid #999;padding:6px;vertical-align:top;text-align:right}th{background:#eee}td:last-child{width:70px}</style></head><body>
+      <h2>🧭 ${esc(shop)} — كشف مشاوير ${esc(dayLabel(todayStr()))} ${todayStr()}</h2><div>المندوب: ${esc(me ? me.name : "")} · ${stops.length} مشوار · يُحصّل: ${money(total)}</div>
+      <table><thead><tr><th>#</th><th>النوع</th><th>العميل</th><th>العنوان</th><th>الوقت</th><th>يُحصّل</th><th>توقيع/ملاحظة</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+    const fr = document.createElement("iframe"); fr.style.cssText = "position:fixed;width:0;height:0;border:0;left:-9999px"; document.body.appendChild(fr);
+    fr.contentDocument.open(); fr.contentDocument.write(html); fr.contentDocument.close();
+    setTimeout(() => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { /* ignore */ } setTimeout(() => fr.remove(), 1500); }, 250);
+    logActivity(`🖨 طباعة كشف المشاوير — ${stops.length} مشوار`);
   }
   window.renderDeliveryPage997 = renderDeliveryPage;
   window.waErrHint997 = (r) => waErrHint(r);

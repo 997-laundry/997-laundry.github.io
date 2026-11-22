@@ -64,7 +64,7 @@ function world(opts = {}) {
     if (method === "POST") {
       const b = JSON.parse(opt.body);
       if (table === "wa_messages" && b.wa_id && msgs.some((m) => m.wa_id === b.wa_id)) return res({ code: "23505" }, 409);
-      const row = { ...b, ...(table === "wa_messages" ? { id: mid++, at: new Date().toISOString() } : {}), ...(table === "wa_threads" ? { mode: b.mode || "bot", waiting: !!b.waiting, unread: b.unread || 0 } : {}) };
+      const row = { ...b, ...(table === "wa_messages" ? { id: mid++, at: new Date().toISOString() } : {}), ...(table === "wa_threads" ? { mode: b.mode || "bot", waiting: !!b.waiting, unread: b.unread || 0 } : {}), ...(table === "records" ? { deleted: false } : {}) }; // like the database default
       store.push(row); return res([row], 201);
     }
     if (method === "PATCH") {
@@ -324,6 +324,28 @@ test("delivery of a ready order is filed for staff (not confirmed) and the chat 
   assert.match(note.body, /طلب توصيل للطلب #00007/); assert.match(note.body, /مجمع 901/);
   assert.equal(w.threads[0].flag, "pickup"); assert.equal(w.threads[0].waiting, true);
   assert.ok(!/تأكد|تم الحجز/.test(w.sent[0].text.body.replace("بيأكد", "")));
+});
+
+test("delivery request is filed on the delivery page, linked to the order — once only", async () => {
+  const handle = await load(), w = world();
+  const ai = fakeAI([tool("request_delivery", { order_number: "7", area: "الرفاع", address: "مجمع 901", day: "tomorrow", slot: "evening", notes: "" }), text("وصل طلب التوصيل للمحل"),
+    tool("request_delivery", { order_number: "00007", area: "الرفاع", address: "مجمع 901", day: "tomorrow", slot: "night", notes: "" }), text("وصل")]);
+  await handle(hook(inbound("97333111111", "وصلوا لي طلبي بكرة المسا")), ENV, { fetch: w.f, ai });
+  await handle(hook(inbound("97333111111", "خله بالليل")), ENV, { fetch: w.f, ai });
+  const reqs = w.recs.filter((r) => r.collection === "suspended_orders");
+  assert.equal(reqs.length, 1, "a second request for the same order is not filed twice");
+  assert.ok(reqs[0].data.kind === "dropreq" && reqs[0].data.orderId === "o1" && reqs[0].data.needsConfirm === true && reqs[0].data.source === "whatsapp" && reqs[0].data.slot === "evening");
+});
+
+test("pickup: a customer who already has an open booking is not booked twice — staff get the change instead", async () => {
+  const handle = await load(), w = world();
+  w.recs.push({ shop_id: SHOP, deleted: false, collection: "suspended_orders", record_id: "pk1", data: { id: "pk1", kind: "pickup", customerId: "c1", customerName: "Ali", date: "2026-11-30", slot: "morning", status: "new" } });
+  const ai = fakeAI([tool("request_pickup", { customer_name: "", area: "الرفاع", address: "مجمع 905", day: "tomorrow", slot: "evening", deliver_back: true, notes: "" }),
+    (p) => { const tr = p.messages[p.messages.length - 1].content[0]; assert.match(tr.content, /ALREADY BOOKED/); return text("عندك موعد مسجل، وبلغنا الموظف بالتعديل"); }]);
+  await handle(hook(inbound("97333111111", "ابي استلام بكرة")), ENV, { fetch: w.f, ai });
+  assert.equal(w.recs.filter((r) => r.collection === "suspended_orders").length, 1, "no second booking");
+  assert.ok(w.msgs.some((m) => m.dir === "note" && /موعد استلام مفتوح/.test(m.body)));
+  assert.equal(w.threads[0].waiting, true);
 });
 
 test("a 👍 reaction is not answered and not stored as a message", async () => {
