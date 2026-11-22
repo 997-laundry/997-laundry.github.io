@@ -99,7 +99,7 @@ function knowledge(settings, profile, garments) {
   });
   const dlv = dlvCfg(settings), w = settings.packageWeights || {};
   const heavy = Object.entries(w).filter(([, v]) => v && typeof v === "object" && Number(v.washiron) !== 1).map(([id, v]) => `${(names[id] || [id])[0]}: ${Number(v.washiron) === 0 ? "خارج الباقات" : `= ${v.washiron} قطع`}${v.iron !== undefined && Number(v.iron) !== Number(v.washiron) ? ` (كوي فقط = ${v.iron})` : ""}`);
-  const pk = (settings.packageDefs || []).map((p) => {
+  const pk = (settings.packageDefs || []).filter((p) => !p.private).map((p) => { // 🔒 الباقات الخاصة (عروض لعملاء معيّنين) لا تُعرض
     const t = pkgTrips(p, dlv), svc = (SERVICE_NAMES[p.serviceType] || [p.serviceType])[0];
     return `- ${p.name}: ${svc}، ${p.pieceCount} قطعة بـ ${bd(p.price)} (${bd(p.price / p.pieceCount)} للقطعة)، ${Number(p.validDays) > 0 ? `صالحة ${p.validDays} يوم` : "بدون تاريخ انتهاء"}، ${t.n > 0 ? `${t.n} مشاوير استلام/توصيل مجانية ${t.period === "total" ? "للباقة كاملة" : "كل شهر"}` : "بدون مشاوير مجانية"}${p.bonus ? `، هدية: ${p.bonus}` : ""}`;
   });
@@ -113,7 +113,7 @@ function knowledge(settings, profile, garments) {
     `الدفع: نقداً، بطاقة، Benefit Pay، تحويل بنكي`,
     `مدة التجهيز العادية: ${settings.normalHours || 24} ساعة — المستعجل: ${settings.urgentHours || 6} ساعات (رسوم إضافية حسب الصنف)`,
     `\nالأسعار (د.ب للقطعة):\n${lines.join("\n") || "- (لا توجد أسعار مسجلة)"}`,
-    `\nالباقات المسبقة الدفع:\n${pk.join("\n") || "- لا توجد باقات حالياً"}`,
+    `\nالباقات المسبقة الدفع (اعرض هذه فقط — لا تذكر أي باقة أو عرض خاص غير موجود في هذه القائمة):\n${pk.join("\n") || "- لا توجد باقات حالياً"}`,
     heavy.length ? `أوزان القطع في الباقات: ${heavy.join("، ")}. الأصناف الأخرى = قطعة واحدة.` : "",
     extras.length ? `خدمات إضافية: ${extras.join("، ")}` : "",
     `\nالاستلام والتوصيل: ${dlv.on ? `متوفر. عميل بدون باقة: ${bd(dlv.fee)} للمشوار. عميل الباقة: مشاوير مجانية حسب باقته ثم ${bd(dlv.pkgFee)}.${dlv.freeOver > 0 ? ` مجاني للطلب من ${bd(dlv.freeOver)}.` : ""} أوقات الاستلام: صباحاً 8–12، ظهراً 12–4، مساءً 4–8، ليلاً 8–12.` : "غير متوفر حالياً."}`,

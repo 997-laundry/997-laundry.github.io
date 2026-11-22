@@ -17,7 +17,7 @@ const SHOP = "shop-1";
 // ---------- in-memory Supabase REST + Meta Graph ----------
 function world(opts = {}) {
   const settings = { prices: { thob_cotton_washiron: 0.5, thob_cotton_iron: 0.2, shirt_washiron: 0.4, abaya_plain_washiron: 1 }, garmentActive: {}, serviceActive: {},
-    packageDefs: [{ id: "p50", name: "Package 50ps", serviceType: "washiron", pieceCount: 50, price: 16.9, bonus: "لحاف مجاني", garments: [] }],
+    packageDefs: [{ id: "p50", name: "Package 50ps", serviceType: "washiron", pieceCount: 50, price: 16.9, bonus: "لحاف مجاني", garments: [] }, { id: "bs", name: "B-spc", serviceType: "iron", pieceCount: 150, price: 30, garments: [], private: true }],
     delivery: { on: true, fee: 0.5, pkgFree: 4, pkgFee: 0.5, freeOver: 0 }, waBot: { enabled: true, staffOn: true, staffFrom: "00:00", staffTo: "23:59", ...(opts.bot || {}) },
     discountCodes: [{ code: "NAWAF", percent: 45 }] };
   const recs = [
@@ -120,6 +120,7 @@ test("price question: Claude gets the real price list (cached), Bahraini rules, 
   assert.match(p.system[0].text, /اللهجة البحرينية/);
   assert.match(p.system[1].text, /ثوب \(Thobe\): غسيل وكي 0\.500 د\.ب · كي 0\.200 د\.ب/);
   assert.match(p.system[1].text, /Package 50ps: غسيل وكي، 50 قطعة بـ 16\.900 د\.ب/);
+  assert.doesNotMatch(p.system[1].text, /B-spc/); // 🔒 private package is never offered to customers
   assert.deepEqual(p.system[1].cache_control, { type: "ephemeral" });
   assert.ok(!/NAWAF/.test(JSON.stringify(p)), "discount codes are never given to the model");
   const last = p.messages[p.messages.length - 1];

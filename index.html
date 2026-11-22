@@ -10874,7 +10874,7 @@ body.auth-locked .top-logout{display:none!important}
       return;
     }
     body.innerHTML = settings.packageDefs.map((p) => `<tr>
-      <td><strong>${esc(p.name)}</strong><div class="pos-cart-row-sub">👕 ${esc(garmentsLabel(p.garments, 6))}</div></td><td>${serviceName(p.serviceType)}</td><td>${p.pieceCount}</td>
+      <td><strong>${esc(p.name)}</strong>${p.private ? ` <span class="status-badge">🔒 ${lang === "en" ? "private" : "خاصة"}</span>` : ""}<div class="pos-cart-row-sub">👕 ${esc(garmentsLabel(p.garments, 6))}</div></td><td>${serviceName(p.serviceType)}</td><td>${p.pieceCount}</td>
       <td>${money(p.price)}</td><td>${Number(p.validDays) > 0 ? (lang === "ar" ? `${p.validDays} يوم` : `${p.validDays} days`) : (lang === "ar" ? "♾ دائمة" : "♾ No expiry")}</td><td>${(() => { const t0 = pkgTrips(p); return t0.n > 0 ? `${t0.n} ${t0.period === "total" ? (lang === "ar" ? "طوال الباقة" : "for the whole package") : (lang === "ar" ? "شهرياً" : "a month")}` : "—"; })()}</td><td>${esc(p.bonus) || "—"}</td>
       <td class="row-actions"><button class="mini-btn" data-edit-package="${p.id}">تعديل</button><button class="mini-btn danger-mini" data-del-package="${p.id}">حذف</button></td>
     </tr>`).join("");
@@ -10905,6 +10905,7 @@ body.auth-locked .top-logout{display:none!important}
       { id: "price", label: "سعر الباقة الكامل (د.ب)", type: "number", step: "0.001", value: existing ? existing.price : 0, min: 0 },
       { id: "bonus", label: "هدية مجانية (اختياري)", type: "text", value: existing ? existing.bonus || "" : "", placeholder: "مثال: عباءة مجانية" },
       ...pkgTermsFields(existing, true),
+      { id: "private", label: "👁 الظهور للعملاء", type: "select", value: existing && existing.private ? "yes" : "no", options: [{ value: "no", label: "عامة — يعرضها مساعد واتساب للعملاء" }, { value: "yes", label: "🔒 خاصة — لا تُعرض للعملاء (تُباع من المحل فقط)" }] },
       { id: "garments", label: "👕 الملابس المشمولة بالباقة — اختر الأصناف (أو اضغط فئة لتحديدها كلها)", type: "checks", value: selected,
         options: all.map((g) => ({ value: g.id, label: clothingName(g.id), group: g.cat || "" })),
         groups: [{ value: "men", label: "رجالي" }, { value: "women", label: "نسائي" }, { value: "home", label: "مفروشات" }] },
@@ -10922,7 +10923,7 @@ body.auth-locked .top-logout{display:none!important}
         if (!covered.length) { toast("لا يوجد صنف مختار له سعر لهذه الخدمة — غيّر الخدمة أو الأصناف"); return false; }
         const garments = v.garments.length === all.length ? [] : v.garments; // الكل = بدون تقييد
         const terms = readPkgTerms(v, true); if (terms.error) { toast(terms.error); return false; }
-        const data = { name: v.name, serviceType: v.serviceType, pieceCount: v.pieceCount, price: round3(v.price), bonus: v.bonus, garments, validDays: terms.validDays, dlvTrips: terms.dlvTrips, dlvPeriod: terms.dlvPeriod };
+        const data = { name: v.name, serviceType: v.serviceType, pieceCount: v.pieceCount, price: round3(v.price), bonus: v.bonus, garments, validDays: terms.validDays, dlvTrips: terms.dlvTrips, dlvPeriod: terms.dlvPeriod, private: v.private === "yes" };
         if (existing) {
           Object.assign(existing, data);
           if (v.apply === "yes") customerPackages.filter((cp) => cp.defId === existing.id && cp.remainingPieces > 0).forEach((cp) => { cp.garments = [...garments]; });
@@ -10991,14 +10992,17 @@ body.auth-locked .top-logout{display:none!important}
     if (!can("edit_pricing")) { denied(); return; }
     settings.packageDefs = settings.packageDefs || [];
     const { plan, drop, keep } = planPkgs997(settings.packageDefs);
+    // باقة باسم خاص وكل الأصناف (مثل «B-spc») = عرض خاص لعميل معيّن — لا تُعرض للعملاء
+    const isSpecial = (p) => !p.private && !(Array.isArray(p.garments) && p.garments.length > 0 && p.garments.length <= 3);
     const line = (t0) => `${t0.name}: ${money(t0.price)} · ${t0.validDays} يوم · ${t0.dlvTrips ? `${t0.dlvTrips} توصيلات` : "بدون توصيل"}${t0.bonus ? ` · 🎁 ${t0.bonus}` : ""}`;
     const same = (t0, p) => p && !(Array.isArray(p.garments) && p.garments.length) && p.name === t0.name && round3(p.price) === round3(t0.price) && Number(p.validDays) === t0.validDays && pkgTrips(p).n === t0.dlvTrips && pkgTrips(p).period === "total" && (p.bonus || "") === t0.bonus;
     const changes = plan.filter(({ t0, ex }) => !same(t0, ex));
-    if (!changes.length && !drop.length) { toast("✓ الباقات مطابقة للقائمة المنشورة"); return; }
+    if (!changes.length && !drop.length && !keep.some(isSpecial)) { toast("✓ الباقات مطابقة للقائمة المنشورة"); return; }
     const sub = [
       ...changes.map(({ t0, ex }) => `${ex ? "✎" : "＋"} ${line(t0)}${ex ? ` (كانت: ${money(ex.price)})` : ""}`),
       ...drop.map((p) => `✕ حذف «${p.name}» (${money(p.price)}) — غير موجودة في القائمة`),
-      ...(keep.length ? [`• تبقى كما هي (باقات خاصة): ${keep.map((p) => p.name).join("، ")}`] : []),
+      ...(keep.length ? [`• تبقى كما هي: ${keep.map((p) => p.name).join("، ")}`] : []),
+      ...(keep.filter(isSpecial).length ? [`• 🔒 تصبح «خاصة» ولا يعرضها مساعد واتساب للعملاء: ${keep.filter(isSpecial).map((p) => p.name).join("، ")}`] : []),
       "• الأوزان: العباية والجلابية = قطعتان · اللحاف والشرشف الدبل في الكوي = قطعتان · الأحذية خارج الباقات",
       "• الباقات المباعة للعملاء سابقاً تبقى كما هي (التغيير للمبيعات الجديدة فقط).",
     ].join("\n");
@@ -11009,6 +11013,7 @@ body.auth-locked .top-logout{display:none!important}
           const data = { garments: [], name: t0.name, serviceType: t0.serviceType, pieceCount: t0.pieceCount, price: round3(t0.price), bonus: t0.bonus, validDays: t0.validDays, dlvTrips: t0.dlvTrips, dlvPeriod: "total", catalogKey: t0.key };
           if (ex) Object.assign(ex, data); else settings.packageDefs.push({ id: uid(), garments: [], ...data });
         });
+        keep.filter(isSpecial).forEach((p) => { p.private = true; });
         const dropIds = new Set(drop.map((p) => p.id));
         settings.packageDefs = settings.packageDefs.filter((p) => !dropIds.has(p.id));
         const order = PKGS_997.map((t0) => t0.key);

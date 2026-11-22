@@ -204,6 +204,7 @@ function check(name, cond, detail) { console.log(`${cond ? "PASS" : "FAIL"}  ${n
   check("iron 50/100/150 with delivery keep their ids at 10.9/19.9/27.9", byId("i50").catalogKey === "iron_dlv_50" && byId("i100").price === 19.9 && byId("i150").price === 27.9 && byId("i150").dlvTrips === 8);
   check("pick-up iron packages are new (8.5/15.9/22.5, no deliveries)", JSON.stringify(st4.packageDefs.filter((p) => /iron_pick/.test(p.catalogKey || "")).map((p) => [p.price, p.dlvTrips])) === JSON.stringify([[8.5, 0], [15.9, 0], [22.5, 0]]));
   check("iron 80 and 120 removed; abaya/thobe/B-spc untouched", !byId("i80") && !byId("i120") && byId("ab").price === 20 && byId("th").price === 9.9 && byId("bs").name === "B-spc" && byId("bs").price === 30);
+  check("B-spc becomes private (hidden from customers); abaya/thobe packages stay public", byId("bs").private === true && !byId("ab").private && !byId("th").private);
   check("12 published + 3 special = 15 packages", st4.packageDefs.length === 15, st4.packageDefs.length);
 
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
