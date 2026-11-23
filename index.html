@@ -812,6 +812,7 @@ body.auth-locked .top-logout{display:none!important}
 .pos-dlv-link{margin:6px 0;padding:8px 10px;border-radius:10px;background:var(--primary-soft);font-weight:700;font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .wa-intake-chip{position:fixed;top:128px;left:50%;transform:translateX(-50%);z-index:60;border:0;border-radius:999px;padding:10px 18px;background:#128c7e;color:#fff;font-family:inherit;font-size:14px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.22);cursor:pointer;max-width:calc(100vw - 32px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:640px){.dlv-stop{flex-wrap:wrap}.dlv-stop-act{width:100%}.dlv-stop-act .primary-btn{flex:1;justify-content:center}.wa-intake-chip{top:auto;bottom:84px;font-size:13px}}
+.dlv-src.dlv-app{color:#1d5670;background:var(--primary-soft)}
 
 </style>
 </head>
@@ -11343,7 +11344,7 @@ body.auth-locked .top-logout{display:none!important}
     const d = draftDelivery, any = d.pickup || d.drop, E = lang !== "ar";
     const linked = d.reqId ? suspendedOrders.find((x) => x.id === d.reqId) : null;
     box.innerHTML = `<div class="pos-dlv-head">🚚 ${E ? "Pickup & delivery" : "الاستلام والتوصيل"}</div>
-      ${linked ? `<div class="pos-dlv-link">🔗 ${E ? `Linked to the pickup booking${linked.source === "whatsapp" ? " from WhatsApp" : ""}` : `مربوط بموعد الاستلام${linked.source === "whatsapp" ? " (من واتساب)" : ""}`} · ${esc(whenLabel(linked.date, linked.slot))}${linked.bags ? ` · 🛍 ${linked.bags}` : ""} <button type="button" class="mini-btn" id="dlvUnlink">${E ? "Separate order" : "طلب منفصل"}</button></div>` : ""}
+      ${linked ? `<div class="pos-dlv-link">🔗 ${E ? `Linked to the pickup booking${linked.source === "whatsapp" ? " from WhatsApp" : linked.source === "app" ? " from the app" : ""}` : `مربوط بموعد الاستلام${linked.source === "whatsapp" ? " (من واتساب)" : linked.source === "app" ? " (من التطبيق)" : ""}`} · ${esc(whenLabel(linked.date, linked.slot))}${linked.bags ? ` · 🛍 ${linked.bags}` : ""} <button type="button" class="mini-btn" id="dlvUnlink">${E ? "Separate order" : "طلب منفصل"}</button></div>` : ""}
       <label class="pos-urgent-toggle pos-extra-toggle"><input type="checkbox" id="dlvPickup" ${d.pickup ? "checked" : ""} /> 📥 ${E ? "Picked up from the customer's home" : "استلمناها من بيت العميل"}</label>
       <label class="pos-urgent-toggle pos-extra-toggle"><input type="checkbox" id="dlvDrop" ${d.drop ? "checked" : ""} /> 📦 ${E ? "Deliver home when ready" : "توصيل للبيت بعد التجهيز"}</label>
       <div class="pos-dlv-more" style="${any ? "" : "display:none"}">
@@ -11476,15 +11477,15 @@ body.auth-locked .top-logout{display:none!important}
   const SLOT_ORDER = { morning: 0, noon: 1, evening: 2, night: 3 };
   // 📲 تنبيه فوري بطلبات واتساب الجديدة (استلام/توصيل) على كل الأجهزة — حتى لا يحجز الموظف مرة ثانية وهو لا يدري
   function waIntakeAlert() {
-    const pend = suspendedOrders.filter((r) => r.source === "whatsapp" && r.needsConfirm);
+    const pend = suspendedOrders.filter((r) => (r.source === "whatsapp" || r.source === "app") && r.needsConfirm);
     let chip = document.getElementById("waIntakeChip");
     if (!pend.length || currentPage === "delivery" || !me) { if (chip) chip.remove(); return; }
     let seen; try { seen = new Set(JSON.parse(localStorage.getItem("l997_wa_seen") || "[]")); } catch (e) { seen = new Set(); }
     const fresh = pend.filter((r) => !seen.has(r.id));
     if (!chip) { chip = document.createElement("button"); chip.type = "button"; chip.id = "waIntakeChip"; chip.className = "wa-intake-chip"; document.body.appendChild(chip); chip.onclick = () => openPage("delivery"); }
-    chip.innerHTML = `📲 ${DL(`${pend.length} ${pend.length === 1 ? "طلب" : "طلبات"} من واتساب بانتظار التأكيد`, `${pend.length} WhatsApp request${pend.length === 1 ? "" : "s"} waiting`)} — <b>${esc(pend.map((r) => r.customerName).slice(0, 2).join("، "))}</b> · ${DL("عرض", "Open")} ›`;
+    chip.innerHTML = `📲 ${DL(`${pend.length} ${pend.length === 1 ? "طلب" : "طلبات"} من ${pend.every((r) => r.source === "app") ? "التطبيق" : "واتساب"} بانتظار التأكيد`, `${pend.length} ${pend.every((r) => r.source === "app") ? "app" : "WhatsApp"} request${pend.length === 1 ? "" : "s"} waiting`)} — <b>${esc(pend.map((r) => r.customerName).slice(0, 2).join("، "))}</b> · ${DL("عرض", "Open")} ›`;
     if (fresh.length) {
-      toast(DL(`📲 طلب جديد من واتساب: ${fresh.map((r) => `${r.kind === "dropreq" ? "توصيل" : "استلام"} — ${r.customerName}`).join("، ")}`, `📲 New WhatsApp request: ${fresh.map((r) => `${r.kind === "dropreq" ? "delivery" : "pickup"} — ${r.customerName}`).join(", ")}`));
+      toast(DL(`📲 طلب جديد من ${fresh.every((r) => r.source === "app") ? "التطبيق" : "واتساب"}: ${fresh.map((r) => `${r.kind === "dropreq" ? "توصيل" : "استلام"} — ${r.customerName}`).join("، ")}`, `📲 New WhatsApp request: ${fresh.map((r) => `${r.kind === "dropreq" ? "delivery" : "pickup"} — ${r.customerName}`).join(", ")}`));
       try { localStorage.setItem("l997_wa_seen", JSON.stringify([...seen, ...fresh.map((r) => r.id)].slice(-200))); } catch (e) { /* ignore */ }
     }
   }
@@ -11515,7 +11516,7 @@ body.auth-locked .top-logout{display:none!important}
     const root = document.getElementById("deliveryRoot"); if (!root) return;
     const cfg = dlvCfg(), month = todayStr().slice(0, 7), today = todayStr();
     // فتح الصفحة = رأى الموظف طلبات واتساب الجديدة
-    try { const seen = new Set(JSON.parse(localStorage.getItem("l997_wa_seen") || "[]")); suspendedOrders.forEach((r) => { if (r.source === "whatsapp") seen.add(r.id); }); localStorage.setItem("l997_wa_seen", JSON.stringify([...seen].slice(-200))); } catch (e) { /* ignore */ }
+    try { const seen = new Set(JSON.parse(localStorage.getItem("l997_wa_seen") || "[]")); suspendedOrders.forEach((r) => { if (r.source === "whatsapp" || r.source === "app") seen.add(r.id); }); localStorage.setItem("l997_wa_seen", JSON.stringify([...seen].slice(-200))); } catch (e) { /* ignore */ }
     const custOf = (id) => customers.find((c) => c.id === id) || { name: "—", phone: "" };
     const mine = (() => { try { return localStorage.getItem("l997_dlv_mine") === "1"; } catch (e) { return false; } })();
     const isMine = (drvId, drvName) => !mine || !me || drvId === me.id || (!drvId && drvName === me.name) || (!drvId && !drvName);
@@ -11559,19 +11560,20 @@ body.auth-locked .top-logout{display:none!important}
         ${delId ? `<button type="button" class="dlv-ic danger" data-req-del="${delId}">✕<small>${DL("إلغاء", "Cancel")}</small></button>` : ""}</div>`;
     const steps = (n, labels) => `<div class="dlv-steps">${labels.map((l, i) => `<span class="${i < n ? "done" : i === n ? "now" : ""}">${i < n ? "✓" : `${i + 1}.`} ${l}</span>`).join("")}</div>`;
     const drvSel = (kind, id, cur) => `<label class="dlv-drv">🛵 ${DL("المندوب", "Driver")} <select data-drv="${kind}|${id}"><option value="">—</option>${drivers().map((e) => `<option value="${e.id}" ${e.id === cur ? "selected" : ""}>${esc(e.name)}</option>`).join("")}</select></label>`;
+    const srcBadge = (r) => (r.source === "whatsapp" ? `<span class="dlv-src">📲 ${DL("واتساب", "WhatsApp")}</span>` : r.source === "app" ? `<span class="dlv-src dlv-app">📱 ${DL("التطبيق", "App")}</span>` : "");
     const tries = (x) => (x.attempts && x.attempts.length ? `<div class="dlv-line dlv-missed">⚠ ${DL(`محاولات لم تتم: ${x.attempts.length}`, `Missed attempts: ${x.attempts.length}`)} — ${esc(x.attempts[x.attempts.length - 1].reason || "")}</div>` : "");
     const reqCard = (r) => {
       const c = custOf(r.customerId), late = r.date && r.date < today, st = r.status || "new";
       const n = st === "onway" ? 1 : st === "collected" ? 2 : 0;
       return `<div class="dlv-card ${late ? "late" : ""} ${st !== "new" ? "moving" : ""}" data-card="${r.id}">
-        <div class="dlv-card-top"><b>${esc(c.name)}</b>${r.source === "whatsapp" ? `<span class="dlv-src">📲 ${DL("واتساب", "WhatsApp")}</span>` : ""}${pkgBadge(r.customerId)}</div>
+        <div class="dlv-card-top"><b>${esc(c.name)}</b>${srcBadge(r)}${pkgBadge(r.customerId)}</div>
         ${steps(n, [DL("موعد", "Booked"), DL("في الطريق", "On the way"), DL("مع المندوب", "With driver"), DL("وصلت المحل", "At the shop")])}
         <div class="dlv-line">📍 ${esc(r.address || "—")}</div>
         <div class="dlv-line">⏰ <b>${esc(whenLabel(r.date, r.slot))}</b>${late ? ` · <b style="color:var(--danger)">${DL("متأخر", "Late")}</b>` : ""} · ${r.drop !== false ? DL("📦 مع توصيل", "📦 with delivery back") : DL("🏪 يستلم من المحل", "🏪 collects at shop")}</div>
         ${r.notes ? `<div class="dlv-line section-note">📝 ${esc(r.notes)}</div>` : ""}
         ${st === "collected" ? `<div class="dlv-line">🛍 <b>${r.bags || "?"}</b> ${DL("أكياس", "bags")}${r.pcsEst ? ` · ~${r.pcsEst} ${DL("قطعة", "pcs")}` : ""} · ${esc(r.driver || "")} · ${fmtDT(r.collectedAt)}</div>` : ""}
         ${tries(r)}
-        ${r.needsConfirm ? `<div class="dlv-wa">📲 ${DL("طلب من واتساب (المساعد الذكي) — بانتظار تأكيدك للعميل", "Request from WhatsApp (AI assistant) — waiting for you to confirm")}</div><button type="button" class="primary-btn dlv-main" data-req-confirm="${r.id}">✓ ${DL("تأكيد الموعد للعميل", "Confirm the pickup to the customer")}</button>`
+        ${r.needsConfirm ? `<div class="dlv-wa">${r.source === "app" ? `📱 ${DL("طلب من تطبيق العملاء — بانتظار تأكيدك للعميل", "Request from the customer app — waiting for you to confirm")}` : `📲 ${DL("طلب من واتساب (المساعد الذكي) — بانتظار تأكيدك للعميل", "Request from WhatsApp (AI assistant) — waiting for you to confirm")}`}</div><button type="button" class="primary-btn dlv-main" data-req-confirm="${r.id}">✓ ${DL("تأكيد الموعد للعميل", "Confirm the pickup to the customer")}</button>`
           : st === "collected" ? `<button type="button" class="primary-btn dlv-main" data-req-done="${r.id}">🧺 ${DL("وصلت المحل ← أدخل القطع", "At the shop → add items")}</button>`
           : st === "onway" ? `<button type="button" class="primary-btn dlv-main" data-req-collected="${r.id}">🛍 ${DL("استلمت الملابس من العميل", "Collected from the customer")}</button>
               <div class="dlv-sub"><button type="button" class="mini-btn" data-req-done="${r.id}">🧺 ${DL("أدخل القطع الآن", "Add items now")}</button><button type="button" class="mini-btn danger-mini" data-req-miss="${r.id}">⚠ ${DL("ما حصلنا العميل", "Customer not reached")}</button></div>`
@@ -11583,8 +11585,8 @@ body.auth-locked .top-logout{display:none!important}
     const dreqCard = (r) => {
       const c = custOf(r.customerId), o = orders.find((x) => x.id === r.orderId) || orders.find((x) => r.orderNumber && String(x.number).replace(/^0+/, "") === String(r.orderNumber).replace(/^0+/, "") && x.customerId === r.customerId);
       return `<div class="dlv-card">
-        <div class="dlv-card-top"><b>${esc(c.name)}</b>${o ? `<span class="dlv-no">#${esc(o.number)}</span>` : ""}<span class="dlv-src">📲 ${DL("واتساب", "WhatsApp")}</span></div>
-        <div class="dlv-wa">📲 ${DL("العميل طلب توصيل طلبه للبيت — بانتظار تأكيدك", "Customer asked for home delivery — waiting for you to confirm")}</div>
+        <div class="dlv-card-top"><b>${esc(c.name)}</b>${o ? `<span class="dlv-no">#${esc(o.number)}</span>` : ""}${srcBadge(r)}</div>
+        <div class="dlv-wa">${r.source === "app" ? "📱" : "📲"} ${DL("العميل طلب توصيل طلبه للبيت — بانتظار تأكيدك", "Customer asked for home delivery — waiting for you to confirm")}</div>
         <div class="dlv-line">📍 ${esc(r.address || "—")}</div>
         <div class="dlv-line">⏰ <b>${esc(whenLabel(r.date, r.slot))}</b>${o ? ` · <span class="status-badge status-${o.status}">${esc(statusLabel(o.status))}</span>` : ` · <b style="color:var(--danger)">${DL("لم يُحدد الطلب", "Order not identified")}</b>`}</div>
         ${r.notes ? `<div class="dlv-line section-note">📝 ${esc(r.notes)}</div>` : ""}

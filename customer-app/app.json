@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "997 Laundry",
+    "slug": "laundry-997",
+    "scheme": "laundry997",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#f4f8fb",
+    "description": "مغسلة 997 — طلباتك، باقتك، وحجز الاستلام من البيت في تطبيق واحد",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.laundry997.customer",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.laundry997.customer",
+      "adaptiveIcon": {
+        "backgroundColor": "#5587C6",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "output": "single",
+      "name": "مغسلة 997",
+      "shortName": "997 Laundry",
+      "themeColor": "#0f2a44",
+      "backgroundColor": "#f4f8fb",
+      "lang": "ar"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "نستخدم موقعك فقط لتحديد عنوان الاستلام والتوصيل."
+        }
+      ]
+    ],
+    "experiments": {
+      "baseUrl": "/app"
+    }
+  }
+}

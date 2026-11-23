@@ -119,6 +119,15 @@ function check(name, cond, detail) { console.log(`${cond ? "PASS" : "FAIL"}  ${n
   await page.click("#dlvPrintBtn").catch(() => {}); await wait(400);
   check("🖨 trip sheet prints without errors", errors.length === 0, errors.slice(0, 2).join(" | "));
 
+  /* 5b) a booking made in the customer app: same alert, marked 📱 App */
+  await page.evaluate(() => { const a = JSON.parse(localStorage.getItem("l997_suspended_orders")); a.unshift({ id: "ap1", kind: "pickup", source: "app", needsConfirm: true, customerId: "c_x", customerName: "Other Guy", address: "سند", date: "", slot: "noon", drop: true, notes: "", status: "new", items: [], extras: [], createdAt: new Date().toISOString(), suspendedAt: new Date().toISOString(), createdBy: "التطبيق" }); localStorage.setItem("l997_suspended_orders", JSON.stringify(a.filter((r) => r.id !== "p2"))); });
+  await page.reload(); await page.waitForSelector("#au_user, body:not(.auth-locked)");
+  if (await page.isVisible("#au_user")) { await page.fill("#au_user", "owner"); await page.fill("#au_pass", PW); await page.click("#au_form button[type=submit]"); await page.waitForSelector("body:not(.auth-locked)"); }
+  await closeAll(); await nav("dashboard"); await wait(200);
+  check("📱 a booking from the customer app raises the alert («from the app»)", await page.isVisible("#waIntakeChip") && /التطبيق/.test(await page.textContent("#waIntakeChip")));
+  await nav("delivery"); await wait(200);
+  check("…and its card is marked 📱 App with a confirm button", /التطبيق/.test(await page.textContent('[data-card="ap1"]')) && await page.isVisible('[data-req-confirm="ap1"]'));
+
   /* 6) phone */
   await page.setViewportSize({ width: 390, height: 844 }); await wait(200);
   const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

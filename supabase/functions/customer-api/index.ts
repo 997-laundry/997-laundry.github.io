@@ -1,6 +1,6 @@
 // 997 Laundry — customer app API (Supabase Edge Function "customer-api").
 // Deploy: Supabase → Edge Functions → Deploy a new function → name: customer-api → paste this file → Deploy.
-//         Keep "Verify JWT" ON: the app calls it with the project's public (anon) key like the website does.
+//         Then open its settings and turn OFF "Verify JWT" (the app signs customers in itself — see below).
 // Secrets: none new. It uses SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (always present) and, optionally:
 //   CUSTOMER_TOKEN_SECRET  long random text to sign customer sessions (default: derived from the service key)
 //   WA_SHOP_NUMBER         the shop's WhatsApp number for the sign-in link (default: profile phone, then 97339599902)
