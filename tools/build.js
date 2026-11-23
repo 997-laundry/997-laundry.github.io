@@ -31,10 +31,12 @@ for (const f of fs.readdirSync(path.join(root, "src", "pwa"))) fs.copyFileSync(p
   const ar = {}, en = {};
   for (const m of app.matchAll(/(cloth_[a-z0-9_]+): "([^"]+)"/g)) { if (!(m[1] in ar)) ar[m[1]] = m[2]; else if (!(m[1] in en)) en[m[1]] = m[2]; }
   const cat = {}; ids.forEach(([, id, key]) => { cat[id] = [ar[key] || id, en[key] || id]; });
-  const fn = path.join(root, "supabase", "functions", "whatsapp-bot", "index.ts");
-  const code = fs.readFileSync(fn, "utf8");
-  const next = code.replace(/\/\/ @@CATALOG_START\n[\s\S]*?\/\/ @@CATALOG_END/, `// @@CATALOG_START\nconst CATALOG = ${JSON.stringify(cat)};\n// @@CATALOG_END`);
   if (Object.keys(cat).length < 40) throw new Error("build: garment catalog for the WhatsApp bot looks wrong");
-  if (next !== code) fs.writeFileSync(fn, next);
+  for (const fnName of ["whatsapp-bot", "customer-api"]) { // the WhatsApp assistant and the customer app use the same names
+    const fn = path.join(root, "supabase", "functions", fnName, "index.ts");
+    const code = fs.readFileSync(fn, "utf8");
+    const next = code.replace(/\/\/ @@CATALOG_START\n[\s\S]*?\/\/ @@CATALOG_END/, `// @@CATALOG_START\nconst CATALOG = ${JSON.stringify(cat)};\n// @@CATALOG_END`);
+    if (next !== code) fs.writeFileSync(fn, next);
+  }
 }
 console.log(`built ${path.relative(root, out)} (${(html.length / 1024).toFixed(0)} KB)`);

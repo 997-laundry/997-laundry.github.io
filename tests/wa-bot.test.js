@@ -444,3 +444,12 @@ test("asking for a person in different words (ابي موظف / 7 from the menu)
     assert.equal(w.threads[0].mode, "human", said);
   }
 });
+
+test("customer-app sign-in code: confirmed at once without the AI, even while staff handle the chat", async () => {
+  const handle = await load(), w = world(), ai = fakeAI([text("should not be used")]);
+  w.threads.push({ shop_id: SHOP, phone: "97333111111", mode: "human", human_at: new Date().toISOString(), unread: 0 });
+  await handle(hook(inbound("97333111111", "رمز دخول تطبيق مغسلة 997: 997-482913")), ENV, { fetch: w.f, ai });
+  assert.equal(ai.calls.length, 0);
+  assert.equal(w.sent.length, 1); assert.match(w.sent[0].text.body, /تم تأكيد دخولك/);
+  assert.ok(w.msgs.some((m) => m.dir === "in" && /997-482913/.test(m.body)), "the code message is kept (customer-api reads it)");
+});

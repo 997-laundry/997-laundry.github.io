@@ -163,6 +163,7 @@ const TOOLS = [
   { name: "leave_message", description: "Leave a message for staff / ask for a call back (when staff are not available or the customer prefers).", strict: true, input_schema: { type: "object", additionalProperties: false, required: ["message", "callback"], properties: { message: { type: "string" }, callback: { type: "boolean" } } } },
   { name: "submit_feedback", description: "Record a complaint, suggestion or praise for the management.", strict: true, input_schema: { type: "object", additionalProperties: false, required: ["kind", "message", "order_number"], properties: { kind: { type: "string", enum: ["complaint", "suggestion", "praise"] }, message: { type: "string" }, order_number: { type: "string", description: "'' if none" } } } },
 ];
+const LOGIN_CODE = /997[-\s]?\d{6}/; // sign-in code shown by the customer app
 const STATUS_AR = { received: "قيد التنظيف", ready: "جاهز للاستلام", delivered: "تم التسليم", cancelled: "ملغي" };
 const uid = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
 const addDays = (ymd, n) => { const d = new Date(ymd + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -362,6 +363,17 @@ async function handleValue(env, deps, value) {
     // read receipt (blue ticks) — best effort
     if (m.id && env.WA_TOKEN && env.WA_PHONE_ID) f(`https://graph.facebook.com/${env.WA_API_VERSION || "v21.0"}/${env.WA_PHONE_ID}/messages`, { method: "POST", headers: { Authorization: `Bearer ${env.WA_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify({ messaging_product: "whatsapp", status: "read", message_id: m.id }) }).catch(() => {});
 
+    // 📱 sign-in to the customer app: the app shows a code (997-123456) and the customer sends it here with one tap.
+    // The message itself is the proof that this phone belongs to the customer (customer-api reads it); answered at once, no AI.
+    if (LOGIN_CODE.test(text) && text.length <= 120) {
+      const okMsg = "✅ تم تأكيد دخولك لتطبيق مغسلة 997 — ارجع للتطبيق الحين 📱\n✅ You're signed in to the 997 Laundry app — go back to the app.";
+      if (env.WA_TOKEN && env.WA_PHONE_ID) {
+        try { const wid = await waText(env, f, phone, okMsg); await D.post("wa_messages", { shop_id: shop, phone, dir: "out", who: "bot", body: okMsg, wa_id: wid }, "return=minimal"); }
+        catch (e) { console.error("login reply", e && e.message); }
+      }
+      await D.patch(`wa_threads?shop_id=eq.${shop}&phone=eq.${phone}`, { unread: Math.max(0, (thread && thread.unread ? thread.unread : 1) - 1) }).catch(() => {});
+      continue;
+    }
     if (!cfg.enabled) continue; // assistant switched off in the system: staff answer from the WhatsApp page
     let resumedAfterHandoff = false;
     if (thread.mode === "human") {
