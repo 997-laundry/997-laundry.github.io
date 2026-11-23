@@ -4601,13 +4601,14 @@
   // صيغة العدد العربية الصحيحة: قطعة واحدة، قطعتان، 3–10 قطع، 11+ قطعة
   const arPcs = (k) => (k === 1 ? "قطعة واحدة" : k === 2 ? "قطعتان" : k >= 3 && k <= 10 ? `${k} قطع` : `${k} قطعة`);
   const SIGN = { ar: "فريق 997 Laundry 💙", en: "The 997 Laundry team 💙", ur: "997 Laundry ٹیم 💙" };
+  const APP_LINK = "https://997-laundry.github.io/app/"; // customer app (orders, package, home pickup)
   function waMsg(kind, d) {
     const L = lang === "en" || lang === "ur" ? lang : "ar";
     const n = d.name || "";
     const M = {
       received: {
-        ar: () => `هلا والله ${n} 🌸\nاستلمنا ملابسك وهي الحين بين أيادٍ أمينة 🧺✨\n\n🧾 رقم الطلب: #${d.number}\n👕 عدد القطع: ${d.pieces}\n💰 قيمة الطلب: ${d.covered ? "مغطاة بالكامل من الباقة 🎟" : d.total}${d.discount ? `\n🏷 شامل خصم: ${d.discount}` : ""}${d.expected ? `\n⏰ موعد الجاهزية المتوقع: ${d.expected}` : ""}${d.urgent ? "\n⚡ طلبك مستعجل — بنخلصه لك بأسرع وقت" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}${d.dlv ? `\n🚚 ${d.dlv}` : ""}\n\nبنرسل لك رسالة أول ما يجهز إن شاء الله 😊\n${SIGN.ar}`,
-        en: () => `Hi ${n} 🌸\nWe've received your clothes — they're in safe hands 🧺✨\n\n🧾 Order: #${d.number}\n👕 Pieces: ${d.pieces}\n💰 Order value: ${d.covered ? "fully covered by your package 🎟" : d.total}${d.discount ? `\n🏷 Includes discount: ${d.discount}` : ""}${d.expected ? `\n⏰ Expected ready: ${d.expected}` : ""}${d.urgent ? "\n⚡ Urgent — we'll have it ready as fast as we can" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}${d.dlv ? `\n🚚 ${d.dlv}` : ""}\n\nWe'll message you as soon as it's ready 😊\n${SIGN.en}`,
+        ar: () => `هلا والله ${n} 🌸\nاستلمنا ملابسك وهي الحين بين أيادٍ أمينة 🧺✨\n\n🧾 رقم الطلب: #${d.number}\n👕 عدد القطع: ${d.pieces}\n💰 قيمة الطلب: ${d.covered ? "مغطاة بالكامل من الباقة 🎟" : d.total}${d.discount ? `\n🏷 شامل خصم: ${d.discount}` : ""}${d.expected ? `\n⏰ موعد الجاهزية المتوقع: ${d.expected}` : ""}${d.urgent ? "\n⚡ طلبك مستعجل — بنخلصه لك بأسرع وقت" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}${d.dlv ? `\n🚚 ${d.dlv}` : ""}\n\nبنرسل لك رسالة أول ما يجهز إن شاء الله 😊\n📱 تابع طلبك وباقتك من تطبيقنا: ${APP_LINK}\n${SIGN.ar}`,
+        en: () => `Hi ${n} 🌸\nWe've received your clothes — they're in safe hands 🧺✨\n\n🧾 Order: #${d.number}\n👕 Pieces: ${d.pieces}\n💰 Order value: ${d.covered ? "fully covered by your package 🎟" : d.total}${d.discount ? `\n🏷 Includes discount: ${d.discount}` : ""}${d.expected ? `\n⏰ Expected ready: ${d.expected}` : ""}${d.urgent ? "\n⚡ Urgent — we'll have it ready as fast as we can" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}${d.dlv ? `\n🚚 ${d.dlv}` : ""}\n\nWe'll message you as soon as it's ready 😊\n📱 Track your order in our app: ${APP_LINK}\n${SIGN.en}`,
         ur: () => `السلام علیکم ${n} 🌸\nآپ کے کپڑے ہمیں موصول ہو گئے ہیں — بالکل محفوظ ہاتھوں میں 🧺✨\n\n🧾 آرڈر نمبر: #${d.number}\n👕 قطعات: ${d.pieces}\n💰 آرڈر کی قیمت: ${d.covered ? "مکمل طور پر پیکیج سے 🎟" : d.total}${d.discount ? `\n🏷 رعایت شامل: ${d.discount}` : ""}${d.expected ? `\n⏰ متوقع تیاری: ${d.expected}` : ""}${d.urgent ? "\n⚡ فوری آرڈر — جلد از جلد تیار کریں گے" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}\n\nتیار ہوتے ہی آپ کو پیغام بھیج دیں گے 😊\n${SIGN.ur}`,
       },
       ready: {
