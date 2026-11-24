@@ -39,4 +39,13 @@ for (const f of fs.readdirSync(path.join(root, "src", "pwa"))) fs.copyFileSync(p
     if (next !== code) fs.writeFileSync(fn, next);
   }
 }
+// نسخ نصية من كود دوال Supabase لنسخها بسهولة من الجوال (Safari يفتح .ts كفيديو): /code/whatsapp-bot.txt …
+{
+  const dir = path.join(root, "code");
+  fs.mkdirSync(dir, { recursive: true });
+  for (const fnName of ["whatsapp-bot", "customer-api", "whatsapp-send"]) {
+    const fn = path.join(root, "supabase", "functions", fnName, "index.ts");
+    if (fs.existsSync(fn)) fs.writeFileSync(path.join(dir, fnName + ".txt"), fs.readFileSync(fn, "utf8"));
+  }
+}
 console.log(`built ${path.relative(root, out)} (${(html.length / 1024).toFixed(0)} KB)`);

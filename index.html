@@ -1363,6 +1363,13 @@ body.auth-locked .top-logout{display:none!important}
                   <label><span data-en="Free delivery for orders from (BD) — 0 = off">توصيل مجاني للطلب من (د.ب) — 0 = لا يوجد</span><input id="dlvFreeOverSetting" type="text" inputmode="decimal" /></label>
                 </div>
               </div>
+              <div class="bp-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft);margin-bottom:12px">
+                <strong>💳 BenefitPay</strong>
+                <p class="section-note" style="margin:6px 0 8px">الرقم والاسم يظهران للعميل في رسائل واتساب (التذكير بالمتبقي، طلبك جاهز، المندوب في الطريق) ويعرفهما المساعد الذكي. رقم العملية من إشعار BenefitPay يُسجَّل مع كل دفعة للمطابقة.</p>
+                <div class="form-grid"><label><span>رقم BenefitPay (الجوال المرتبط)</span><input id="bpNumberSetting" type="text" inputmode="tel" placeholder="مثال: 39599902" /></label>
+                <label><span>الاسم الظاهر في BenefitPay</span><input id="bpNameSetting" type="text" placeholder="مثال: مغسلة 997" /></label></div>
+                <label class="check-line"><input id="bpRequireRefSetting" type="checkbox" checked /> <span>رقم العملية (Reference) إلزامي عند الدفع بـ Benefit Pay</span></label>
+              </div>
               <div class="wa-api-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft)">
                 <strong>📲 إيصال التسليم على واتساب</strong>
                 <p class="section-note" style="margin:6px 0 8px">بدون الربط: عند التسليم تُنسخ صورة الإيصال ويفتح واتساب على محادثة العميل (لصق ← إرسال). بعد تفعيل WhatsApp Business API من Meta وربطه في Supabase: تصل الصورة للعميل تلقائياً بدون أي ضغطة.</p>
@@ -8547,8 +8554,8 @@ body.auth-locked .top-logout{display:none!important}
         ur: () => `السلام علیکم ${n} 🌸\nآپ کے کپڑے ہمیں موصول ہو گئے ہیں — بالکل محفوظ ہاتھوں میں 🧺✨\n\n🧾 آرڈر نمبر: #${d.number}\n👕 قطعات: ${d.pieces}\n💰 آرڈر کی قیمت: ${d.covered ? "مکمل طور پر پیکیج سے 🎟" : d.total}${d.discount ? `\n🏷 رعایت شامل: ${d.discount}` : ""}${d.expected ? `\n⏰ متوقع تیاری: ${d.expected}` : ""}${d.urgent ? "\n⚡ فوری آرڈر — جلد از جلد تیار کریں گے" : ""}${d.pkg ? `\n🎟 ${d.pkg}` : ""}\n\nتیار ہوتے ہی آپ کو پیغام بھیج دیں گے 😊\n${SIGN.ur}`,
       },
       ready: {
-        ar: () => `بشارة حلوة يا ${n} 🎉\nطلبك رقم #${d.number} جاهز ومرتب بانتظارك 👔✨ (يلمع لين يحسبونه جديد 😄)\n\n👕 عدد القطع: ${d.pieces}\n${d.due > 0 ? `${d.paid > 0 ? `✅ المدفوع: ${d.paidTxt}\n📌 المتبقي: ${d.dueTxt}` : `💰 المبلغ المستحق: ${d.dueTxt}`}\n💳 الدفع نقداً أو بالبطاقة أو Benefit Pay عند الاستلام${d.credit > 0 ? `\n💙 لك رصيد لدينا ${d.creditTxt} — نقدر نخصم منه` : ""}` : `✅ مدفوع بالكامل — ما عليك إلا تشرفنا وتستلم`}\n\n${d.dlv ? `🚚 بنوصله لبيتك قريباً، وبنبلغك أول ما يطلع المندوب 🛵` : "نتشرف بزيارتك في أي وقت — المحل مفتوح 24 ساعة 🕐"}\n${SIGN.ar}`,
-        en: () => `Great news, ${n} 🎉\nYour order #${d.number} is ready and waiting for you 👔✨ (crisp enough to pass for brand new 😄)\n\n👕 Pieces: ${d.pieces}\n${d.due > 0 ? `${d.paid > 0 ? `✅ Paid: ${d.paidTxt}\n📌 Remaining: ${d.dueTxt}` : `💰 Amount due: ${d.dueTxt}`}\n💳 Pay by cash, card or Benefit Pay on pickup${d.credit > 0 ? `\n💙 You have ${d.creditTxt} credit with us — we can use it` : ""}` : `✅ Fully paid — just drop by and collect`}\n\n${d.dlv ? "🚚 We'll deliver it to your home soon and let you know when the driver is on the way 🛵" : "Come by anytime — we're open 24 hours 🕐"}\n${SIGN.en}`,
+        ar: () => `بشارة حلوة يا ${n} 🎉\nطلبك رقم #${d.number} جاهز ومرتب بانتظارك 👔✨ (يلمع لين يحسبونه جديد 😄)\n\n👕 عدد القطع: ${d.pieces}\n${d.due > 0 ? `${d.paid > 0 ? `✅ المدفوع: ${d.paidTxt}\n📌 المتبقي: ${d.dueTxt}` : `💰 المبلغ المستحق: ${d.dueTxt}`}\n💳 الدفع نقداً أو بالبطاقة أو Benefit Pay عند الاستلام${bpLine("ar", d.number) ? `\n${bpLine("ar", d.number)}` : ""}${d.credit > 0 ? `\n💙 لك رصيد لدينا ${d.creditTxt} — نقدر نخصم منه` : ""}` : `✅ مدفوع بالكامل — ما عليك إلا تشرفنا وتستلم`}\n\n${d.dlv ? `🚚 بنوصله لبيتك قريباً، وبنبلغك أول ما يطلع المندوب 🛵` : "نتشرف بزيارتك في أي وقت — المحل مفتوح 24 ساعة 🕐"}\n${SIGN.ar}`,
+        en: () => `Great news, ${n} 🎉\nYour order #${d.number} is ready and waiting for you 👔✨ (crisp enough to pass for brand new 😄)\n\n👕 Pieces: ${d.pieces}\n${d.due > 0 ? `${d.paid > 0 ? `✅ Paid: ${d.paidTxt}\n📌 Remaining: ${d.dueTxt}` : `💰 Amount due: ${d.dueTxt}`}\n💳 Pay by cash, card or Benefit Pay on pickup${bpLine("en", d.number) ? `\n${bpLine("en", d.number)}` : ""}${d.credit > 0 ? `\n💙 You have ${d.creditTxt} credit with us — we can use it` : ""}` : `✅ Fully paid — just drop by and collect`}\n\n${d.dlv ? "🚚 We'll deliver it to your home soon and let you know when the driver is on the way 🛵" : "Come by anytime — we're open 24 hours 🕐"}\n${SIGN.en}`,
         ur: () => `خوشخبری ${n} 🎉\nآپ کا آرڈر #${d.number} تیار ہے اور آپ کا منتظر ہے 👔✨\n\n👕 قطعات: ${d.pieces}\n${d.due > 0 ? `${d.paid > 0 ? `✅ ادا شدہ: ${d.paidTxt}\n📌 باقی: ${d.dueTxt}` : `💰 واجب الادا رقم: ${d.dueTxt}`}\n💳 وصولی پر نقد، کارڈ یا Benefit Pay سے ادائیگی کریں${d.credit > 0 ? `\n💙 آپ کا بیلنس ${d.creditTxt} ہے — اس سے کٹوتی ہو سکتی ہے` : ""}` : `✅ مکمل ادائیگی ہو چکی — بس تشریف لائیں اور وصول کریں`}\n\nکسی بھی وقت تشریف لائیں — ہم 24 گھنٹے کھلے ہیں 🕐\n${SIGN.ur}`,
       },
       delivered: {
@@ -8587,8 +8594,8 @@ body.auth-locked .top-logout{display:none!important}
         ur: () => `السلام علیکم ${n} 🌷\nہمارے ڈرائیور نے آج ${d.kind === "drop" ? `آپ کا آرڈر #${d.number} پہنچانے` : "آپ کے کپڑے لینے"} کی کوشش کی مگر رابطہ نہ ہو سکا 🙏\n📅 نیا وقت: ${d.when}\n\nکوئی اور وقت مناسب ہو تو یہاں جواب دیں 😊\n${SIGN.ur}`,
       },
       drop_onway: {
-        ar: () => `هلا ${n} 🛵\nطلبك رقم #${d.number} (${arPcs(d.pieces)}) طلع مع المندوب وفي الطريق لبيتك 🚚✨\n${d.due > 0 ? `💰 المبلغ المستحق عند الاستلام: ${d.dueTxt} (نقداً أو Benefit Pay)` : "✅ مدفوع بالكامل"}\n\nنشوفك على خير 🌷\n${SIGN.ar}`,
-        en: () => `Hi ${n} 🛵\nYour order #${d.number} (${d.pieces} pcs) is out for delivery 🚚✨\n${d.due > 0 ? `💰 Amount due on delivery: ${d.dueTxt} (cash or Benefit Pay)` : "✅ Fully paid"}\n\nSee you soon 🌷\n${SIGN.en}`,
+        ar: () => `هلا ${n} 🛵\nطلبك رقم #${d.number} (${arPcs(d.pieces)}) طلع مع المندوب وفي الطريق لبيتك 🚚✨\n${d.due > 0 ? `💰 المبلغ المستحق عند الاستلام: ${d.dueTxt} (نقداً أو Benefit Pay)${bpLine("ar", d.number) ? `\n${bpLine("ar", d.number)}` : ""}` : "✅ مدفوع بالكامل"}\n\nنشوفك على خير 🌷\n${SIGN.ar}`,
+        en: () => `Hi ${n} 🛵\nYour order #${d.number} (${d.pieces} pcs) is out for delivery 🚚✨\n${d.due > 0 ? `💰 Amount due on delivery: ${d.dueTxt} (cash or Benefit Pay)${bpLine("en", d.number) ? `\n${bpLine("en", d.number)}` : ""}` : "✅ Fully paid"}\n\nSee you soon 🌷\n${SIGN.en}`,
         ur: () => `السلام علیکم ${n} 🛵\nآپ کا آرڈر #${d.number} (${d.pieces} قطعات) ڈیلیوری کے لیے روانہ ہو گیا 🚚✨\n${d.due > 0 ? `💰 وصولی پر واجب الادا: ${d.dueTxt} (نقد یا Benefit Pay)` : "✅ مکمل ادائیگی ہو چکی"}\n\nجلد ملاقات ہوگی 🌷\n${SIGN.ur}`,
       },
       package: {
@@ -8597,8 +8604,8 @@ body.auth-locked .top-logout{display:none!important}
         ur: () => `السلام علیکم ${n} 🎟\nآپ کا پیکیج «${d.pkg}» فعال ہو گیا ✅\n\n👕 قطعات: ${d.pieces}\n🧺 شامل: ${d.garments}\n💰 پیکیج کی قیمت: ${d.price} (${d.method})${d.bonus ? `\n🎁 تحفہ: ${d.bonus}` : ""}${d.rules ? `\n📌 ${d.rules}` : ""}\n\nہر آرڈر کے ساتھ قطعات خودبخود کم ہوں گی اور ہم ہر بار باقی تعداد بتائیں گے 😊\n${SIGN.ur}`,
       },
       due: {
-        ar: () => `هلا والله ${n} 🌸\nحبينا نذكّرك بلطف إن المتبقي على حسابك لدينا ${d.amount}${d.lines ? `:\n${d.lines}` : "."}\n\nتقدر تسدده بأي وقت يناسبك عند زيارتك الجاية أو عن طريق Benefit Pay 🙏\nشكراً لتعاونك ودايماً بخدمتك 💐\n${SIGN.ar}`,
-        en: () => `Hi ${n} 🌸\nJust a friendly reminder that ${d.amount} is outstanding on your account${d.lines ? `:\n${d.lines}` : "."}\n\nYou can settle it whenever it suits you — on your next visit or via Benefit Pay 🙏\nThank you, and we're always here for you 💐\n${SIGN.en}`,
+        ar: () => `هلا والله ${n} 🌸\nحبينا نذكّرك بلطف إن المتبقي على حسابك لدينا ${d.amount}${d.lines ? `:\n${d.lines}` : "."}\n\nتقدر تسدده بأي وقت يناسبك عند زيارتك الجاية أو عن طريق Benefit Pay 🙏${bpLine("ar") ? `\n${bpLine("ar")}` : ""}\nشكراً لتعاونك ودايماً بخدمتك 💐\n${SIGN.ar}`,
+        en: () => `Hi ${n} 🌸\nJust a friendly reminder that ${d.amount} is outstanding on your account${d.lines ? `:\n${d.lines}` : "."}\n\nYou can settle it whenever it suits you — on your next visit or via Benefit Pay 🙏${bpLine("en") ? `\n${bpLine("en")}` : ""}\nThank you, and we're always here for you 💐\n${SIGN.en}`,
         ur: () => `السلام علیکم ${n} 🌸\nنرم یاد دہانی: آپ کے اکاؤنٹ پر ${d.amount} باقی ہیں${d.lines ? `:\n${d.lines}` : "۔"}\n\nاپنی سہولت کے مطابق اگلی آمد پر یا Benefit Pay کے ذریعے ادا کر دیں 🙏\nشکریہ، ہم ہمیشہ آپ کی خدمت میں ہیں 💐\n${SIGN.ur}`,
       },
     };
@@ -9364,6 +9371,20 @@ body.auth-locked .top-logout{display:none!important}
     { value: "benefitpay", label: "Benefit Pay" }, { value: "balance", label: "من رصيد العميل" },
     { value: "bank_transfer", label: "تحويل بنكي" }, { value: "unpaid", label: "آجل (دين على العميل)" },
   ];
+  // 💳 BenefitPay: الرقم والاسم من الإعدادات (لا يُكتب في الكود) — يظهر في رسائل واتساب، ورقم العملية إلزامي عند الدفع به
+  const bpCfg = () => { const b = settings.benefitPay || {}; return { number: String(b.number || "").trim(), name: String(b.name || "").trim(), requireRef: b.requireRef !== false }; };
+  const normRef = (v) => toLatinDigits(String(v || "")).replace(/[^0-9A-Za-z-]/g, "").slice(0, 40);
+  function bpRefProblem(method, ref) {
+    if (method !== "benefitpay" || !bpCfg().requireRef) return "";
+    if (normRef(ref).length < 4) return "اكتب رقم عملية Benefit Pay (Reference) من إشعار التطبيق — مطلوب للمطابقة";
+    const dup = orders.find((o) => o.payment && o.payment.ref && o.payment.ref === normRef(ref)) || ledger.find((t) => t.ref && t.ref === normRef(ref));
+    return dup ? `رقم العملية ${normRef(ref)} مسجّل من قبل${dup.number ? ` على الطلب #${dup.number}` : ""} — تأكد منه` : "";
+  }
+  function bpLine(L, orderNo) {
+    const b = bpCfg(); if (!b.number) return "";
+    return L === "en" ? `💳 BenefitPay: ${b.number}${b.name ? ` (${b.name})` : ""}${orderNo ? ` — write order #${orderNo} in the note` : ""}`
+      : `💳 BenefitPay على الرقم: ${b.number}${b.name ? ` (${b.name})` : ""}${orderNo ? ` — اكتب رقم الطلب #${orderNo} في الملاحظة` : ""}`;
+  }
   // وصف حالة الدفع للعرض: الطلب الجاهز بدون دفع = "يُدفع عند الاستلام"
   // المتبقي على الطلب الآن (بعد أي سداد لاحق) — المصدر الوحيد لكل الشاشات والإيصالات
   function orderOwedNow(order) {
@@ -9375,7 +9396,7 @@ body.auth-locked .top-logout{display:none!important}
   }
   function orderPayLabel(order) {
     if (!order.paymentConfirmed && order.status !== "cancelled") return order.payLater ? (lang === "en" ? "⏳ Pay on pickup" : "⏳ يُدفع عند الاستلام") : (lang === "en" ? "Not paid yet" : "لم يُدفع بعد");
-    return paymentLabel(order.payment.method);
+    return paymentLabel(order.payment.method) + (order.payment.ref ? ` · ${order.payment.ref}` : "");
   }
   // يتحقق من مدخلات الدفع ويسجّلها على الطلب ثم يستدعي onDone(now).
   // يرجع false عند خطأ بالإدخال (تبقى النافذة مفتوحة). الآجل/الجزئي مسموح مباشرة ويُسجَّل باسم الموظف.
@@ -9388,6 +9409,7 @@ body.auth-locked .top-logout{display:none!important}
       paid = 0;
     } else if (method === "unpaid") paid = 0;
     else if (paid <= 0 && total > 0) { toast("أدخل المبلغ المحصّل أو اختر «آجل»"); return false; }
+    { const bad = bpRefProblem(method, v.ref); if (bad) { toast(bad); document.getElementById("qf_ref")?.focus(); return false; } }
     let overpay = 0;
     if (method !== "balance" && method !== "unpaid" && paid > total) { overpay = round3(paid - total); paid = total; }
     const owed = method === "balance" ? 0 : round3(Math.max(0, total - paid));
@@ -9395,6 +9417,7 @@ body.auth-locked .top-logout{display:none!important}
       if (order.paymentConfirmed) { toast("تم تأكيد دفع هذا الطلب مسبقاً"); return; }
       const now = new Date().toISOString();
       order.payment.method = method;
+      if (method === "benefitpay" && normRef(v.ref)) order.payment.ref = normRef(v.ref);
       order.payment.paid = paid;
       order.payment.outstanding = owed;
       order.paymentConfirmed = true;
@@ -9441,6 +9464,7 @@ body.auth-locked .top-logout{display:none!important}
       fields: [
         { id: "method", label: "طريقة الدفع", type: "select", value: "cash", options: [{ value: "later", label: "⏳ الدفع لاحقاً — عند استلام العميل" }, ...PAY_OPTIONS] },
         { id: "paid", label: "المبلغ المحصّل (د.ب) — يُتجاهل عند «الدفع لاحقاً»", type: "number", step: "0.001", value: total, min: 0 },
+        { id: "ref", label: "🔖 رقم عملية Benefit Pay (Reference) — مطلوب عند الدفع بـ Benefit", type: "text", value: "", placeholder: "مثال: 230145678912" },
       ],
       submitLabel: "تأكيد التجهيز",
       onSubmit: (v) => {
@@ -9483,6 +9507,7 @@ body.auth-locked .top-logout{display:none!important}
     if (needPay) fields.push(
       { id: "method", label: "💳 طريقة الدفع", type: "select", value: "cash", options: PAY_OPTIONS },
       { id: "paid", label: "المبلغ المحصّل (د.ب)", type: "number", step: "0.001", value: order.payment.total, min: 0 },
+      { id: "ref", label: "🔖 رقم عملية Benefit Pay (Reference) — مطلوب عند الدفع بـ Benefit", type: "text", value: "", placeholder: "مثال: 230145678912" },
     );
     openQuickForm({
       title: `📦 تسليم الطلب #${order.number}`,
@@ -10393,6 +10418,7 @@ body.auth-locked .top-logout{display:none!important}
         { id: "type", label: BX("f_type"), type: "select", value: type, options: [["credit", "op_credit"], ["cash_refund", "op_refund"], ["debit", "op_debit"], ["adj_plus", "op_adj_plus"], ["adj_minus", "op_adj_minus"]].filter(([v]) => allowedTypes.includes(v)).map(([v, l]) => ({ value: v, label: BX(l) })) },
         { id: "amount", label: BX("f_amount"), type: "number", step: "0.001", value: opts.amount || "", min: 0 },
         { id: "method", label: BX("f_method"), type: "select", value: "cash", options: BAL_METHODS.map(([v, l]) => ({ value: v, label: BX(l) })) },
+        { id: "ref", label: "🔖 رقم عملية Benefit Pay (Reference) — مطلوب عند الدفع بـ Benefit", type: "text", value: "", placeholder: "مثال: 230145678912" },
         { id: "note", label: BX("f_note"), type: "text", value: opts.note || "" },
         { id: "notify", label: BX("f_notify"), type: "select", value: type === "credit" ? "yes" : "no", options: [{ value: "yes", label: BX("yes") }, { value: "no", label: BX("no") }] },
       ],
@@ -10421,7 +10447,7 @@ body.auth-locked .top-logout{display:none!important}
         const hasMethod = real === "credit" || real === "cash_refund";
         c.balance = round3(c.balance + amount);
         const settles = !!forOrder && real === "credit" && c.id === forOrder.customerId;
-        ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId: c.id, type: real, amount, balanceAfter: c.balance, method: hasMethod ? v.method : "", note: v.note || (settles ? `سداد طلب #${forOrder.number}` : ""), orderId: settles ? forOrder.id : null, settles: settles || undefined, at: new Date().toISOString() });
+        ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId: c.id, type: real, amount, balanceAfter: c.balance, method: hasMethod ? v.method : "", ref: hasMethod && v.method === "benefitpay" && normRef(v.ref) ? normRef(v.ref) : undefined, note: v.note || (settles ? `سداد طلب #${forOrder.number}` : ""), orderId: settles ? forOrder.id : null, settles: settles || undefined, at: new Date().toISOString() });
         logActivity(`${BX((TX_META[real] || {}).k || "tx_adjust")} — ${c.name}: ${money(Math.abs(amount))}`, Math.abs(amount));
         persistAll(); renderBalancesPage(); toast(BX("ok_tx") + (c.balance < 0 ? " — " + BX("now_debtor") : ""));
         if (v.notify === "yes") {
@@ -10718,8 +10744,19 @@ body.auth-locked .top-logout{display:none!important}
     const metric = (label, value, color) => `<div class="metric-card"><div class="metric-top"><span>${label}</span></div><div class="metric-value"${color ? ` style="color:${color}"` : ""}>${value}</div></div>`;
     const row = (label, value, color, strong) => `<div class="dash-revexp-row"><span class="label">${strong ? `<strong>${label}</strong>` : label}</span><span class="value"${color ? ` style="color:${color}"` : ""}>${strong ? `<strong>${money(value)}</strong>` : money(value)}</span></div>`;
 
+    // 💳 مطابقة BenefitPay: كل دفعة بـ Benefit في الفترة مع رقم العملية — للمقارنة مع كشف تطبيق BenefitPay
+    const bpRows = [
+      ...orders.filter((o) => o.status !== "cancelled" && o.payment && o.payment.method === "benefitpay" && o.paymentConfirmed && FIN.inRange(FIN.orderPaidAt(o), fromInput, toInput))
+        .map((o) => ({ at: FIN.orderPaidAt(o), who: (customers.find((c) => c.id === o.customerId) || {}).name || "—", what: `${lang === "en" ? "Order" : "طلب"} #${o.number}`, amount: round3(o.payment.paid), ref: o.payment.ref || "" })),
+      ...ledger.filter((t) => t.method === "benefitpay" && !t.orderId && !t.reversedBy && FIN.inRange(t.at, fromInput, toInput) && (t.type === "credit" || t.type === "package_purchase"))
+        .map((t) => ({ at: t.at, who: (customers.find((c) => c.id === t.customerId) || {}).name || "—", what: t.type === "package_purchase" ? (lang === "en" ? "Package" : "باقة") : (lang === "en" ? "Deposit / debt payment" : "إيداع / سداد دين"), amount: round3(t.type === "package_purchase" ? FIN.packagePrice(t, customerPackages) : t.amount), ref: t.ref || "" })),
+    ].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    const bpPanel = bpRows.length ? `<div class="panel"><div class="panel-header"><div><h3>💳 ${lang === "en" ? "BenefitPay payments — reconcile with the BenefitPay app" : "مدفوعات BenefitPay — طابقها مع كشف تطبيق BenefitPay"}</h3>
+      <p>${bpRows.length} ${lang === "en" ? "payments" : "دفعة"} · <b>${money(bpRows.reduce((a, r) => a + r.amount, 0))}</b>${bpRows.some((r) => !r.ref) ? ` · <b style="color:var(--danger)">⚠ ${bpRows.filter((r) => !r.ref).length} ${lang === "en" ? "without a reference number" : "بدون رقم عملية"}</b>` : ""}</p></div></div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>${lang === "en" ? "Time" : "الوقت"}</th><th>${lang === "en" ? "Customer" : "العميل"}</th><th>${lang === "en" ? "For" : "عن"}</th><th>${lang === "en" ? "Amount" : "المبلغ"}</th><th>${lang === "en" ? "Reference" : "رقم العملية"}</th></tr></thead>
+      <tbody>${bpRows.map((r) => `<tr><td>${fmtDT(r.at)}</td><td>${esc(r.who)}</td><td>${esc(r.what)}</td><td>${money(r.amount)}</td><td>${r.ref ? `<b dir="ltr">${esc(r.ref)}</b>` : `<b style="color:var(--danger)">⚠ ${lang === "en" ? "missing" : "غير مسجّل"}</b>`}</td></tr>`).join("")}</tbody></table></div></div>` : "";
     if (activeReportType === "overview") {
-      content.innerHTML = `
+      content.innerHTML = `${bpPanel}
         <div class="metrics-grid" id="reportMetrics"></div>
         <div class="content-grid two-cols" style="margin-top:16px">
           <div class="panel"><div class="panel-header"><div><h3>${FX("cash_methods")}</h3></div></div><div id="paymentReport" class="report-bars"></div></div>
@@ -10835,6 +10872,7 @@ body.auth-locked .top-logout{display:none!important}
     document.getElementById("urgentHoursSetting").value = settings.urgentHours;
     document.getElementById("shiftsRequiredSetting").checked = settings.shiftsRequired === true;
     document.getElementById("waApiSetting").checked = !!(settings.waApi && settings.waApi.enabled);
+    { const b = bpCfg(); const set = (id, v) => { const el = document.getElementById(id); if (el) { if (el.type === "checkbox") el.checked = v; else el.value = v; } }; set("bpNumberSetting", b.number); set("bpNameSetting", b.name); set("bpRequireRefSetting", b.requireRef); }
     if (lang !== "ar") document.querySelectorAll(".dlv-settings-box [data-en], .wa-bot-box [data-en]").forEach((el) => { el.textContent = el.dataset.en; });
     { const b = waCfg(); const set = (id, v) => { const el = document.getElementById(id); if (el) { if (el.type === "checkbox") el.checked = v; else el.value = v; } };
       set("waBotOn", b.enabled); set("waBotStaffOn", b.staffOn); set("waBotFrom", b.staffFrom); set("waBotTo", b.staffTo); set("waBotHours", b.hoursText); set("waBotAreas", b.areas); set("waBotExtra", b.extra); }
@@ -11077,6 +11115,11 @@ body.auth-locked .top-logout{display:none!important}
     const waOn = document.getElementById("waApiSetting").checked;
     if (!!(settings.waApi && settings.waApi.enabled) !== waOn) logActivity(`${waOn ? "تفعيل" : "إيقاف"} الإرسال التلقائي لإيصال التسليم عبر WhatsApp Business API`);
     settings.waApi = { ...(settings.waApi || {}), enabled: waOn };
+    if (document.getElementById("bpNumberSetting")) {
+      const nb = { number: toLatinDigits(document.getElementById("bpNumberSetting").value).replace(/[^0-9+ ]/g, "").trim(), name: document.getElementById("bpNameSetting").value.trim().slice(0, 60), requireRef: document.getElementById("bpRequireRefSetting").checked };
+      if (JSON.stringify(nb) !== JSON.stringify(bpCfg())) logActivity(`💳 تعديل إعدادات BenefitPay — الرقم: ${nb.number || "—"} · الاسم: ${nb.name || "—"} · رقم العملية ${nb.requireRef ? "إلزامي" : "اختياري"}`);
+      settings.benefitPay = nb;
+    }
     if (document.getElementById("waBotOn")) {
       const v = (id) => (document.getElementById(id).value || "").trim();
       const nb = { enabled: document.getElementById("waBotOn").checked, staffOn: document.getElementById("waBotStaffOn").checked, staffFrom: v("waBotFrom") || "08:00", staffTo: v("waBotTo") || "23:00", hoursText: v("waBotHours") || "مفتوح 24 ساعة", areas: v("waBotAreas"), extra: v("waBotExtra").slice(0, 3000) };
@@ -11451,17 +11494,19 @@ body.auth-locked .top-logout{display:none!important}
           { value: "cash", label: "نقداً" }, { value: "card", label: "بطاقة" },
           { value: "benefitpay", label: "Benefit Pay" }, { value: "bank_transfer", label: "تحويل بنكي" },
         ] },
+        { id: "ref", label: "🔖 رقم عملية Benefit Pay (Reference) — مطلوب عند الدفع بـ Benefit", type: "text", value: "", placeholder: "مثال: 230145678912" },
         ...pkgTermsFields(defTerms(settings.packageDefs[0]), false),
       ],
       onSubmit: (v) => {
         const def = settings.packageDefs.find((p) => p.id === v.defId);
         if (!def) return;
         const terms = readPkgTerms(v, false); if (terms.error) { toast(terms.error); return false; }
+        { const bad = bpRefProblem(v.method, v.ref); if (bad) { toast(bad); return false; } }
         const now = new Date().toISOString();
         const cp = { id: uid(), customerId, defId: def.id, name: def.name, serviceType: def.serviceType, garments: Array.isArray(def.garments) ? [...def.garments] : [], totalPieces: def.pieceCount, remainingPieces: def.pieceCount, price: def.price, purchasedAt: now, ...terms };
         if (cp.dlvTrips === undefined) delete cp.dlvTrips;
         customerPackages.unshift(cp);
-        ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId, type: "package_purchase", amount: 0, price: round3(def.price), packageId: cp.id, balanceAfter: cust.balance, method: v.method, note: `شراء باقة: ${def.name} — ${money(def.price)}`, orderId: null, at: now });
+        ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId, type: "package_purchase", amount: 0, price: round3(def.price), packageId: cp.id, balanceAfter: cust.balance, method: v.method, ref: v.method === "benefitpay" && normRef(v.ref) ? normRef(v.ref) : undefined, note: `شراء باقة: ${def.name} — ${money(def.price)}`, orderId: null, at: now });
         persistAll();
         logActivity(`${cust.name} اشترى باقة «${def.name}» (${def.pieceCount} قطعة، ${money(def.price)})`, def.price);
         toast(`تم تفعيل باقة «${def.name}» للعميل — ${def.pieceCount} قطعة متاحة`);
