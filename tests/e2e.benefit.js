@@ -36,9 +36,9 @@ function check(name, cond, detail) { console.log(`${cond ? "PASS" : "FAIL"}  ${n
   await nav("settings"); await wait(300);
   // the BenefitPay box is on the operating-settings tab
   await page.evaluate(() => { const t = [...document.querySelectorAll("[data-settings-tab]")].find((x) => { x.click(); return !!document.getElementById("bpNumberSetting") && document.getElementById("bpNumberSetting").offsetParent; }); return !!t; });
-  await page.fill("#bpNumberSetting", "39599902"); await page.fill("#bpNameSetting", "مغسلة 997");
+  await page.fill("#bpNumberSetting", "39599902"); await page.fill("#bpNameSetting", "مغسلة 997"); await page.fill("#bpIbanSetting", "BH12 TEST 0000 1111 2222 33");
   await page.click("#saveSettingsBtn"); await wait(300);
-  check("BenefitPay number & name saved in Settings", JSON.stringify((await ls("l997_settings")).benefitPay) === JSON.stringify({ number: "39599902", name: "مغسلة 997", requireRef: true }), JSON.stringify((await ls("l997_settings")).benefitPay));
+  check("BenefitPay number & name saved in Settings", JSON.stringify((await ls("l997_settings")).benefitPay) === JSON.stringify({ number: "39599902", name: "مغسلة 997", iban: "BH12TEST0000111122223333".slice(0, 22), qr: "", requireRef: true }), JSON.stringify((await ls("l997_settings")).benefitPay));
 
   const openOrder = async (id) => { await closeAll(); await nav("orders"); await page.evaluate((id) => document.querySelector(`#ordersBody [data-view="${id}"]`).click(), id); await wait(200); };
   await openOrder("1"); await page.click("#advanceStatusBtn"); await page.waitForSelector("#qf_method");
@@ -55,11 +55,17 @@ function check(name, cond, detail) { console.log(`${cond ? "PASS" : "FAIL"}  ${n
   await page.waitForSelector("#quickFormCancelBtn", { state: "visible", timeout: 1500 }).catch(() => {});
   if (await page.isVisible("#quickFormSubmitBtn")) { await page.click("#quickFormSubmitBtn"); await wait(400); }
   const msg = (await opened()).filter((u) => /api\.whatsapp\.com/.test(u)).pop() || "";
+  check("…and the IBAN (grouped by 4)", /أو تحويل للآيبان: BH12 TEST 0000 1111 2222 33/.test(msg), msg.slice(-160));
   check("the 'ready' WhatsApp message shows the BenefitPay number and order to write", /BenefitPay على الرقم: 39599902 \(مغسلة 997\) — اكتب رقم الطلب #00002/.test(msg), msg.slice(-200));
   await openOrder("1");
   check("the order shows the method with its reference", /230145678912/.test(await page.textContent("#orderDialogContent")));
   await closeAll(); await nav("reports"); await wait(400);
   check("reports list BenefitPay payments with references for reconciliation", /مدفوعات BenefitPay/.test(await page.textContent("#reportContent")) && /230145678912/.test(await page.textContent("#reportContent")));
+  await page.evaluate(() => window.openCustomerProfile997("c1")); await page.waitForTimeout(300);
+  check("the customer file offers «send BenefitPay details» while money is owed", await page.isVisible("#cpPayInfo"));
+  await page.click("#cpPayInfo"); await page.waitForTimeout(300);
+  const pm = (await opened()).filter((u) => /api\.whatsapp\.com/.test(u)).pop() || "";
+  check("…the message has the amount, BenefitPay number and IBAN", /المبلغ المطلوب: 2\.000/.test(pm) && /39599902/.test(pm) && /BH12 TEST/.test(pm), pm.slice(0, 200));
   check("no JavaScript errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   await browser.close();
   console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL BENEFITPAY CHECKS PASSED");

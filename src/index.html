@@ -545,7 +545,10 @@
                 <strong>💳 BenefitPay</strong>
                 <p class="section-note" style="margin:6px 0 8px">الرقم والاسم يظهران للعميل في رسائل واتساب (التذكير بالمتبقي، طلبك جاهز، المندوب في الطريق) ويعرفهما المساعد الذكي. رقم العملية من إشعار BenefitPay يُسجَّل مع كل دفعة للمطابقة.</p>
                 <div class="form-grid"><label><span>رقم BenefitPay (الجوال المرتبط)</span><input id="bpNumberSetting" type="text" inputmode="tel" placeholder="مثال: 39599902" /></label>
-                <label><span>الاسم الظاهر في BenefitPay</span><input id="bpNameSetting" type="text" placeholder="مثال: مغسلة 997" /></label></div>
+                <label><span>الاسم الظاهر في BenefitPay</span><input id="bpNameSetting" type="text" placeholder="مثال: مغسلة 997" /></label>
+                <label><span>الآيبان (IBAN)</span><input id="bpIbanSetting" type="text" dir="ltr" autocapitalize="characters" placeholder="BH00 XXXX 0000 0000 0000 00" /></label>
+                <label><span>باركود BenefitPay (صورة من التطبيق: Show My QR ← Share ← حفظ الصورة)</span><input id="bpQrFile" type="file" accept="image/*" /></label></div>
+                <div id="bpQrPreview" class="row-actions" style="margin:6px 0"></div>
                 <label class="check-line"><input id="bpRequireRefSetting" type="checkbox" checked /> <span>رقم العملية (Reference) إلزامي عند الدفع بـ Benefit Pay</span></label>
               </div>
               <div class="wa-api-box" style="border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--panel-soft)">

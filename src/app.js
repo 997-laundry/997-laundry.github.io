@@ -5434,18 +5434,39 @@
     { value: "bank_transfer", label: "تحويل بنكي" }, { value: "unpaid", label: "آجل (دين على العميل)" },
   ];
   // 💳 BenefitPay: الرقم والاسم من الإعدادات (لا يُكتب في الكود) — يظهر في رسائل واتساب، ورقم العملية إلزامي عند الدفع به
-  const bpCfg = () => { const b = settings.benefitPay || {}; return { number: String(b.number || "").trim(), name: String(b.name || "").trim(), requireRef: b.requireRef !== false }; };
+  const bpCfg = () => { const b = settings.benefitPay || {}; return { number: String(b.number || "").trim(), name: String(b.name || "").trim(), iban: String(b.iban || "").replace(/\s+/g, "").toUpperCase(), qr: typeof b.qr === "string" && b.qr.startsWith("data:image/") ? b.qr : "", requireRef: b.requireRef !== false }; };
+  const fmtIban = (v) => String(v || "").replace(/(.{4})/g, "$1 ").trim();
   const normRef = (v) => toLatinDigits(String(v || "")).replace(/[^0-9A-Za-z-]/g, "").slice(0, 40);
+  const bpRefField = () => ({ id: "ref", label: lang === "ar" ? "🔖 رقم عملية Benefit Pay (Reference) — مطلوب عند الدفع بـ Benefit" : "🔖 Benefit Pay reference — required when paying by Benefit", type: "text", value: "", placeholder: lang === "ar" ? "مثال: 230145678912" : "e.g. 230145678912" });
   function bpRefProblem(method, ref) {
     if (method !== "benefitpay" || !bpCfg().requireRef) return "";
-    if (normRef(ref).length < 4) return "اكتب رقم عملية Benefit Pay (Reference) من إشعار التطبيق — مطلوب للمطابقة";
+    if (normRef(ref).length < 4) return lang === "ar" ? "اكتب رقم عملية Benefit Pay (Reference) من إشعار التطبيق — مطلوب للمطابقة" : "Enter the Benefit Pay reference from the app notification — needed for reconciliation";
     const dup = orders.find((o) => o.payment && o.payment.ref && o.payment.ref === normRef(ref)) || ledger.find((t) => t.ref && t.ref === normRef(ref));
-    return dup ? `رقم العملية ${normRef(ref)} مسجّل من قبل${dup.number ? ` على الطلب #${dup.number}` : ""} — تأكد منه` : "";
+    return dup ? (lang === "ar" ? `رقم العملية ${normRef(ref)} مسجّل من قبل${dup.number ? ` على الطلب #${dup.number}` : ""} — تأكد منه` : `Reference ${normRef(ref)} was already used${dup.number ? ` on order #${dup.number}` : ""} — please check`) : "";
   }
   function bpLine(L, orderNo) {
-    const b = bpCfg(); if (!b.number) return "";
-    return L === "en" ? `💳 BenefitPay: ${b.number}${b.name ? ` (${b.name})` : ""}${orderNo ? ` — write order #${orderNo} in the note` : ""}`
-      : `💳 BenefitPay على الرقم: ${b.number}${b.name ? ` (${b.name})` : ""}${orderNo ? ` — اكتب رقم الطلب #${orderNo} في الملاحظة` : ""}`;
+    const b = bpCfg(); if (!b.number && !b.iban) return "";
+    const en = L === "en", out = [];
+    if (b.number) out.push(en ? `💳 BenefitPay: ${b.number}${b.name ? ` (${b.name})` : ""}${orderNo ? ` — write order #${orderNo} in the note` : ""}` : `💳 BenefitPay على الرقم: ${b.number}${b.name ? ` (${b.name})` : ""}${orderNo ? ` — اكتب رقم الطلب #${orderNo} في الملاحظة` : ""}`);
+    if (b.iban) out.push(en ? `🏦 Or transfer to IBAN: ${fmtIban(b.iban)}` : `🏦 أو تحويل للآيبان: ${fmtIban(b.iban)}`);
+    return out.join("\n");
+  }
+  // 📲 إرسال طريقة الدفع للعميل: صورة باركود BenefitPay تُنسخ (لصق ← إرسال في واتساب) + نص بالمبلغ والرقم والآيبان
+  async function sendPayInfo(cust, amount, orderNo) {
+    const b = bpCfg(); if (!cust || !cust.phone || (!b.number && !b.iban && !b.qr)) return;
+    const L = lang === "en" ? "en" : "ar";
+    const text = L === "en" ? `Hi ${cust.name} 🌸\nAmount due: ${money(amount)}${orderNo ? ` (order #${orderNo})` : ""}\n${bpLine("en", orderNo)}${b.qr ? "\n📷 Or scan the BenefitPay QR code (image attached)" : ""}\n\nThank you 💙\n${SIGN.en}`
+      : `هلا ${cust.name} 🌸\nالمبلغ المطلوب: ${money(amount)}${orderNo ? ` (طلب #${orderNo})` : ""}\n${bpLine("ar", orderNo)}${b.qr ? "\n📷 أو امسح باركود BenefitPay (الصورة مرفقة)" : ""}\n\nشكراً لك 💙\n${SIGN.ar}`;
+    let copied = false;
+    if (b.qr) {
+      try {
+        const bin = atob(b.qr.split(",")[1]), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        if (navigator.clipboard && window.ClipboardItem) { await navigator.clipboard.write([new window.ClipboardItem({ "image/png": new Blob([u8], { type: "image/png" }) })]); copied = true; }
+      } catch (e) { copied = false; }
+    }
+    openWhatsApp(cust.phone, text);
+    logActivity(`💳 إرسال طريقة الدفع BenefitPay — ${cust.name} — ${money(amount)}${orderNo ? ` — طلب #${orderNo}` : ""}`);
+    if (copied) toast(lang === "en" ? "📋 QR image copied — in WhatsApp: press and hold → Paste → Send" : "📋 نُسخت صورة الباركود — في واتساب: اضغط مطوّلاً ← «لصق» ← إرسال");
   }
   // وصف حالة الدفع للعرض: الطلب الجاهز بدون دفع = "يُدفع عند الاستلام"
   // المتبقي على الطلب الآن (بعد أي سداد لاحق) — المصدر الوحيد لكل الشاشات والإيصالات
@@ -5526,7 +5547,7 @@
       fields: [
         { id: "method", label: "طريقة الدفع", type: "select", value: "cash", options: [{ value: "later", label: "⏳ الدفع لاحقاً — عند استلام العميل" }, ...PAY_OPTIONS] },
         { id: "paid", label: "المبلغ المحصّل (د.ب) — يُتجاهل عند «الدفع لاحقاً»", type: "number", step: "0.001", value: total, min: 0 },
-        { id: "ref", label: "🔖 رقم عملية Benefit Pay (Reference) — مطلوب عند الدفع بـ Benefit", type: "text", value: "", placeholder: "مثال: 230145678912" },
+        bpRefField(),
       ],
       submitLabel: "تأكيد التجهيز",
       onSubmit: (v) => {
@@ -5569,7 +5590,7 @@
     if (needPay) fields.push(
       { id: "method", label: "💳 طريقة الدفع", type: "select", value: "cash", options: PAY_OPTIONS },
       { id: "paid", label: "المبلغ المحصّل (د.ب)", type: "number", step: "0.001", value: order.payment.total, min: 0 },
-      { id: "ref", label: "🔖 رقم عملية Benefit Pay (Reference) — مطلوب عند الدفع بـ Benefit", type: "text", value: "", placeholder: "مثال: 230145678912" },
+      bpRefField(),
     );
     openQuickForm({
       title: `📦 تسليم الطلب #${order.number}`,
@@ -5784,6 +5805,7 @@
             const later = order.paymentConfirmed && order.status !== "cancelled" ? round3(paidNow - (order.payment.method === "balance" ? order.payment.total : Number(order.payment.paid) || 0)) : 0;
             return `<div class="details-line"><span>${t("dlg_paid")}</span><strong>${money(paidNow)}</strong></div>
             ${later > 0 ? `<div class="details-line"><span class="inv-muted">${lang === "en" ? "of which paid later" : "منها سداد لاحق"}</span><span>${money(later)}</span></div>` : ""}
+            ${owedNow > 0 && cust && (bpCfg().number || bpCfg().iban || bpCfg().qr) ? `<div class="details-line"><span></span><button type="button" class="mini-btn" id="orderPayInfoBtn">💳 ${lang === "en" ? "Send BenefitPay details" : "إرسال طريقة الدفع"}</button></div>` : ""}
             <div class="details-line"><span>${t("dlg_remaining")}</span><strong style="color:${owedNow > 0 ? "var(--danger)" : "var(--success)"}">${owedNow > 0 ? money(owedNow) : order.debtRecorded && order.status !== "cancelled" ? (lang === "en" ? "Settled ✓" : "مسدَّد ✓") : money(0)}</strong></div>`;
           })()}
           ${order.refund ? `<div class="details-line"><span>${lang === "en" ? "Refunded" : "المبلغ المُرجَع"}</span><strong>${money(order.refund.amount)} — ${order.refund.mode === "balance" ? (lang === "en" ? "to balance" : "للرصيد") : paymentLabel(order.refund.method)}</strong></div>` : ""}
@@ -5812,6 +5834,7 @@
     `;
 
     document.getElementById("closeOrderDialog")?.addEventListener("click", () => orderDialog.close());
+    document.getElementById("orderPayInfoBtn")?.addEventListener("click", () => sendPayInfo(cust, orderOwedNow(order), order.number));
     document.getElementById("closeOrderDialog2")?.addEventListener("click", () => orderDialog.close());
     document.getElementById("advanceStatusBtn")?.addEventListener("click", () => {
       if (next === "ready") { openReadyPaymentForm(order); return; }
@@ -6175,6 +6198,7 @@
           ${settings.packageDefs.length ? `<button class="secondary-btn" type="button" id="cpSellPkg">🎟 ${en ? "Sell package" : "بيع باقة"}</button>` : ""}
           ${can("balance_tx") ? `<button class="secondary-btn" type="button" id="cpSettle">${cs.debt > 0 ? L.settle : en ? "💵 Add deposit" : "💵 إيداع رصيد"}</button>` : ""}
           ${cs.totalOwed > 0 ? `<button class="whatsapp-btn" type="button" id="cpRemind">${L.wa}</button>` : ""}
+          ${cs.totalOwed > 0 && (bpCfg().number || bpCfg().iban || bpCfg().qr) ? `<button class="secondary-btn" type="button" id="cpPayInfo">💳 ${en ? "Send BenefitPay details" : "إرسال طريقة الدفع (BenefitPay)"}</button>` : ""}
           ${can("view_balances") ? `<button class="ghost-btn" type="button" id="cpStatement">${L.stmt}</button>` : ""}
           ${customerDeletable(c) ? `<button class="ghost-btn danger-mini" type="button" id="cpDelete">🗑 ${en ? "Delete customer" : "حذف العميل"}</button>` : ""}
         </div>
@@ -6186,6 +6210,7 @@
     q("cpNewOrder").onclick = () => { customerProfileDialog.close(); openPage("new-order"); selectCustomerForOrder(c, true); };
     if (q("cpSettle")) q("cpSettle").onclick = () => balTxForm({ custId: c.id, type: "credit", amount: cs.debt > 0 ? cs.debt : "", note: "", onDone: renderCustomerProfile });
     if (q("cpRemind")) q("cpRemind").onclick = () => sendDueReminder(c);
+    if (q("cpPayInfo")) q("cpPayInfo").onclick = () => sendPayInfo(c, cs.totalOwed, "");
     if (q("cpDelete")) q("cpDelete").onclick = () => deleteCustomer(c.id);
     if (q("cpStatement")) q("cpStatement").onclick = () => { customerProfileDialog.close(); bv.stmt = c.id; openPage("balances"); };
     if (q("cpPickup")) q("cpPickup").onclick = () => { customerProfileDialog.close(); openPickupForm(c.id); };
@@ -6480,7 +6505,7 @@
         { id: "type", label: BX("f_type"), type: "select", value: type, options: [["credit", "op_credit"], ["cash_refund", "op_refund"], ["debit", "op_debit"], ["adj_plus", "op_adj_plus"], ["adj_minus", "op_adj_minus"]].filter(([v]) => allowedTypes.includes(v)).map(([v, l]) => ({ value: v, label: BX(l) })) },
         { id: "amount", label: BX("f_amount"), type: "number", step: "0.001", value: opts.amount || "", min: 0 },
         { id: "method", label: BX("f_method"), type: "select", value: "cash", options: BAL_METHODS.map(([v, l]) => ({ value: v, label: BX(l) })) },
-        { id: "ref", label: "🔖 رقم عملية Benefit Pay (Reference) — مطلوب عند الدفع بـ Benefit", type: "text", value: "", placeholder: "مثال: 230145678912" },
+        bpRefField(),
         { id: "note", label: BX("f_note"), type: "text", value: opts.note || "" },
         { id: "notify", label: BX("f_notify"), type: "select", value: type === "credit" ? "yes" : "no", options: [{ value: "yes", label: BX("yes") }, { value: "no", label: BX("no") }] },
       ],
@@ -6934,7 +6959,20 @@
     document.getElementById("urgentHoursSetting").value = settings.urgentHours;
     document.getElementById("shiftsRequiredSetting").checked = settings.shiftsRequired === true;
     document.getElementById("waApiSetting").checked = !!(settings.waApi && settings.waApi.enabled);
-    { const b = bpCfg(); const set = (id, v) => { const el = document.getElementById(id); if (el) { if (el.type === "checkbox") el.checked = v; else el.value = v; } }; set("bpNumberSetting", b.number); set("bpNameSetting", b.name); set("bpRequireRefSetting", b.requireRef); }
+    { const b = bpCfg(); const set = (id, v) => { const el = document.getElementById(id); if (el) { if (el.type === "checkbox") el.checked = v; else el.value = v; } }; set("bpNumberSetting", b.number); set("bpNameSetting", b.name); set("bpIbanSetting", fmtIban(b.iban)); set("bpRequireRefSetting", b.requireRef);
+      const pv = document.getElementById("bpQrPreview"); if (pv) pv.innerHTML = b.qr ? `<img src="${b.qr}" alt="QR" style="width:120px;height:120px;border-radius:10px;border:1px solid var(--border)"> <button type="button" class="mini-btn danger-mini" id="bpQrRemove">✕ ${lang === "en" ? "Remove" : "حذف"}</button>` : `<span class="section-note">${lang === "en" ? "No QR yet" : "لا يوجد باركود بعد"}</span>`;
+      document.getElementById("bpQrRemove")?.addEventListener("click", () => { settings.benefitPay = { ...(settings.benefitPay || {}), qr: "" }; persistAll(); logActivity("💳 حذف باركود BenefitPay"); renderSettingsPage(); });
+      const fi = document.getElementById("bpQrFile");
+      if (fi && !fi.dataset.wired) { fi.dataset.wired = "1"; fi.addEventListener("change", () => {
+        const f = fi.files && fi.files[0]; if (!f) return;
+        const rd = new FileReader();
+        rd.onload = () => { const img = new window.Image(); img.onload = () => {
+          const n = 480, cv = document.createElement("canvas"); cv.width = n; cv.height = n; const cx = cv.getContext("2d");
+          cx.fillStyle = "#fff"; cx.fillRect(0, 0, n, n); const sc = Math.min(n / img.width, n / img.height); cx.drawImage(img, (n - img.width * sc) / 2, (n - img.height * sc) / 2, img.width * sc, img.height * sc);
+          settings.benefitPay = { ...(settings.benefitPay || {}), qr: cv.toDataURL("image/png") }; persistAll(); logActivity("💳 رفع باركود BenefitPay"); fi.value = ""; renderSettingsPage(); toast(lang === "en" ? "✓ QR saved" : "✓ حُفظ الباركود");
+        }; img.src = rd.result; };
+        rd.readAsDataURL(f);
+      }); } }
     if (lang !== "ar") document.querySelectorAll(".dlv-settings-box [data-en], .wa-bot-box [data-en]").forEach((el) => { el.textContent = el.dataset.en; });
     { const b = waCfg(); const set = (id, v) => { const el = document.getElementById(id); if (el) { if (el.type === "checkbox") el.checked = v; else el.value = v; } };
       set("waBotOn", b.enabled); set("waBotStaffOn", b.staffOn); set("waBotFrom", b.staffFrom); set("waBotTo", b.staffTo); set("waBotHours", b.hoursText); set("waBotAreas", b.areas); set("waBotExtra", b.extra); }
@@ -7178,8 +7216,11 @@
     if (!!(settings.waApi && settings.waApi.enabled) !== waOn) logActivity(`${waOn ? "تفعيل" : "إيقاف"} الإرسال التلقائي لإيصال التسليم عبر WhatsApp Business API`);
     settings.waApi = { ...(settings.waApi || {}), enabled: waOn };
     if (document.getElementById("bpNumberSetting")) {
-      const nb = { number: toLatinDigits(document.getElementById("bpNumberSetting").value).replace(/[^0-9+ ]/g, "").trim(), name: document.getElementById("bpNameSetting").value.trim().slice(0, 60), requireRef: document.getElementById("bpRequireRefSetting").checked };
-      if (JSON.stringify(nb) !== JSON.stringify(bpCfg())) logActivity(`💳 تعديل إعدادات BenefitPay — الرقم: ${nb.number || "—"} · الاسم: ${nb.name || "—"} · رقم العملية ${nb.requireRef ? "إلزامي" : "اختياري"}`);
+      const ib = toLatinDigits(document.getElementById("bpIbanSetting").value).replace(/\s+/g, "").toUpperCase();
+      if (ib && !/^BH\d{2}[A-Z]{4}[A-Z0-9]{14}$/.test(ib)) { toast(lang === "en" ? "The IBAN doesn't look right (BH + 20 characters)" : "الآيبان غير صحيح — يبدأ بـ BH ومجموعه 22 خانة"); return; }
+      const cur = bpCfg();
+      const nb = { number: toLatinDigits(document.getElementById("bpNumberSetting").value).replace(/[^0-9+ ]/g, "").trim(), name: document.getElementById("bpNameSetting").value.trim().slice(0, 60), iban: ib, qr: cur.qr, requireRef: document.getElementById("bpRequireRefSetting").checked };
+      if (JSON.stringify({ ...nb, qr: "" }) !== JSON.stringify({ ...cur, qr: "" })) logActivity(`💳 تعديل إعدادات BenefitPay — الرقم: ${nb.number || "—"} · الاسم: ${nb.name || "—"} · الآيبان: ${nb.iban ? "•••" + nb.iban.slice(-4) : "—"} · رقم العملية ${nb.requireRef ? "إلزامي" : "اختياري"}`);
       settings.benefitPay = nb;
     }
     if (document.getElementById("waBotOn")) {
@@ -7556,7 +7597,7 @@
           { value: "cash", label: "نقداً" }, { value: "card", label: "بطاقة" },
           { value: "benefitpay", label: "Benefit Pay" }, { value: "bank_transfer", label: "تحويل بنكي" },
         ] },
-        { id: "ref", label: "🔖 رقم عملية Benefit Pay (Reference) — مطلوب عند الدفع بـ Benefit", type: "text", value: "", placeholder: "مثال: 230145678912" },
+        bpRefField(),
         ...pkgTermsFields(defTerms(settings.packageDefs[0]), false),
       ],
       onSubmit: (v) => {

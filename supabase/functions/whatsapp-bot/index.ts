@@ -117,7 +117,8 @@ function knowledge(settings, profile, garments) {
     heavy.length ? `أوزان القطع في الباقات: ${heavy.join("، ")}. الأصناف الأخرى = قطعة واحدة.` : "",
     extras.length ? `خدمات إضافية: ${extras.join("، ")}` : "",
     `\nالاستلام والتوصيل: ${dlv.on ? `متوفر. عميل بدون باقة: ${bd(dlv.fee)} للمشوار. عميل الباقة: مشاوير مجانية حسب باقته ثم ${bd(dlv.pkgFee)}.${dlv.freeOver > 0 ? ` مجاني للطلب من ${bd(dlv.freeOver)}.` : ""} أوقات الاستلام: صباحاً 8–12، ظهراً 12–4، مساءً 4–8، ليلاً 8–12.` : "غير متوفر حالياً."}`,
-    settings.benefitPay && settings.benefitPay.number ? `الدفع عبر BenefitPay على الرقم ${settings.benefitPay.number}${settings.benefitPay.name ? ` باسم ${settings.benefitPay.name}` : ""} — مع كتابة رقم الطلب في الملاحظة. وأيضاً نقداً أو بالبطاقة عند الاستلام.` : "الدفع: نقداً أو بالبطاقة أو BenefitPay عند الاستلام.",
+    (() => { const bp = settings.benefitPay || {}, ib = String(bp.iban || "").replace(/\s+/g, "").toUpperCase().replace(/(.{4})/g, "$1 ").trim();
+      return bp.number || ib ? `طرق الدفع: نقداً أو بالبطاقة عند الاستلام${bp.number ? `، أو BenefitPay على الرقم ${bp.number}${bp.name ? ` باسم ${bp.name}` : ""}` : ""}${ib ? `، أو تحويل للآيبان ${ib}` : ""} — مع كتابة رقم الطلب في ملاحظة التحويل.` : "الدفع: نقداً أو بالبطاقة أو BenefitPay عند الاستلام."; })(),
     cfg.areas ? `مناطق التوصيل: ${cfg.areas}` : "مناطق التوصيل: غير محددة في النظام — الموظف يؤكد التغطية عند تأكيد الموعد.",
     cfg.extra ? `\nمعلومات إضافية من المالك:\n${cfg.extra}` : "",
   ].filter(Boolean).join("\n");
