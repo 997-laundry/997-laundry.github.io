@@ -813,6 +813,31 @@ body.auth-locked .top-logout{display:none!important}
 .wa-intake-chip{position:fixed;top:128px;left:50%;transform:translateX(-50%);z-index:60;border:0;border-radius:999px;padding:10px 18px;background:#128c7e;color:#fff;font-family:inherit;font-size:14px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,.22);cursor:pointer;max-width:calc(100vw - 32px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:640px){.dlv-stop{flex-wrap:wrap}.dlv-stop-act{width:100%}.dlv-stop-act .primary-btn{flex:1;justify-content:center}.wa-intake-chip{top:auto;bottom:84px;font-size:13px}}
 .dlv-src.dlv-app{color:#1d5670;background:var(--primary-soft)}
+/* ⭐ loyalty & campaigns */
+.loy-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.loy-segs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.loy-seg{border:1.5px solid var(--border);background:var(--panel);border-radius:999px;padding:8px 14px;font:inherit;font-weight:700;cursor:pointer;min-height:40px}
+.loy-seg span{display:inline-block;min-width:22px;padding:0 6px;margin-inline-start:4px;border-radius:999px;background:var(--panel-soft);font-size:12px}
+.loy-seg.on{background:var(--primary);color:#fff;border-color:var(--primary)}.loy-seg.on span{background:rgba(255,255,255,.25)}
+.loy-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.loy-tools .inv-search{flex:1;min-width:200px;margin:0}
+.loy-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px;border-radius:12px;background:var(--panel-soft);margin-bottom:10px;position:sticky;top:0;z-index:3}
+.loy-actions.on{background:var(--primary-soft);box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.loy-table tr.sel td{background:var(--primary-soft)}
+.loy-rules{margin:10px 0;line-height:1.9}
+.loy-card{margin:12px 0;padding:14px 16px;border-radius:16px;color:#fff;background:linear-gradient(135deg,#8a5a2b,#c08a4e);box-shadow:0 6px 18px rgba(0,0,0,.12)}
+.loy-card.tier-silver{background:linear-gradient(135deg,#5b6b7a,#9fb0bf)}.loy-card.tier-gold{background:linear-gradient(135deg,#9a7413,#d8b44a)}.loy-card.tier-platinum{background:linear-gradient(135deg,#0f2a44,#2f8eb8)}
+.loy-card-top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;opacity:.95}
+.loy-card-pts{font-size:15px;margin:8px 0}.loy-card-pts b{font-size:30px;font-weight:900}
+.loy-card-meta{font-size:12.5px;opacity:.92;margin-bottom:10px;line-height:1.7}
+.loy-card .secondary-btn{background:rgba(255,255,255,.18);color:#fff;border-color:rgba(255,255,255,.4)}
+.loy-card .primary-btn{background:#fff;color:#0f2a44}
+.cq-progress{height:8px;border-radius:4px;background:var(--panel-soft);overflow:hidden;margin-top:6px}.cq-progress span{display:block;height:100%;background:var(--success);transition:width .3s}
+.cq-list{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto}
+.cq-row{display:grid;grid-template-columns:1fr auto auto auto auto;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:10px}
+.cq-row.auto,.cq-row.manual{background:var(--success-soft)}.cq-row.fail{background:#fff6e0}
+@media (max-width:640px){.cq-row{grid-template-columns:1fr auto auto}.cq-row span[dir]{display:none}}
+.mreport table.mr-wide td{font-size:12px;padding:4px 6px}
+.mr-insights ul{margin:6px 0;padding-inline-start:18px;line-height:1.9}
 
 </style>
 </head>
@@ -863,6 +888,7 @@ body.auth-locked .top-logout{display:none!important}
         <button type="button" class="nav-item" data-need="create_order" data-page="new-order">＋ <span data-i18n="nav_neworder">طلب جديد</span></button>
         <button type="button" class="nav-item" data-need="view_orders" data-page="orders">▦ <span data-i18n="nav_orders">الطلبات</span></button>
         <button type="button" class="nav-item" data-need="view_customers" data-page="customers">◉ <span data-i18n="nav_customers">العملاء</span></button>
+        <button type="button" class="nav-item" data-need="campaigns" data-page="loyalty">⭐ <span data-i18n="nav_loyalty">الولاء والحملات</span></button>
         <button type="button" class="nav-item" data-need="delivery" data-page="delivery">🚚 <span data-i18n="nav_delivery">التوصيل</span></button>
         <button type="button" class="nav-item" data-need="whatsapp_inbox" data-page="whatsapp">💬 <span data-i18n="nav_whatsapp">واتساب</span></button>
         <button type="button" class="nav-item" data-need="view_balances" data-page="balances">◈ <span data-i18n="nav_balances">الأرصدة</span></button>
@@ -1234,6 +1260,7 @@ body.auth-locked .top-logout{display:none!important}
       <section class="page" id="page-audit"><div id="auditRoot"></div></section>
       <section class="page" id="page-security"><div id="securityRoot"></div></section>
       <section class="page" id="page-delivery"><div id="deliveryRoot"></div></section>
+      <section class="page" id="page-loyalty"><div id="loyaltyRoot"></div></section>
       <section class="page" id="page-whatsapp"><div id="waRoot"></div></section>
 
       
@@ -1788,7 +1815,79 @@ body.auth-locked .top-logout{display:none!important}
     return s;
   }
 
-  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, targetedPayments, customerSummary, packageUsage, EXPENSE_GROUPS, EXPENSE_CATEGORIES, expenseCategory, salaryDue, unclosedDays, shiftSummary };
+  /* ⭐ الولاء والالتزام — محسوبة دائماً من السجلات نفسها (لا تُخزَّن)، فلا تختلف بين الأجهزة ولا تحتاج «تحديثاً» يدوياً:
+     • النقاط: تُكتسب على المبلغ المدفوع فعلاً (الطلبات المدفوعة + الباقات المشتراة) — الدين لا يكسب نقاطاً حتى يُسدَّد،
+       وتُخصم عند الاستبدال (حركة رصيد بها loyaltyPoints).
+     • الالتزام (0–100): طلبات سُجّلت ديناً، ودين مستحق الآن، وعمر أقدم دين.
+     • الفئة: حسب ما صرفه العميل في آخر 90 يوماً، وتنزل درجة واحدة إذا كان التزامه بالدفع ضعيفاً. */
+  const LOYALTY_DEFAULT = {
+    on: true, perBD: 10, redeemPoints: 500, redeemValue: 1, lateDays: 14,
+    tiers: [
+      { id: "bronze", ar: "برونزي", en: "Bronze", min: 0, discount: 5 },
+      { id: "silver", ar: "فضي", en: "Silver", min: 25, discount: 10 },
+      { id: "gold", ar: "ذهبي", en: "Gold", min: 60, discount: 15 },
+      { id: "platinum", ar: "بلاتيني", en: "Platinum", min: 120, discount: 20 },
+    ],
+  };
+  function loyaltyCfg(settings) {
+    const l = (settings && settings.loyalty) || {}, n = (v, d) => (Number.isFinite(Number(v)) && Number(v) >= 0 && v !== "" && v !== null ? Number(v) : d);
+    const tiers = Array.isArray(l.tiers) && l.tiers.length ? l.tiers : LOYALTY_DEFAULT.tiers;
+    return { on: l.on !== false, perBD: n(l.perBD, 10), redeemPoints: Math.max(1, Math.floor(n(l.redeemPoints, 500))), redeemValue: r3(n(l.redeemValue, 1)), lateDays: Math.floor(n(l.lateDays, 14)),
+      tiers: tiers.map((t) => ({ ...t, min: Number(t.min) || 0, discount: Number(t.discount) || 0 })).sort((a, b) => a.min - b.min) };
+  }
+  function customerStats(customers, orders, ledger, customerPackages, settings, today) {
+    const cfg = loyaltyCfg(settings), day = today || todayStr(), from90 = addDays(day, -89), out = {};
+    const owedById = allocateDebts(customers, orders, ledger);
+    const byC = new Map(), txByC = new Map(), pkByC = new Map();
+    (orders || []).forEach((o) => { if (!byC.has(o.customerId)) byC.set(o.customerId, []); byC.get(o.customerId).push(o); });
+    (ledger || []).forEach((t) => { if (!txByC.has(t.customerId)) txByC.set(t.customerId, []); txByC.get(t.customerId).push(t); });
+    (customerPackages || []).forEach((p) => { if (!pkByC.has(p.customerId)) pkByC.set(p.customerId, []); pkByC.get(p.customerId).push(p); });
+    (customers || []).forEach((c) => {
+      const os = (byC.get(c.id) || []).filter((o) => o.status !== "cancelled"), txs = txByC.get(c.id) || [], pks = pkByC.get(c.id) || [];
+      let spent = 0, spent90 = 0, paid = 0, pieces = 0, debtOrders = 0, oldestDebt = "", dueNow = 0, last = "", first = "", orders30 = 0;
+      os.forEach((o) => {
+        const p = pay(o), total = r3(p.total), at = String(o.createdAt || "");
+        pieces += (o.items || []).reduce((a, it) => a + (Number(it.qty) || 0), 0);
+        if (!last || at > last) last = at;
+        if (!first || at < first) first = at;
+        if (localDay(at) >= addDays(day, -29)) orders30++;
+        if (!isSale(o)) { if (o.status === "ready" && o.paymentConfirmed === false) dueNow = r3(dueNow + total); return; }
+        const owed = o.debtRecorded ? r3(owedById[o.id] || 0) : 0;
+        spent = r3(spent + total);
+        if (localDay(orderPaidAt(o)) >= from90) spent90 = r3(spent90 + total);
+        paid = r3(paid + total - owed);
+        if (o.debtRecorded) debtOrders++;
+        if (owed > 0) { const d = localDay(orderPaidAt(o)); if (!oldestDebt || d < oldestDebt) oldestDebt = d; }
+      });
+      let pkgSpent = 0;
+      txs.forEach((t) => { if (t.type === "package_purchase") { const pr = packagePrice(t, customerPackages); pkgSpent = r3(pkgSpent + pr); if (localDay(t.at) >= from90) spent90 = r3(spent90 + pr); } });
+      const redeemed = txs.reduce((a, t) => a + (t.reversedBy ? 0 : Number(t.loyaltyPoints) || 0), 0); // a reversed redemption gives the points back
+      const earned = Math.floor((paid + pkgSpent) * cfg.perBD);
+      const bal = r3(Number(c.balance) || 0), owedTotal = r3(Math.max(0, -bal) + dueNow);
+      const overdueDays = oldestDebt ? Math.max(0, Math.round((new Date(day + "T12:00:00Z") - new Date(oldestDebt + "T12:00:00Z")) / 86400000)) : 0;
+      const sales = os.filter(isSale).length;
+      let commitment = 100;
+      if (sales) commitment -= Math.round((debtOrders / sales) * 40);
+      if (bal < 0) commitment -= 10;
+      commitment -= Math.min(50, overdueDays > cfg.lateDays ? overdueDays : Math.round(overdueDays / 2));
+      commitment = Math.max(0, Math.min(100, commitment));
+      let ti = 0; cfg.tiers.forEach((t, i) => { if (spent90 >= t.min) ti = i; });
+      if (commitment < 60 && ti > 0) ti--;
+      const tier = cfg.tiers[ti], next = cfg.tiers[ti + 1] || null;
+      const points = Math.max(0, earned - redeemed);
+      out[c.id] = {
+        orders: os.length, sales, pieces, spent, spent90, paid, pkgSpent, packages: pks.length, activePackages: pks.filter((p) => Number(p.remainingPieces) > 0 && !(p.expiresAt && p.expiresAt < day)).length,
+        owed: owedTotal, debtOrders, overdueDays, commitment, commitmentLabel: commitment >= 85 ? "excellent" : commitment >= 60 ? "good" : "late",
+        lastOrderAt: last, firstOrderAt: first, since: c.createdAt || first, orders30, daysSinceLast: last ? Math.round((new Date(day + "T12:00:00Z") - new Date(localDay(last) + "T12:00:00Z")) / 86400000) : null,
+        tier: tier.id, tierIndex: ti, tierName: { ar: tier.ar, en: tier.en }, tierDiscount: tier.discount, nextTier: next ? { id: next.id, ar: next.ar, en: next.en, need: r3(Math.max(0, next.min - spent90)) } : null,
+        pointsEarned: earned, pointsRedeemed: redeemed, points, pointsValue: r3(Math.floor(points / cfg.redeemPoints) * cfg.redeemValue),
+        cardNo: "997-" + String(c.phone || c.id || "").replace(/\D/g, "").slice(-6).padStart(6, "0"),
+      };
+    });
+    return out;
+  }
+
+  return { CASH_METHODS, r3, LOYALTY_DEFAULT, loyaltyCfg, customerStats, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, targetedPayments, customerSummary, packageUsage, EXPENSE_GROUPS, EXPENSE_CATEGORIES, expenseCategory, salaryDue, unclosedDays, shiftSummary };
 });
 
 </script>
@@ -4089,7 +4188,7 @@ body.auth-locked .top-logout{display:none!important}
       report_revenue: "إجمالي الإيرادات", report_orders_count: "عدد الطلبات",
       report_avg_order: "متوسط قيمة الطلب", report_outstanding: "مبالغ مستحقة",
       nav_finance: "المالية", nav_inventory: "المخزون والمشتريات", nav_employees: "الموظفون والرواتب",
-      nav_closures: "الإغلاقات", nav_security: "مركز الأمان", nav_whatsapp: "واتساب", page_wa_title: "💬 محادثات واتساب", page_wa_sub: "المساعد الذكي يرد على العملاء · تحويل للموظف · الرد من رقم المحل", nav_delivery: "التوصيل", page_delivery_title: "🚚 الاستلام والتوصيل", page_delivery_sub: "مواعيد الاستلام من البيوت · الطلبات الجاهزة للتوصيل · المندوب في الطريق", nav_audit: "سجل النشاط", nav_ai: "الذكاء الاصطناعي",
+      nav_closures: "الإغلاقات", nav_security: "مركز الأمان", nav_whatsapp: "واتساب", page_wa_title: "💬 محادثات واتساب", page_wa_sub: "المساعد الذكي يرد على العملاء · تحويل للموظف · الرد من رقم المحل", nav_loyalty: "الولاء والحملات", page_loyalty_title: "⭐ الولاء والحملات", page_loyalty_sub: "شرائح العملاء · رسائل واتساب جماعية · بطاقات الولاء والنقاط · خصومات خاصة", nav_delivery: "التوصيل", page_delivery_title: "🚚 الاستلام والتوصيل", page_delivery_sub: "مواعيد الاستلام من البيوت · الطلبات الجاهزة للتوصيل · المندوب في الطريق", nav_audit: "سجل النشاط", nav_ai: "الذكاء الاصطناعي",
       nav_profile: "ملف المنشأة", nav_access: "المستخدمون والصلاحيات",
       page_finance_title: "المالية", page_finance_sub: "التقارير المالية والمصروفات والأرباح",
       page_inventory_title: "المخزون والمشتريات", page_inventory_sub: "الجرد والمواد والموردون وتنبيهات النقص",
@@ -4263,7 +4362,7 @@ body.auth-locked .top-logout{display:none!important}
       report_revenue: "Total revenue", report_orders_count: "Order count",
       report_avg_order: "Average order value", report_outstanding: "Outstanding balances",
       nav_finance: "Finance", nav_inventory: "Inventory & Purchases", nav_employees: "Employees & Payroll",
-      nav_closures: "Closures", nav_security: "Security Center", nav_whatsapp: "WhatsApp", page_wa_title: "💬 WhatsApp chats", page_wa_sub: "AI assistant answers customers · hand-off to staff · reply from the shop number", nav_delivery: "Delivery", page_delivery_title: "🚚 Pickup & Delivery", page_delivery_sub: "Home pickups · orders to deliver · driver on the way", nav_audit: "Activity Log", nav_ai: "AI Center",
+      nav_closures: "Closures", nav_security: "Security Center", nav_whatsapp: "WhatsApp", page_wa_title: "💬 WhatsApp chats", page_wa_sub: "AI assistant answers customers · hand-off to staff · reply from the shop number", nav_loyalty: "Loyalty & campaigns", page_loyalty_title: "⭐ Loyalty & campaigns", page_loyalty_sub: "Customer groups · WhatsApp campaigns · loyalty cards & points · special discounts", nav_delivery: "Delivery", page_delivery_title: "🚚 Pickup & Delivery", page_delivery_sub: "Home pickups · orders to deliver · driver on the way", nav_audit: "Activity Log", nav_ai: "AI Center",
       nav_profile: "Company Profile", nav_access: "Users & Permissions",
       page_finance_title: "Finance", page_finance_sub: "Financial reports, expenses, and profits",
       page_inventory_title: "Inventory & Purchases", page_inventory_sub: "Stock, materials, suppliers, and low-stock alerts",
@@ -4437,7 +4536,7 @@ body.auth-locked .top-logout{display:none!important}
       report_revenue: "کل آمدنی", report_orders_count: "آرڈرز کی تعداد",
       report_avg_order: "اوسط آرڈر ویلیو", report_outstanding: "باقی بیلنس",
       nav_finance: "مالیات", nav_inventory: "انوینٹری اور خریداری", nav_employees: "ملازمین اور تنخواہیں",
-      nav_closures: "اختتامیہ", nav_security: "سیکیورٹی سینٹر", nav_whatsapp: "WhatsApp", page_wa_title: "💬 WhatsApp chats", page_wa_sub: "AI assistant answers customers · hand-off to staff · reply from the shop number", nav_delivery: "ڈیلیوری", page_delivery_title: "🚚 Pickup & Delivery", page_delivery_sub: "Home pickups · orders to deliver · driver on the way", nav_audit: "سرگرمی لاگ", nav_ai: "اے آئی سینٹر",
+      nav_closures: "اختتامیہ", nav_security: "سیکیورٹی سینٹر", nav_whatsapp: "WhatsApp", page_wa_title: "💬 WhatsApp chats", page_wa_sub: "AI assistant answers customers · hand-off to staff · reply from the shop number", nav_loyalty: "لائلٹی اور مہمات", page_loyalty_title: "⭐ Loyalty & campaigns", page_loyalty_sub: "Customer groups · WhatsApp campaigns · loyalty cards & points · special discounts", nav_delivery: "ڈیلیوری", page_delivery_title: "🚚 Pickup & Delivery", page_delivery_sub: "Home pickups · orders to deliver · driver on the way", nav_audit: "سرگرمی لاگ", nav_ai: "اے آئی سینٹر",
       nav_profile: "کمپنی پروفائل", nav_access: "صارفین اور اجازتیں",
       page_finance_title: "مالیات", page_finance_sub: "مالی رپورٹس، اخراجات، اور منافع",
       page_inventory_title: "انوینٹری اور خریداری", page_inventory_sub: "اسٹاک، مواد، سپلائرز، اور کم اسٹاک الرٹس",
@@ -5127,6 +5226,7 @@ body.auth-locked .top-logout{display:none!important}
     audit: ["page_audit_title", "page_audit_sub"],
     security: ["مركز الأمان", "محاولات الدخول · الجلسات · التنبيهات · سجل التدقيق"],
     delivery: ["page_delivery_title", "page_delivery_sub"],
+    loyalty: ["page_loyalty_title", "page_loyalty_sub"],
     whatsapp: ["page_wa_title", "page_wa_sub"],
     profile: ["page_profile_title", "page_profile_sub"],
     access: ["page_access_title", "page_access_sub"],
@@ -5161,6 +5261,7 @@ body.auth-locked .top-logout{display:none!important}
     if (pageId === "audit" && typeof window.renderAudit997 === "function") window.renderAudit997();
     if (pageId === "security") renderSecurityPage();
     if (pageId === "delivery") renderDeliveryPage();
+    if (pageId === "loyalty") renderLoyaltyPage(true);
     if (pageId === "whatsapp") { renderWhatsAppPage(); waLoadThreads().then(() => { if (currentPage === "whatsapp") renderWhatsAppPage(); }); }
     try { updateDeliveryBadge(); } catch (e) { /* ignore */ }
     if (pageId === "settings") renderSettingsPage();
@@ -5772,6 +5873,7 @@ body.auth-locked .top-logout{display:none!important}
     { id: "create_order", grp: "page", label: "طلب جديد (إنشاء الطلبات)", en: "New order (create orders)", worker: true, accountant: false, manager: true },
     { id: "view_orders", grp: "page", label: "الطلبات", en: "Orders", worker: true, accountant: true, manager: true },
     { id: "view_customers", grp: "page", label: "العملاء", en: "Customers", worker: true, accountant: true, manager: true },
+    { id: "campaigns", grp: "page", label: "الولاء والحملات (رسائل العملاء، النقاط، الخصومات الخاصة)", en: "Loyalty & campaigns (customer messages, points, special discounts)", worker: false, accountant: true, manager: true },
     { id: "delivery", grp: "page", label: "التوصيل والاستلام من البيوت", en: "Pickup & delivery", worker: true, accountant: true, manager: true },
     { id: "whatsapp_inbox", grp: "page", label: "محادثات واتساب (المساعد الذكي والرد على العملاء)", en: "WhatsApp chats (AI assistant, replying to customers)", worker: true, accountant: false, manager: true },
     { id: "view_balances", grp: "page", label: "الأرصدة وكشوف الحساب", en: "Balances & statements", worker: false, accountant: true, manager: true },
@@ -6692,6 +6794,7 @@ body.auth-locked .top-logout{display:none!important}
     secLog("login_ok", `تسجيل دخول — ${emp.name} (${ACCESS_ROLE_AR[role]})${emp._mfaPassed ? " — بالتحقق بخطوتين" : emp._mfaTrusted ? " — جهاز موثوق (بدون رمز)" : ""} — ${deviceLabel()}`, { u: emp.username });
     beginSession(emp);
     delete emp._mfaPassed; delete emp._mfaTrusted;
+    setTimeout(() => { try { monthReportNudge(); } catch (e) { /* ignore */ } }, 2500);
   }
   function submitLogin() {
     if (cloudOn()) { submitLoginCloud(); return; }
@@ -9975,6 +10078,7 @@ body.auth-locked .top-logout{display:none!important}
           ${card(L.cnt[0], cs.counts.open)}${card(L.cnt[1], cs.counts.ready)}${card(L.cnt[2], cs.counts.delivered)}${card(L.cnt[3], cs.counts.cancelled)}
         </div>
         ${packagesHtml}
+        ${loyaltyCardHtml(c)}
         ${dlvCfg().on ? (() => { const q = deliveryQuote(c.id, { pickup: false, drop: false }, 0); return `<p class="section-note" style="margin:10px 0 0">🚚 ${q.hasPkg ? `${tripPeriodWord(q.st)}: <b>${q.used}/${q.quota}</b> — ${en ? "left" : "متبقي"} <b>${Math.max(0, q.quota - q.used)}</b>` : `${en ? "Delivery trip fee" : "رسوم المشوار"}: <b>${money(dlvCfg().fee)}</b>${dlvCfg().freeOver > 0 ? ` (${en ? "free over" : "مجاني فوق"} ${money(dlvCfg().freeOver)})` : ""}`}</p>`; })() : ""}
         ${codesForCustomer(c.id).length ? `<p class="section-note" style="margin:10px 0 0">🏷 ${en ? "Customer codes" : "أكواد العميل"}: ${codesForCustomer(c.id).map((x) => `<b dir="ltr">${esc(x.code)}</b> (${esc(codeDesc(x))})`).join(" · ")}</p>` : ""}
         <div class="row-actions" style="margin:14px 0;flex-wrap:wrap">
@@ -10018,6 +10122,7 @@ body.auth-locked .top-logout{display:none!important}
         },
       });
     };
+    wireLoyaltyCard(c);
     if (q("cpSellPkg")) q("cpSellPkg").onclick = () => requireOverride("balance_tx", "بيع باقة لعميل", () => sellPackageToCustomer(c.id));
     document.querySelectorAll("#customerProfileContent [data-pkg-fix]").forEach((b) => b.addEventListener("click", () => {
       const u = pu.find((x) => x.pkg.id === b.dataset.pkgFix); if (!u) return;
@@ -10468,9 +10573,112 @@ body.auth-locked .top-logout{display:none!important}
         row(en ? "Days with activity not closed" : "أيام فيها حركة ولم تُغلق", unclosed.length ? unclosed.map((x) => x.slice(8)).join("، ") : "✓"),
         row(en ? "Monthly closure" : "الإغلاق الشهري", monthly ? `✓ ${esc(monthly.by || "")} — ${fmtDT(monthly.date)}` : (en ? "Not approved yet" : "لم يُعتمد بعد")),
       ].join(""))}
+      ${monthCustomersHtml(mk, s, p)}
       <p class="mr-note">${en ? "Profit = revenue excl. VAT − all recorded expenses (salaries, advances, government fees, stock purchases when paid)." : "صافي الربح = الإيراد بدون ضريبة − كل المصروفات المسجّلة (الرواتب والسلف والرسوم الحكومية ومشتريات المخزون عند دفعها)."}</p>
     </div>`;
   }
+  // 📊 دراسة العملاء للشهر: لكل عميل طلباته وقطعه ومبيعاته وباقاته ونقاطه والتزامه — ومقارنة بالشهر السابق
+  function monthCustomerData(mk) {
+    const mb = FIN.monthBounds(mk + "-01"), prevKey = FIN.monthBounds(FIN.addDays(mb.from, -1)).key, pb = FIN.monthBounds(prevKey + "-01");
+    const cfg = FIN.loyaltyCfg(settings), st = FIN.customerStats(customers, orders, ledger, customerPackages, settings, mb.to < todayStr() ? mb.to : todayStr());
+    const inM = (iso, b) => !!iso && FIN.inRange(iso, b.from, b.to);
+    const rows = customers.map((c) => {
+      const os = orders.filter((o) => o.customerId === c.id && o.status !== "cancelled");
+      const created = os.filter((o) => inM(o.createdAt, mb)), createdPrev = os.filter((o) => inM(o.createdAt, pb));
+      const sales = os.filter((o) => FIN.isSale(o) && inM(FIN.orderPaidAt(o), mb));
+      const salesV = round3(sales.reduce((a, o) => a + (Number(o.payment && o.payment.total) || 0), 0));
+      const pk = ledger.filter((t) => t.customerId === c.id && t.type === "package_purchase" && inM(t.at, mb));
+      const pkV = round3(pk.reduce((a, t) => a + FIN.packagePrice(t, customerPackages), 0));
+      const pkUsed = created.reduce((a, o) => a + (o.items || []).filter((it) => it.fromPackageId).reduce((b, it) => b + pkgUnits(it), 0), 0);
+      const redeemed = ledger.filter((t) => t.customerId === c.id && inM(t.at, mb) && !t.reversedBy).reduce((a, t) => a + (Number(t.loyaltyPoints) || 0), 0);
+      const s = st[c.id] || {};
+      return { c, s, orders: created.length, ordersPrev: createdPrev.length, pieces: created.reduce((a, o) => a + piecesOf(o), 0), sales: salesV, pkgCount: pk.length, pkgValue: pkV, pkgUsed: pkUsed,
+        total: round3(salesV + pkV), pointsEarned: Math.floor((salesV + pkV) * cfg.perBD), pointsRedeemed: redeemed,
+        isNew: c.createdAt ? inM(c.createdAt, mb) : created.length > 0 && !os.some((o) => FIN.localDay(o.createdAt) < mb.from),
+        everBefore: os.some((o) => FIN.localDay(o.createdAt) < mb.from) };
+    });
+    const active = rows.filter((r) => r.orders > 0 || r.pkgCount > 0), activePrev = rows.filter((r) => r.ordersPrev > 0);
+    const pkgs = {};
+    ledger.filter((t) => t.type === "package_purchase" && inM(t.at, mb)).forEach((t) => { const cp = customerPackages.find((p) => p.id === t.packageId); const n = (cp && cp.name) || String(t.note || "").replace(/^شراء باقة:\s*/, "").split(" — ")[0] || "—"; pkgs[n] = pkgs[n] || { n: 0, v: 0 }; pkgs[n].n++; pkgs[n].v = round3(pkgs[n].v + FIN.packagePrice(t, customerPackages)); });
+    return { mk, prevKey, mb, cfg, rows, active, activePrev, pkgs,
+      newCount: rows.filter((r) => r.isNew && (r.orders > 0 || r.pkgCount > 0)).length,
+      returning: active.filter((r) => r.everBefore).length,
+      lost: activePrev.filter((r) => r.orders === 0 && r.pkgCount === 0),
+      late: rows.filter((r) => r.s.owed > 0 && r.s.overdueDays > cfg.lateDays) };
+  }
+  function monthCustomersHtml(mk, s, p) {
+    const en = lang === "en", d = monthCustomerData(mk), E2 = (ar, e) => (en ? e : ar);
+    const top = d.active.slice().sort((a, b) => b.total - a.total).slice(0, 15);
+    const avg = d.active.length ? round3(d.active.reduce((a, r) => a + r.total, 0) / d.active.length) : 0;
+    const retPct = d.active.length ? Math.round((d.returning / d.active.length) * 100) : 0;
+    const issued = d.rows.reduce((a, r) => a + r.pointsEarned, 0), redeemed = d.rows.reduce((a, r) => a + r.pointsRedeemed, 0);
+    const outstanding = d.rows.reduce((a, r) => a + (r.s.points || 0), 0);
+    const lateSum = round3(d.late.reduce((a, r) => a + r.s.owed, 0));
+    const growth = p.salesTotal ? Math.round(((s.salesTotal - p.salesTotal) / p.salesTotal) * 100) : null;
+    const tips = [];
+    if (growth !== null) tips.push(growth >= 0 ? E2(`📈 المبيعات زادت ${growth}% عن الشهر السابق — حافظ على نفس الوتيرة.`, `📈 Sales grew ${growth}% on last month — keep the pace.`) : E2(`📉 المبيعات نقصت ${-growth}% عن الشهر السابق — أرسل حملة «اشتقنا لك» للعملاء المنقطعين.`, `📉 Sales fell ${-growth}% on last month — send a “We miss you” campaign to inactive customers.`));
+    if (d.lost.length) tips.push(E2(`👋 ${d.lost.length} عميل طلبوا الشهر السابق وما رجعوا هذا الشهر — حملة «اشتقنا لك» بخصم 10% تسترجع جزءاً منهم.`, `👋 ${d.lost.length} customers ordered last month but not this month — a “We miss you” 10% campaign can win some back.`));
+    if (retPct < 50 && d.active.length >= 5) tips.push(E2(`🔁 ${retPct}% فقط من عملاء الشهر عملاء عائدون — ركّز على الباقات وبطاقات الولاء لرفع التكرار.`, `🔁 Only ${retPct}% of this month's customers are returning — push packages and loyalty to raise repeat visits.`));
+    if (d.late.length) tips.push(E2(`⏰ ${d.late.length} عميل متأخرين بالدفع بمجموع ${money(lateSum)} — أرسل تذكير المتبقي من صفحة الولاء والحملات.`, `⏰ ${d.late.length} late payers owe ${money(lateSum)} — send payment reminders from Loyalty & campaigns.`));
+    if (s.packageCount === 0) tips.push(E2("🎟 لم تُبع أي باقة هذا الشهر — اعرض الباقات على العملاء الأكثر طلباً.", "🎟 No packages were sold this month — offer them to your most frequent customers."));
+    if (d.newCount) tips.push(E2(`🆕 ${d.newCount} عميل جديد هذا الشهر — أرسل لهم رسالة شكر ورابط التطبيق ليرجعوا.`, `🆕 ${d.newCount} new customers this month — send them a thank-you and the app link so they come back.`));
+    if (!tips.length) tips.push(E2("✅ الأداء مستقر — استمر وتابع التقرير الشهر الجاي.", "✅ Stable month — keep going and review next month."));
+    const tr = (cells) => `<tr>${cells.map((x) => `<td>${x}</td>`).join("")}</tr>`;
+    return `
+      <section class="mr-sec"><h4>${E2("٧. العملاء", "7. Customers")}</h4><table>
+        ${tr([E2("عملاء طلبوا هذا الشهر", "Customers who ordered"), `<b>${d.active.length}</b>`, `<span class="mr-prev">${d.activePrev.length}</span>`])}
+        ${tr([E2("منهم جدد", "of which new"), d.newCount, ""])}
+        ${tr([E2("منهم عائدون", "of which returning"), `${d.returning} (${retPct}%)`, ""])}
+        ${tr([E2("انقطعوا (طلبوا الشهر السابق فقط)", "Lost (ordered last month only)"), d.lost.length, ""])}
+        ${tr([E2("متوسط صرف العميل", "Average spend per customer"), money(avg), ""])}
+      </table>
+      <table class="mr-wide"><tr class="mr-head"><td>#</td><td>${E2("العميل", "Customer")}</td><td>${E2("طلبات", "Orders")}</td><td>${E2("قطع", "Pcs")}</td><td>${E2("مبيعات", "Sales")}</td><td>${E2("باقات", "Packages")}</td><td>${E2("المتبقي", "Owed")}</td><td>${E2("الفئة", "Tier")}</td><td>⭐</td></tr>
+        ${top.map((r, i) => tr([i + 1, esc(r.c.name), r.orders, r.pieces, money(r.sales), r.pkgCount ? `${r.pkgCount} · ${money(r.pkgValue)}` : "—", r.s.owed > 0 ? money(r.s.owed) : "—", tierLabel(r.s), fmtPts(r.s.points)])).join("") || `<tr><td colspan="9" class="inv-muted">—</td></tr>`}
+      </table>${d.active.length > top.length ? `<p class="mr-note">${E2(`أعلى ${top.length} عميل — القائمة الكاملة (${d.active.length}) في ملف Excel.`, `Top ${top.length} — the full list (${d.active.length}) is in the Excel file.`)}</p>` : ""}</section>
+      <section class="mr-sec"><h4>${E2("٨. الباقات", "8. Packages")}</h4><table>
+        ${Object.entries(d.pkgs).map(([n, v]) => tr([esc(n), `${v.n} × `, money(v.v)])).join("") || tr([E2("لا توجد باقات مباعة هذا الشهر", "No packages sold this month"), "", ""])}
+        ${tr([`<b>${E2("المجموع", "Total")}</b>`, `<b>${s.packageCount}</b>`, `<b>${money(s.packageSales)}</b>`])}
+        ${tr([E2("قطع استُخدمت من الباقات هذا الشهر", "Package pieces used this month"), d.rows.reduce((a, r) => a + r.pkgUsed, 0), ""])}
+      </table></section>
+      <section class="mr-sec"><h4>${E2("٩. الولاء والالتزام بالدفع", "9. Loyalty & payment commitment")}</h4><table>
+        ${tr([E2("نقاط اكتسبها العملاء هذا الشهر", "Points earned this month"), fmtPts(issued), ""])}
+        ${tr([E2("نقاط استُبدلت", "Points redeemed"), fmtPts(redeemed), money((redeemed / d.cfg.redeemPoints) * d.cfg.redeemValue)])}
+        ${tr([E2("نقاط قائمة لم تُستبدل (التزام على المحل)", "Outstanding points (shop liability)"), fmtPts(outstanding), money(Math.floor(outstanding / d.cfg.redeemPoints) * d.cfg.redeemValue)])}
+        ${tr([E2("متأخرون بالدفع", "Late payers"), d.late.length, money(lateSum)])}
+        ${tr([E2("متوسط الالتزام بالدفع", "Average payment commitment"), `${d.rows.filter((r) => r.s.sales).length ? Math.round(d.rows.filter((r) => r.s.sales).reduce((a, r) => a + r.s.commitment, 0) / d.rows.filter((r) => r.s.sales).length) : 0}%`, ""])}
+      </table></section>
+      <section class="mr-sec mr-insights"><h4>${E2("١٠. إلى أين نتجه؟ — توصيات", "10. Where are we heading? — recommendations")}</h4><ul>${tips.map((t) => `<li>${t}</li>`).join("")}</ul></section>`;
+  }
+  function monthCustomersCsv(mk) {
+    const d = monthCustomerData(mk), en = lang === "en";
+    const head = en ? ["Customer", "Phone", "Orders", "Pieces", "Sales BD", "Packages bought", "Packages BD", "Package pieces used", "Total BD", "Owed now BD", "Days overdue", "Commitment %", "Tier", "Points", "Points earned (month)", "Points redeemed (month)", "Last order", "New this month"]
+      : ["العميل", "الجوال", "الطلبات", "القطع", "المبيعات د.ب", "باقات مشتراة", "قيمة الباقات د.ب", "قطع مستخدمة من الباقات", "الإجمالي د.ب", "المتبقي الآن د.ب", "أيام التأخير", "الالتزام %", "الفئة", "النقاط", "نقاط مكتسبة (الشهر)", "نقاط مستبدلة (الشهر)", "آخر طلب", "جديد هذا الشهر"];
+    const rows = d.rows.filter((r) => r.orders || r.pkgCount || r.s.owed > 0 || r.s.points > 0).sort((a, b) => b.total - a.total)
+      .map((r) => [r.c.name, fmtPhone(r.c.phone), r.orders, r.pieces, r.sales.toFixed(3), r.pkgCount, r.pkgValue.toFixed(3), r.pkgUsed, r.total.toFixed(3), (r.s.owed || 0).toFixed(3), r.s.overdueDays || 0, r.s.commitment, en ? r.s.tierName.en : r.s.tierName.ar, r.s.points, r.pointsEarned, r.pointsRedeemed, r.s.lastOrderAt ? FIN.localDay(r.s.lastOrderAt) : "", r.isNew ? "✓" : ""]);
+    const csv = "﻿" + [head, ...rows].map((r) => r.map((c) => `"${String(c == null ? "" : c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })), a = document.createElement("a");
+    a.href = url; a.download = `997-customers-${mk}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+    logActivity(`⬇ تصدير دراسة العملاء ${mk} — ${rows.length} عميل`);
+  }
+  function monthSummaryText(mk) {
+    const en = lang === "en", mb = FIN.monthBounds(mk + "-01"), pk = FIN.monthBounds(FIN.addDays(mb.from, -1)).key, pb = FIN.monthBounds(pk + "-01");
+    const s = FIN.summarize(finData(), mb.from, mb.to), p = FIN.summarize(finData(), pb.from, pb.to), d = monthCustomerData(mk);
+    const ch = (a, b) => (b ? ` (${a >= b ? "▲" : "▼"}${Math.abs(Math.round(((a - b) / Math.abs(b)) * 100))}%)` : "");
+    const top = d.active.slice().sort((a, b) => b.total - a.total).slice(0, 3).map((r) => `${r.c.name} ${money(r.total)}`).join("، ");
+    return en
+      ? `📊 997 Laundry — report ${mk}\n💰 Sales: ${money(s.salesTotal)}${ch(s.salesTotal, p.salesTotal)}\n💵 Collected: ${money(s.collected)}\n🧾 Expenses: ${money(s.expenses)}\n📈 Net profit: ${money(s.profit)}\n🧺 Paid orders: ${s.salesOrders} · 🎟 packages: ${s.packageCount} (${money(s.packageSales)})\n👥 Customers: ${d.active.length} (new ${d.newCount}, lost ${d.lost.length})\n⏰ Late payers: ${d.late.length}\n🏆 Top: ${top || "—"}`
+      : `📊 مغسلة 997 — تقرير ${mk}\n💰 المبيعات: ${money(s.salesTotal)}${ch(s.salesTotal, p.salesTotal)}\n💵 المحصّل: ${money(s.collected)}\n🧾 المصروفات: ${money(s.expenses)}\n📈 صافي الربح: ${money(s.profit)}\n🧺 طلبات مدفوعة: ${s.salesOrders} · 🎟 باقات: ${s.packageCount} (${money(s.packageSales)})\n👥 العملاء: ${d.active.length} (جدد ${d.newCount}، انقطعوا ${d.lost.length})\n⏰ متأخرون بالدفع: ${d.late.length}\n🏆 الأعلى: ${top || "—"}`;
+  }
+  // أول أسبوع من كل شهر: تنبيه للمالك/المدير مرة واحدة على كل جهاز بأن تقرير الشهر الماضي جاهز
+  function monthReportNudge() {
+    if (!can("view_reports") || Number(todayStr().slice(8)) > 7) return;
+    const prev = FIN.monthBounds(FIN.addDays(todayStr().slice(0, 7) + "-01", -1)).key;
+    try { if (localStorage.getItem("l997_mreport_seen") === prev) return; localStorage.setItem("l997_mreport_seen", prev); } catch (e) { return; }
+    if (!orders.length) return;
+    openQuickForm({ title: DL(`📊 تقرير شهر ${prev} جاهز`, `📊 The ${prev} report is ready`), sub: monthSummaryText(prev), fields: [],
+      submitLabel: DL("📊 افتح التقرير الكامل", "📊 Open the full report"), onSubmit: () => { setTimeout(() => window.openMonthlyReport997(prev), 60); } });
+  }
+
   function printMonthlyReport(mk) {
     const el = ensurePrintContainer();
     el.innerHTML = monthlyReportHtml(mk);
@@ -10496,10 +10704,12 @@ body.auth-locked .top-logout{display:none!important}
     if (activeReportType === "monthly") {
       if (!reportMonthKey) reportMonthKey = FIN.todayStr().slice(0, 7);
       content.innerHTML = `<div class="panel"><div class="panel-header"><div><h3>${lang === "en" ? "Monthly report" : "التقرير الشهري"}</h3><p>${lang === "en" ? "Revenue, collections, expenses, salaries, government fees and profit" : "الإيرادات والتحصيل والمصروفات والرواتب والجهات الحكومية وصافي الربح"}</p></div>
-        <div class="row-actions"><input type="month" id="monthlyReportMonth" value="${reportMonthKey}" class="inv-search" style="width:auto;margin:0"><button class="primary-btn" type="button" id="monthlyReportPrint">🖨 ${lang === "en" ? "Print / PDF" : "طباعة / PDF"}</button></div></div>
+        <div class="row-actions"><input type="month" id="monthlyReportMonth" value="${reportMonthKey}" class="inv-search" style="width:auto;margin:0"><button class="primary-btn" type="button" id="monthlyReportPrint">🖨 ${lang === "en" ? "Print / PDF" : "طباعة / PDF"}</button><button class="secondary-btn" type="button" id="monthlyReportCsv">⬇ ${lang === "en" ? "Customers (Excel)" : "العملاء (Excel)"}</button><button class="whatsapp-btn" type="button" id="monthlyReportWa">📲 ${lang === "en" ? "Summary on WhatsApp" : "الملخص على واتساب"}</button></div></div>
         ${monthlyReportHtml(reportMonthKey)}</div>`;
       document.getElementById("monthlyReportMonth").addEventListener("change", (e) => { if (/^\d{4}-\d{2}$/.test(e.target.value)) { reportMonthKey = e.target.value; renderReportsPage(); } });
       document.getElementById("monthlyReportPrint").addEventListener("click", () => printMonthlyReport(reportMonthKey));
+      document.getElementById("monthlyReportCsv").addEventListener("click", () => monthCustomersCsv(reportMonthKey));
+      document.getElementById("monthlyReportWa").addEventListener("click", () => { window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(monthSummaryText(reportMonthKey))}`, "_blank", "noopener"); logActivity(`📲 مشاركة ملخص التقرير الشهري ${reportMonthKey}`); });
       return;
     }
     const fromInput = document.getElementById("reportFromDate").value, toInput = document.getElementById("reportToDate").value;
@@ -11842,6 +12052,290 @@ body.auth-locked .top-logout{display:none!important}
   }
   window.renderDeliveryPage997 = renderDeliveryPage;
   window.waErrHint997 = (r) => waErrHint(r);
+
+  /* ============================= ⭐ الولاء والحملات =============================
+     • شرائح العملاء تُحسب تلقائياً من السجلات (عليهم متبقي، متأخرون، ملتزمون، مميزون، منقطعون، جدد، باقات، نقاط)
+     • اختيار الكل أو بعضهم ← رسالة واتساب جاهزة لكل عميل باسمه وأرقامه: تذكير بالمتبقي، شكر، خصم خاص بكود شخصي،
+       رصيد النقاط، «اشتقنا لك»، أو رسالة مخصصة — إرسال تلقائي عبر واتساب API إن أمكن، وإلا بضغطة لكل عميل
+     • تحديث فوري بزر، وتحديث دوري تلقائي كل دقيقة والصفحة مفتوحة
+     • بطاقة الولاء: نقاط تُكتسب تلقائياً على المبلغ المدفوع وتُستبدل رصيداً — تظهر في ملف العميل وفي تطبيق العملاء */
+  let loyStats = null, loyStatsAt = 0, loySeg = "all", loyQ = "", loyTimer = null;
+  const loySel = new Set();
+  const LCFG = () => FIN.loyaltyCfg(settings);
+  function loyCompute(force) {
+    if (force || !loyStats || Date.now() - loyStatsAt > 30e3) { loyStats = FIN.customerStats(customers, orders, ledger, customerPackages, settings, todayStr()); loyStatsAt = Date.now(); }
+    return loyStats;
+  }
+  const statsOf = (id) => loyCompute()[id] || null;
+  const TIER_ICON = { bronze: "🥉", silver: "🥈", gold: "🥇", platinum: "💎" };
+  const tierLabel = (st) => (st ? `${TIER_ICON[st.tier] || "⭐"} ${lang === "ar" ? st.tierName.ar : st.tierName.en || st.tierName.ar}` : "");
+  const commitLabel = (st) => (st ? { excellent: DL("ممتاز", "Excellent"), good: DL("جيد", "Good"), late: DL("متأخر", "Late") }[st.commitmentLabel] : "");
+  const commitColor = (st) => (st && st.commitmentLabel === "late" ? "var(--danger)" : st && st.commitmentLabel === "good" ? "var(--warning)" : "var(--success)");
+  const fmtPts = (n) => Number(n || 0).toLocaleString("en-US");
+  const daysAgo = (iso) => (iso ? Math.round((new Date(todayStr() + "T12:00:00Z") - new Date(FIN.localDay(iso) + "T12:00:00Z")) / 86400000) : null);
+  function loySegments() {
+    const cfg = LCFG();
+    return [
+      { id: "all", ar: "كل العملاء", en: "All customers", f: () => true },
+      { id: "owes", ar: "💳 عليهم متبقي", en: "💳 Owe money", f: (s) => s.owed > 0 },
+      { id: "late", ar: "⏰ متأخرون بالدفع", en: "⏰ Late payers", f: (s) => s.owed > 0 && s.overdueDays > cfg.lateDays },
+      { id: "committed", ar: "💙 ملتزمون بالدفع", en: "💙 Pay on time", f: (s) => s.sales >= 2 && s.commitment >= 85 && s.owed <= 0 },
+      { id: "vip", ar: "🥇 المميزون", en: "🥇 VIP", f: (s) => s.tierIndex >= 2 },
+      { id: "frequent", ar: "🔥 الأكثر طلباً", en: "🔥 Most frequent", f: (s) => s.orders30 >= 3 },
+      { id: "inactive", ar: "👋 انقطعوا 30+ يوم", en: "👋 Inactive 30+ days", f: (s) => s.orders > 0 && s.daysSinceLast > 30 },
+      { id: "new", ar: "🆕 جدد", en: "🆕 New", f: (s) => !!s.since && s.orders > 0 && daysAgo(s.since) <= 30 },
+      { id: "package", ar: "🎟 عملاء الباقات", en: "🎟 Package customers", f: (s) => s.activePackages > 0 },
+      { id: "points", ar: "⭐ نقاطهم تكفي للاستبدال", en: "⭐ Can redeem points", f: (s) => s.points >= cfg.redeemPoints },
+    ];
+  }
+  // نص الرسالة لكل عميل — بلهجة بحرينية ودودة، بأرقامه هو
+  function campaignText(kind, c, st, opt) {
+    const en = lang === "en", n = c.name || "", cfg = LCFG(), SIG = en ? SIGN.en : SIGN.ar;
+    const pts = `${fmtPts(st.points)} ${en ? "points" : "نقطة"}${st.pointsValue > 0 ? ` (${en ? "worth" : "تساوي"} ${money(st.pointsValue)})` : ""}`;
+    if (kind === "due") return waMsg("due", dueReminderData(c).data);
+    if (kind === "thanks") return en
+      ? `Hi ${n} 💙\nA big thank-you from all of us at 997 Laundry for your trust and for always settling on time 🙏\n🧺 Your orders with us: ${st.orders}\n${tierLabel(st)} member · ⭐ ${pts}\n\nIt's a pleasure to serve you — always at your service 🌷\n${SIG}`
+      : `هلا والله ${n} 💙\nمن كل قلب شكراً لك على ثقتك فينا والتزامك الدايم ويانا 🙏\n🧺 عدد طلباتك عندنا: ${st.orders}\n${tierLabel(st)} · ⭐ رصيدك ${pts}\n\nيسعدنا نخدمك دايماً، وإنت من أغلى عملائنا 🌷\n${SIG}`;
+    if (kind === "offer") return en
+      ? `Hi ${n} 🎁\nAs one of our valued customers (${tierLabel(st)}), here's a special ${opt.pct}% off your next order just for you ✨\n🏷 Your personal code: *${opt.code}*\n⏳ Valid until ${opt.until}\n\nJust show this message or give the code when you drop off your clothes 😊\n${SIG}`
+      : `هلا والله ${n} 🎁\nلأنك من عملائنا المميزين (${tierLabel(st)}) جهزنا لك خصم خاص ${opt.pct}% على طلبك الجاي ✨\n🏷 كودك الشخصي: *${opt.code}*\n⏳ صالح لين ${opt.until}\n\nبس قول الكود أو ورّنا الرسالة وقت تسليم الملابس 😊\n${SIG}`;
+    if (kind === "points") return en
+      ? `Hi ${n} ⭐\nYour 997 Laundry loyalty card: ${tierLabel(st)}\n💳 Card no. ${st.cardNo}\n⭐ Balance: ${pts}\n\nEvery ${cfg.redeemPoints} points = ${money(cfg.redeemValue)} off — ask us to redeem them anytime 🎁\n${SIG}`
+      : `هلا ${n} ⭐\nبطاقة ولائك في مغسلة 997: ${tierLabel(st)}\n💳 رقم البطاقة: ${st.cardNo}\n⭐ رصيدك: ${pts}\n\nكل ${cfg.redeemPoints} نقطة = ${money(cfg.redeemValue)} خصم — اطلب استبدالها بأي وقت 🎁\n${SIG}`;
+    if (kind === "winback") return en
+      ? `Hi ${n} 👋\nWe've missed you at 997 Laundry! 💙\n${opt.code ? `Welcome back with ${opt.pct}% off your next order — code *${opt.code}* (until ${opt.until}) 🎁\n` : ""}We can also collect from your home — just reply here 🚚\n${SIG}`
+      : `هلا والله ${n} 👋\nوحشتنا في مغسلة 997! 💙\n${opt.code ? `ترجع لنا بخصم ${opt.pct}% على طلبك الجاي — الكود *${opt.code}* (لين ${opt.until}) 🎁\n` : ""}ونقدر نستلم ملابسك من البيت بعد — بس رد علينا هنا 🚚\n${SIG}`;
+    if (kind === "custom") return String(opt.text || "").replace(/\{(name|الاسم)\}/g, n).replace(/\{(points|النقاط)\}/g, fmtPts(st.points)).replace(/\{(owed|المتبقي)\}/g, money(st.owed)).replace(/\{(tier|الفئة)\}/g, tierLabel(st)) + `\n${SIG}`;
+    return "";
+  }
+  // كود خصم شخصي: لهذا العميل فقط، مرة واحدة، بتاريخ انتهاء — يظهر في الإعدادات ← أكواد الخصم
+  function personalCode(c, pct, until, label) {
+    const ABC = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    do { code = "V" + Array.from({ length: 5 }, () => ABC[Math.floor(Math.random() * ABC.length)]).join(""); } while (findCode(code));
+    settings.discountCodes = settings.discountCodes || [];
+    settings.discountCodes.push({ code, type: "percent", percent: round3(pct), scope: "customers", customerIds: [c.id], note: `${label} — ${c.name}`, expiresAt: until, maxUses: 1, active: true, campaign: true, createdAt: new Date().toISOString(), createdBy: me ? me.name : "" });
+    return code;
+  }
+  const KIND_META = {
+    due: { ic: "💳", ar: "تذكير بالمتبقي", en: "Payment reminder" }, thanks: { ic: "💙", ar: "رسالة شكر", en: "Thank-you" },
+    offer: { ic: "🎁", ar: "خصم خاص", en: "Special discount" }, points: { ic: "⭐", ar: "رصيد النقاط", en: "Points balance" },
+    winback: { ic: "👋", ar: "اشتقنا لك", en: "We miss you" }, custom: { ic: "✏️", ar: "رسالة مخصصة", en: "Custom message" },
+  };
+  function startCampaign(kind) {
+    if (!can("campaigns")) { denied(); return; }
+    const st = loyCompute(true), ids = [...loySel].filter((id) => customers.some((c) => c.id === id && c.phone));
+    let list = ids.map((id) => ({ c: customers.find((x) => x.id === id), st: st[id] })).filter((x) => x.c && x.st);
+    if (kind === "due") list = list.filter((x) => dueReminderData(x.c).total > 0);
+    if (!list.length) { toast(kind === "due" ? DL("لا يوجد بين المختارين من عليه مبلغ متبقي", "None of the selected customers owes money") : DL("اختر عميلاً واحداً على الأقل (له رقم جوال)", "Select at least one customer with a phone number")); return; }
+    const meta = KIND_META[kind], days = [7, 14, 30];
+    const fields = [];
+    if (kind === "offer" || kind === "winback") {
+      fields.push({ id: "pct", label: DL("نسبة الخصم %", "Discount %"), type: "select", value: kind === "offer" ? "tier" : "10", options: [
+        ...(kind === "offer" ? [{ value: "tier", label: DL("حسب فئة كل عميل (برونزي 5% · فضي 10% · ذهبي 15% · بلاتيني 20%)", "By each customer's tier (bronze 5% · silver 10% · gold 15% · platinum 20%)") }] : []),
+        ...[5, 10, 15, 20, 25, 30].map((p) => ({ value: String(p), label: `${p}%` }))] });
+      fields.push({ id: "days", label: DL("صلاحية الكود", "Code valid for"), type: "select", value: "14", options: days.map((d) => ({ value: String(d), label: DL(`${d} يوم`, `${d} days`) })) });
+    }
+    if (kind === "custom") fields.push({ id: "text", label: DL("نص الرسالة — استخدم {الاسم} {النقاط} {المتبقي} {الفئة}", "Message — use {name} {points} {owed} {tier}"), type: "textarea", value: DL("هلا والله {الاسم} 🌷\n", "Hi {name} 🌷\n") });
+    const sample = list[0];
+    openQuickForm({
+      title: `${meta.ic} ${DL(meta.ar, meta.en)} — ${list.length} ${DL("عميل", "customers")}`,
+      sub: DL(`مثال لأول عميل (${sample.c.name}):\n\n`, `Example for the first customer (${sample.c.name}):\n\n`) + campaignText(kind, sample.c, sample.st, { pct: sample.st.tierDiscount, code: "V•••••", until: FIN.addDays(todayStr(), 14), text: DL("هلا والله {الاسم} 🌷", "Hi {name} 🌷") }),
+      fields, submitLabel: DL(`📲 إرسال لـ ${list.length}`, `📲 Send to ${list.length}`),
+      onSubmit: (v) => {
+        if (kind === "custom" && String(v.text || "").replace(/\{[^}]*\}/g, "").trim().length < 3) { toast(DL("اكتب نص الرسالة", "Write the message")); return false; }
+        const until = v.days ? FIN.addDays(todayStr(), Number(v.days)) : "";
+        const label = `${DL(meta.ar, meta.en)} ${todayStr()}`;
+        const items = list.map((x) => {
+          let opt = { text: v.text };
+          if (kind === "offer" || kind === "winback") {
+            const pct = v.pct === "tier" ? x.st.tierDiscount || 5 : Number(v.pct);
+            opt = { pct, until, code: personalCode(x.c, pct, until, label) };
+          }
+          return { ...x, text: campaignText(kind, x.c, x.st, opt), code: opt.code || "", state: "wait" };
+        });
+        if (kind === "offer" || kind === "winback") save(KEYS.settings, settings);
+        logActivity(`📣 حملة «${DL(meta.ar, meta.en)}» — ${items.length} عميل${kind === "offer" || kind === "winback" ? ` — أكواد شخصية: ${items.map((x) => `${x.code} (${x.c.name})`).join("، ")}` : ""}`);
+        setTimeout(() => openCampaignQueue(kind, items), 80);
+      },
+    });
+  }
+  // قائمة الإرسال: تلقائي عبر واتساب API (يصل فقط لمن راسلنا خلال 24 ساعة — قاعدة Meta)، والباقي بضغطة لكل عميل
+  function openCampaignQueue(kind, items) {
+    let dlg = document.getElementById("campaignDialog");
+    if (!dlg) { dlg = document.createElement("dialog"); dlg.id = "campaignDialog"; dlg.className = "modal"; document.body.appendChild(dlg); }
+    const meta = KIND_META[kind];
+    const mark = (x, state) => {
+      x.state = state;
+      x.c.lastCampaign = { kind, at: new Date().toISOString(), by: me ? me.name : "", auto: state === "auto" };
+      persistAll();
+      draw();
+    };
+    const draw = () => {
+      const done = items.filter((x) => x.state !== "wait" && x.state !== "fail").length;
+      dlg.innerHTML = `<div class="quick-add-body">
+        <div class="modal-header"><div><h3>${meta.ic} ${DL(meta.ar, meta.en)}</h3><p>${DL(`أُرسلت ${done} من ${items.length}`, `${done} of ${items.length} sent`)}</p></div><button class="icon-btn" type="button" id="cqClose">✕</button></div>
+        <div class="cq-progress"><span style="width:${Math.round((done / items.length) * 100)}%"></span></div>
+        <div class="row-actions" style="margin:10px 0">
+          ${items.some((x) => x.state === "wait" || x.state === "fail") ? `<button class="primary-btn" type="button" id="cqNext">📲 ${DL("افتح واتساب للعميل التالي", "Open WhatsApp for the next customer")}</button>` : `<b style="color:var(--success)">✓ ${DL("اكتملت الحملة", "Campaign complete")}</b>`}
+          ${cloudOn() && CLOUD.waBot && items.some((x) => x.state === "wait") ? `<button class="secondary-btn" type="button" id="cqAuto">🤖 ${DL("إرسال تلقائي للجميع", "Send automatically to all")}</button>` : ""}
+        </div>
+        <p class="section-note">${DL("الإرسال التلقائي يصل فقط للعملاء اللي راسلوا المحل خلال آخر 24 ساعة (شرط واتساب). الباقي: اضغط «افتح واتساب» ثم «إرسال» داخل واتساب، وارجع هنا للتالي.", "Automatic sending only reaches customers who messaged the shop in the last 24 hours (a WhatsApp rule). For the rest: tap “Open WhatsApp”, press Send in WhatsApp, then come back for the next one.")}</p>
+        <div class="cq-list">${items.map((x, i) => `<div class="cq-row ${x.state}"><b>${esc(x.c.name)}</b><span dir="ltr">${esc(fmtPhone(x.c.phone))}</span>${x.code ? `<span class="inv-tag">${esc(x.code)}</span>` : ""}
+          <span class="cq-state">${{ wait: "⏳", auto: `✅ ${DL("تلقائي", "auto")}`, manual: `✓ ${DL("أُرسل", "sent")}`, fail: `📲 ${DL("يدوي", "manual")}`, busy: "…" }[x.state]}</span>
+          ${x.state !== "auto" ? `<button type="button" class="mini-btn" data-cq="${i}">📲</button>` : ""}</div>`).join("")}</div>
+      </div>`;
+      dlg.querySelector("#cqClose").onclick = () => { dlg.close(); if (currentPage === "loyalty") renderLoyaltyPage(); };
+      dlg.querySelector("#cqNext")?.addEventListener("click", () => { const x = items.find((y) => y.state === "wait" || y.state === "fail"); if (x) { openWhatsApp(x.c.phone, x.text); mark(x, "manual"); } });
+      dlg.querySelectorAll("[data-cq]").forEach((b) => (b.onclick = () => { const x = items[Number(b.dataset.cq)]; openWhatsApp(x.c.phone, x.text); mark(x, "manual"); }));
+      dlg.querySelector("#cqAuto")?.addEventListener("click", async () => {
+        for (const x of items.filter((y) => y.state === "wait")) {
+          x.state = "busy"; draw();
+          let ok = false;
+          try { const r = await CLOUD.waBot({ action: "reply", to: cleanPhone(x.c.phone), text: x.text, keepBot: true }); ok = !!(r && r.ok); } catch (e) { ok = false; }
+          if (ok) mark(x, "auto"); else { x.state = "fail"; draw(); }
+        }
+        const a = items.filter((x) => x.state === "auto").length;
+        logActivity(`📣 إرسال تلقائي: ${a} من ${items.length}`);
+        toast(DL(`✅ وصل تلقائياً لـ ${a} — الباقي اضغط «افتح واتساب»`, `✅ ${a} sent automatically — tap “Open WhatsApp” for the rest`));
+      });
+    };
+    draw();
+    if (!dlg.open) dlg.showModal();
+  }
+  function renderLoyaltyPage(force) {
+    const root = document.getElementById("loyaltyRoot"); if (!root) return;
+    const st = loyCompute(force), cfg = LCFG(), segs = loySegments(), seg = segs.find((s) => s.id === loySeg) || segs[0];
+    const all = customers.filter((c) => st[c.id]);
+    const q = loyQ.trim().toLowerCase();
+    const list = all.filter((c) => seg.f(st[c.id]) && (!q || String(c.name || "").toLowerCase().includes(q) || cleanPhone(c.phone).includes(q.replace(/\D/g, "") || "§")))
+      .sort((a, b) => (loySeg === "owes" || loySeg === "late" ? st[b.id].owed - st[a.id].owed : st[b.id].spent90 - st[a.id].spent90 || st[b.id].points - st[a.id].points));
+    [...loySel].forEach((id) => { if (!customers.some((c) => c.id === id)) loySel.delete(id); });
+    const sum = (f) => all.reduce((a, c) => a + f(st[c.id]), 0);
+    const ptsOut = sum((s) => s.points), liability = round3((ptsOut / cfg.redeemPoints) * cfg.redeemValue);
+    const kpi = (ic, lbl, v, note, color) => `<div class="metric-card"><div class="metric-top"><span>${lbl}</span><span class="metric-icon">${ic}</span></div><div class="metric-value" style="${color ? `color:${color}` : ""}">${v}</div>${note ? `<div class="metric-note">${note}</div>` : ""}</div>`;
+    const tierCounts = cfg.tiers.map((t) => `${TIER_ICON[t.id] || "⭐"} ${lang === "ar" ? t.ar : t.en || t.ar}: <b>${all.filter((c) => st[c.id].tier === t.id).length}</b>`).join(" · ");
+    root.innerHTML = `
+      <div class="panel loy-head">
+        <div><h3>⭐ ${DL("الولاء والحملات", "Loyalty & campaigns")}</h3><p class="section-note">${tierCounts}</p></div>
+        <div class="row-actions"><span class="section-note">${DL("آخر تحديث", "Updated")} ${new Date(loyStatsAt).toLocaleTimeString(lang === "ar" ? "ar-BH" : "en-GB", { hour: "numeric", minute: "2-digit" })} · ${DL("تحديث تلقائي كل دقيقة", "auto-refresh every minute")}</span>
+          <button class="secondary-btn" type="button" id="loyRefresh">🔄 ${DL("تحديث الآن", "Refresh now")}</button></div>
+      </div>
+      <div class="metrics-grid metrics-grid-compact">
+        ${kpi("👥", DL("العملاء", "Customers"), all.length, `${all.filter((c) => st[c.id].orders30 > 0).length} ${DL("نشطون هذا الشهر", "active this month")}`)}
+        ${kpi("💳", DL("عليهم متبقي", "Owe money"), all.filter((c) => st[c.id].owed > 0).length, money(sum((s) => s.owed)), "var(--danger)")}
+        ${kpi("⭐", DL("نقاط لم تُستبدل", "Unredeemed points"), fmtPts(ptsOut), `${DL("قيمتها", "worth")} ${money(liability)}`, "var(--primary)")}
+        ${kpi("💙", DL("متوسط الالتزام بالدفع", "Average payment commitment"), `${all.length ? Math.round(sum((s) => s.commitment) / all.length) : 0}%`, "", "var(--success)")}
+      </div>
+      <div class="panel">
+        <div class="loy-segs">${segs.map((s) => { const n = all.filter((c) => s.f(st[c.id])).length; return `<button type="button" class="loy-seg ${s.id === seg.id ? "on" : ""}" data-seg="${s.id}">${DL(s.ar, s.en)} <span>${n}</span></button>`; }).join("")}</div>
+        <div class="loy-tools">
+          <input type="search" id="loySearch" class="inv-search" placeholder="🔍 ${DL("ابحث بالاسم أو الرقم", "Search by name or number")}" value="${esc(loyQ)}" />
+          <button type="button" class="mini-btn" id="loyAll">☑ ${DL(`اختيار الكل (${list.length})`, `Select all (${list.length})`)}</button>
+          <button type="button" class="mini-btn" id="loyNone">✕ ${DL("إلغاء الاختيار", "Clear")}</button>
+        </div>
+        <div class="loy-actions ${loySel.size ? "on" : ""}">
+          <b>${DL(`المختارون: ${loySel.size}`, `Selected: ${loySel.size}`)}</b>
+          ${Object.entries(KIND_META).map(([k, m]) => `<button type="button" class="${k === "due" ? "primary-btn" : "secondary-btn"}" data-kind="${k}" ${loySel.size ? "" : "disabled"}>${m.ic} ${DL(m.ar, m.en)}</button>`).join("")}
+        </div>
+        <div class="table-wrap"><table class="data-table loy-table"><thead><tr><th></th><th>${DL("العميل", "Customer")}</th><th>${DL("الفئة", "Tier")}</th><th>⭐ ${DL("النقاط", "Points")}</th><th>${DL("الطلبات", "Orders")}</th><th>${DL("صرف 90 يوم", "Spent 90d")}</th><th>${DL("المتبقي", "Owed")}</th><th>${DL("الالتزام", "Commitment")}</th><th>${DL("آخر طلب", "Last order")}</th><th>${DL("آخر رسالة", "Last message")}</th></tr></thead>
+        <tbody>${list.slice(0, 400).map((c) => { const s = st[c.id], lc = c.lastCampaign; return `<tr class="${loySel.has(c.id) ? "sel" : ""}">
+          <td><input type="checkbox" data-pick="${c.id}" ${loySel.has(c.id) ? "checked" : ""} ${c.phone ? "" : "disabled"} /></td>
+          <td><button type="button" class="link-btn" data-open="${c.id}">${esc(c.name)}</button><div class="section-note" dir="ltr">${esc(fmtPhone(c.phone))}</div></td>
+          <td>${tierLabel(s)}</td><td><b>${fmtPts(s.points)}</b>${s.pointsValue > 0 ? `<div class="section-note">${money(s.pointsValue)}</div>` : ""}</td>
+          <td>${s.orders}</td><td>${money(s.spent90)}</td><td style="color:${s.owed > 0 ? "var(--danger)" : ""}">${s.owed > 0 ? money(s.owed) : "—"}${s.overdueDays ? `<div class="section-note">${DL(`${s.overdueDays} يوم`, `${s.overdueDays} days`)}</div>` : ""}</td>
+          <td><b style="color:${commitColor(s)}">${s.commitment}%</b> <span class="section-note">${commitLabel(s)}</span></td>
+          <td>${s.lastOrderAt ? DL(`قبل ${s.daysSinceLast} يوم`, `${s.daysSinceLast}d ago`) : "—"}</td>
+          <td>${lc ? `${KIND_META[lc.kind] ? KIND_META[lc.kind].ic : ""} ${DL(`قبل ${daysAgo(lc.at)} يوم`, `${daysAgo(lc.at)}d ago`)}` : "—"}</td></tr>`; }).join("") || `<tr><td colspan="10" class="empty-state compact">${DL("لا يوجد عملاء في هذه الشريحة", "No customers in this group")}</td></tr>`}</tbody></table></div>
+      </div>
+      ${can("edit_pricing") ? `<details class="panel"><summary><b>⚙ ${DL("إعدادات برنامج الولاء", "Loyalty programme settings")}</b></summary>
+        <div class="loy-rules">${DL(`كل 1 د.ب مدفوعة = <b>${cfg.perBD}</b> نقطة · كل <b>${cfg.redeemPoints}</b> نقطة = <b>${money(cfg.redeemValue)}</b> رصيد · متأخر بعد <b>${cfg.lateDays}</b> يوم · الفئات حسب صرف آخر 90 يوماً: ${cfg.tiers.map((t) => `${TIER_ICON[t.id] || ""} ${t.ar} من ${money(t.min)} (خصم ${t.discount}%)`).join(" · ")}`,
+          `Every 1 BD paid = <b>${cfg.perBD}</b> points · every <b>${cfg.redeemPoints}</b> points = <b>${money(cfg.redeemValue)}</b> credit · late after <b>${cfg.lateDays}</b> days · tiers by last-90-day spend: ${cfg.tiers.map((t) => `${TIER_ICON[t.id] || ""} ${t.en || t.ar} from ${money(t.min)} (${t.discount}% off)`).join(" · ")}`)}</div>
+        <button type="button" class="secondary-btn" id="loyEdit">✎ ${DL("تعديل القواعد", "Edit the rules")}</button></details>` : ""}`;
+    const $q = (s) => root.querySelector(s);
+    $q("#loyRefresh").onclick = () => { renderLoyaltyPage(true); toast(DL("✓ تم تحديث الأرقام", "✓ Figures refreshed")); };
+    $q("#loySearch").oninput = (e) => { loyQ = e.target.value; const pos = e.target.selectionStart; renderLoyaltyPage(); const el = document.getElementById("loySearch"); el.focus(); try { el.setSelectionRange(pos, pos); } catch (x) { /* ignore */ } };
+    $q("#loyAll").onclick = () => { list.forEach((c) => { if (c.phone) loySel.add(c.id); }); renderLoyaltyPage(); };
+    $q("#loyNone").onclick = () => { loySel.clear(); renderLoyaltyPage(); };
+    root.querySelectorAll("[data-seg]").forEach((b) => (b.onclick = () => { loySeg = b.dataset.seg; loySel.clear(); renderLoyaltyPage(); }));
+    root.querySelectorAll("[data-pick]").forEach((b) => (b.onchange = () => { if (b.checked) loySel.add(b.dataset.pick); else loySel.delete(b.dataset.pick); renderLoyaltyPage(); }));
+    root.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => window.openCustomerProfile997(b.dataset.open)));
+    root.querySelectorAll("[data-kind]").forEach((b) => (b.onclick = () => startCampaign(b.dataset.kind)));
+    $q("#loyEdit")?.addEventListener("click", openLoyaltySettings);
+    // تحديث دوري: كل دقيقة والصفحة مفتوحة (لا يقطع الكتابة في البحث ولا النوافذ المفتوحة)
+    clearInterval(loyTimer);
+    loyTimer = setInterval(() => {
+      if (currentPage !== "loyalty") { clearInterval(loyTimer); return; }
+      if (document.querySelector("dialog[open]") || (document.activeElement && document.activeElement.id === "loySearch")) return;
+      renderLoyaltyPage(true);
+    }, 60e3);
+  }
+  function openLoyaltySettings() {
+    if (!can("edit_pricing")) { denied(); return; }
+    const cfg = LCFG();
+    openQuickForm({
+      title: DL("⚙ قواعد برنامج الولاء", "⚙ Loyalty rules"), sub: DL("النقاط تُحسب تلقائياً من المبالغ المدفوعة فعلاً — أي تعديل هنا ينطبق على الكل فوراً.", "Points are calculated automatically from money actually paid — changes apply to everyone at once."),
+      fields: [
+        { id: "on", label: DL("البرنامج", "Programme"), type: "select", value: cfg.on ? "on" : "off", options: [{ value: "on", label: DL("مفعّل", "On") }, { value: "off", label: DL("متوقف", "Off") }] },
+        { id: "perBD", label: DL("نقاط لكل 1 د.ب مدفوعة", "Points per 1 BD paid"), type: "number", step: "1", min: 0, value: cfg.perBD },
+        { id: "redeemPoints", label: DL("عدد النقاط للاستبدال", "Points per redemption"), type: "number", step: "1", min: 1, value: cfg.redeemPoints },
+        { id: "redeemValue", label: DL("قيمتها بالدينار", "Their value in BD"), type: "number", step: "0.001", min: 0, value: cfg.redeemValue },
+        { id: "lateDays", label: DL("يُعتبر متأخراً بالدفع بعد (أيام)", "Late payer after (days)"), type: "number", step: "1", min: 1, value: cfg.lateDays },
+        ...cfg.tiers.flatMap((t) => [
+          { id: `min_${t.id}`, label: DL(`${TIER_ICON[t.id] || ""} ${t.ar}: يبدأ من صرف (د.ب / 90 يوم)`, `${TIER_ICON[t.id] || ""} ${t.en || t.ar}: from spend (BD / 90 days)`), type: "number", step: "0.001", min: 0, value: t.min },
+          { id: `disc_${t.id}`, label: DL(`${TIER_ICON[t.id] || ""} ${t.ar}: خصم الحملات %`, `${TIER_ICON[t.id] || ""} ${t.en || t.ar}: campaign discount %`), type: "number", step: "1", min: 0, value: t.discount },
+        ]),
+      ],
+      submitLabel: DL("حفظ", "Save"),
+      onSubmit: (v) => {
+        if (!(Number(v.redeemPoints) >= 1)) { toast(DL("عدد نقاط الاستبدال غير صحيح", "Invalid points per redemption")); return false; }
+        const before = JSON.stringify(cfg);
+        settings.loyalty = { on: v.on === "on", perBD: Math.max(0, Number(v.perBD) || 0), redeemPoints: Math.floor(Number(v.redeemPoints)), redeemValue: round3(Number(v.redeemValue) || 0), lateDays: Math.max(1, Math.floor(Number(v.lateDays) || 14)),
+          tiers: cfg.tiers.map((t) => ({ id: t.id, ar: t.ar, en: t.en, min: round3(Number(v[`min_${t.id}`]) || 0), discount: Math.max(0, Math.min(100, Number(v[`disc_${t.id}`]) || 0)) })) };
+        persistAll(); logActivity(`⭐ تعديل قواعد الولاء — قبل: ${before} — بعد: ${JSON.stringify(settings.loyalty)}`);
+        renderLoyaltyPage(true); toast(DL("✓ حُفظت القواعد", "✓ Rules saved"));
+      },
+    });
+  }
+  window.renderLoyaltyPage997 = renderLoyaltyPage;
+  // 💳 بطاقة الولاء في ملف العميل
+  function loyaltyCardHtml(c) {
+    const cfg = LCFG(); if (!cfg.on) return "";
+    const s = statsOf(c.id); if (!s) return "";
+    return `<div class="loy-card tier-${s.tier}">
+      <div class="loy-card-top"><span>💳 ${DL("بطاقة الولاء", "Loyalty card")} · <b dir="ltr">${s.cardNo}</b></span><b>${tierLabel(s)}</b></div>
+      <div class="loy-card-pts"><b>${fmtPts(s.points)}</b> ${DL("نقطة", "points")}${s.pointsValue > 0 ? ` · ${DL("تساوي", "worth")} ${money(s.pointsValue)}` : ""}</div>
+      <div class="loy-card-meta">💙 ${DL("الالتزام بالدفع", "Payment commitment")}: <b>${s.commitment}%</b> (${commitLabel(s)}) · 🧺 ${s.orders} ${DL("طلب", "orders")} · ${DL("صرف 90 يوم", "spent 90d")} ${money(s.spent90)}${s.nextTier ? ` · ${DL(`باقي ${money(s.nextTier.need)} للفئة ${s.nextTier.ar}`, `${money(s.nextTier.need)} to ${s.nextTier.en || s.nextTier.ar}`)}` : ""}</div>
+      <div class="row-actions">${s.points >= cfg.redeemPoints ? `<button type="button" class="primary-btn" id="cpRedeem">🎁 ${DL("استبدال النقاط برصيد", "Redeem points as credit")}</button>` : ""}<button type="button" class="secondary-btn" id="cpSendCard">📲 ${DL("إرسال البطاقة على واتساب", "Send the card on WhatsApp")}</button></div>
+    </div>`;
+  }
+  function wireLoyaltyCard(c) {
+    const s = statsOf(c.id);
+    document.getElementById("cpSendCard")?.addEventListener("click", () => { if (c.phone) { openWhatsApp(c.phone, campaignText("points", c, s, {})); c.lastCampaign = { kind: "points", at: new Date().toISOString(), by: me ? me.name : "" }; persistAll(); logActivity(`⭐ إرسال بطاقة الولاء — ${c.name} — ${fmtPts(s.points)} نقطة`); } });
+    document.getElementById("cpRedeem")?.addEventListener("click", () => requireOverride("balance_tx", "استبدال نقاط الولاء", () => redeemLoyalty(c)));
+  }
+  function redeemLoyalty(c) {
+    const cfg = LCFG(), s = loyCompute(true)[c.id];
+    const max = Math.floor(s.points / cfg.redeemPoints);
+    if (max < 1) { toast(DL("النقاط لا تكفي للاستبدال", "Not enough points to redeem")); return; }
+    openQuickForm({
+      title: DL(`🎁 استبدال نقاط ${c.name}`, `🎁 Redeem ${c.name}'s points`), sub: DL(`الرصيد: ${fmtPts(s.points)} نقطة — كل ${cfg.redeemPoints} نقطة = ${money(cfg.redeemValue)} تُضاف لرصيد العميل ويستخدمها في أي طلب.`, `Balance: ${fmtPts(s.points)} points — every ${cfg.redeemPoints} points = ${money(cfg.redeemValue)} added to the customer's balance for any order.`),
+      fields: [{ id: "n", label: DL("المبلغ", "Amount"), type: "select", value: String(max), options: Array.from({ length: Math.min(max, 50) }, (_, i) => ({ value: String(i + 1), label: `${fmtPts((i + 1) * cfg.redeemPoints)} ${DL("نقطة", "points")} = ${money((i + 1) * cfg.redeemValue)}` })) }],
+      submitLabel: DL("استبدال", "Redeem"),
+      onSubmit: (v) => {
+        const k = Math.max(1, Math.min(max, Math.floor(Number(v.n) || 1))), pts = k * cfg.redeemPoints, val = round3(k * cfg.redeemValue);
+        c.balance = round3((Number(c.balance) || 0) + val);
+        ledger.unshift({ id: uid(), byId: me ? me.id : "", customerId: c.id, type: "adjustment", amount: val, balanceAfter: c.balance, method: "loyalty", loyaltyPoints: pts, note: `⭐ استبدال ${fmtPts(pts)} نقطة ولاء`, orderId: null, at: new Date().toISOString() });
+        persistAll(); loyCompute(true);
+        logActivity(`⭐ استبدال نقاط ولاء — ${c.name} — ${fmtPts(pts)} نقطة = ${money(val)} أُضيفت لرصيده`);
+        toast(DL(`✓ أُضيف ${money(val)} لرصيد ${c.name}`, `✓ ${money(val)} added to ${c.name}'s balance`));
+        if (c.phone) setTimeout(() => waPrompt(DL("✓ تم الاستبدال", "✓ Redeemed"), DL(`ترسل للعميل تأكيد الاستبدال؟`, `Send the customer a confirmation?`), DL("📲 إرسال على واتساب", "📲 Send on WhatsApp"), () => {
+          openWhatsApp(c.phone, lang === "en" ? `Hi ${c.name} 🎁\n${fmtPts(pts)} loyalty points were redeemed — ${money(val)} added to your balance with us ✅\n💳 ${balanceStatus(c.balance)}\n${SIGN.en}` : `هلا والله ${c.name} 🎁\nتم استبدال ${fmtPts(pts)} نقطة من نقاط ولائك — أضفنا ${money(val)} لرصيدك عندنا ✅\n💳 ${balanceStatus(c.balance)}\n${SIGN.ar}`);
+        }), 150);
+        if (customerProfileDialog.open) renderCustomerProfile();
+      },
+    });
+  }
 
   /* ============================= 💬 محادثات واتساب (المساعد الذكي) =============================
      الرسائل تصل من Meta إلى دالة whatsapp-bot في Supabase؛ المساعد يرد آلياً من بيانات المحل الفعلية.

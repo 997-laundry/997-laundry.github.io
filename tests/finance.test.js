@@ -355,3 +355,39 @@ test("package usage is derived from non-cancelled orders and never exceeds the p
   u = F.packageUsage([cp], [used(4), used(3)], "c1")[0];
   assert.equal(u.remaining, 0); // over-use never shows negative pieces
 });
+
+test("loyalty: points on money actually paid (debt earns nothing until settled), redemptions deducted, tier by last-90-day spend", () => {
+  const day = "2026-11-20", A = (d) => at(d, "10:00");
+  const cs = [{ id: "c1", phone: "97333111111", balance: 0 }, { id: "c2", phone: "97333222222", balance: -6 }];
+  const os = [
+    order({ id: "1", customerId: "c1", total: 30, paidAt: A("2026-11-01"), createdAt: A("2026-11-01") }),
+    order({ id: "2", customerId: "c1", total: 12.5, paidAt: A("2026-10-25"), createdAt: A("2026-10-25") }),
+    order({ id: "3", customerId: "c1", total: 50, paidAt: A("2026-06-01"), createdAt: A("2026-06-01") }), // older than 90 days: not in the tier spend
+    order({ id: "4", customerId: "c2", total: 10, paid: 4, outstanding: 6, debt: true, paidAt: A("2026-10-20"), createdAt: A("2026-10-20") }),
+    order({ id: "5", customerId: "c1", total: 9, status: "cancelled", createdAt: A("2026-11-10") }),
+  ];
+  const ledger = [
+    { id: "t1", customerId: "c1", type: "package_purchase", amount: 0, price: 16.9, at: A("2026-11-05") },
+    { id: "t2", customerId: "c1", type: "adjustment", method: "loyalty", amount: 1, loyaltyPoints: 500, at: A("2026-11-06") },
+    { id: "t3", customerId: "c2", type: "order_charge", amount: -6, orderId: "4", at: A("2026-10-20") },
+  ];
+  const st = F.customerStats(cs, os, ledger, [], {}, day);
+  // c1: paid 30 + 12.5 + 50 + package 16.9 = 109.4 BD → 1094 points − 500 redeemed
+  assert.equal(st.c1.pointsEarned, 1094); assert.equal(st.c1.points, 594); assert.equal(st.c1.pointsValue, 1);
+  assert.equal(st.c1.spent90, 59.4); assert.equal(st.c1.tier, "silver"); assert.equal(st.c1.nextTier.id, "gold"); assert.equal(st.c1.nextTier.need, 0.6);
+  assert.equal(st.c1.orders, 3, "cancelled orders do not count"); assert.equal(st.c1.commitment, 100); assert.equal(st.c1.cardNo, "997-111111");
+  // c2: only the 4 BD actually paid earns points; 6 BD debt for 31 days → weak commitment
+  assert.equal(st.c2.pointsEarned, 40); assert.equal(st.c2.owed, 6); assert.equal(st.c2.overdueDays, 31);
+  assert.ok(st.c2.commitment < 60, String(st.c2.commitment)); assert.equal(st.c2.commitmentLabel, "late");
+  // settings change the rules (points per BD, tiers)
+  const st2 = F.customerStats(cs, os, ledger, [], { loyalty: { perBD: 1, tiers: [{ id: "a", ar: "أ", min: 0 }, { id: "b", ar: "ب", min: 50 }] } }, day);
+  assert.equal(st2.c1.pointsEarned, 109); assert.equal(st2.c1.tier, "b");
+});
+
+test("a late payer drops one tier", () => {
+  const day = "2026-11-20", A = (d) => at(d, "10:00");
+  const cs = [{ id: "c1", balance: -30 }];
+  const os = [order({ id: "1", customerId: "c1", total: 100, paid: 70, outstanding: 30, debt: true, paidAt: A("2026-10-01"), createdAt: A("2026-10-01") })];
+  const st = F.customerStats(cs, os, [{ id: "t", customerId: "c1", type: "order_charge", amount: -30, orderId: "1", at: A("2026-10-01") }], [], {}, day);
+  assert.equal(st.c1.spent90, 100); assert.equal(st.c1.tier, "silver", "would be gold by spend, but 50 days of debt drop it one tier");
+});

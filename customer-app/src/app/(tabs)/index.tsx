@@ -1,11 +1,12 @@
 // Home: greeting, money banner, live orders with progress, package, pending requests, quick actions.
 import React from "react";
-import { Linking, View } from "react-native";
+import { Linking, Pressable, View } from "react-native";
 import { router } from "expo-router";
 import { useSession } from "../../lib/session";
 import { Badge, Btn, Card, Empty, Loading, Logo, Row, Screen, Section, T } from "../../components/ui";
 import { OrderCard } from "../../components/OrderCard";
 import { PackageCard } from "../../components/PackageCard";
+import { LoyaltyCard } from "../../components/LoyaltyCard";
 import { C } from "../../lib/theme";
 import { bhToday, dayLabel, money, slotKey } from "../../lib/i18n";
 import { SHOP_WHATSAPP } from "../../lib/config";
@@ -40,6 +41,8 @@ export default function HomeScreen() {
           <Row style={{ justifyContent: "space-between" }}><T w="b" color={C.green}>💙 {t("creditBanner")}</T><T w="x" size={18} color={C.green}>{money(home.credit, lang)}</T></Row>
         </Card>
       ) : null}
+
+      {home.loyalty ? <Pressable onPress={() => router.push("/account")}><LoyaltyCard l={home.loyalty} compact /></Pressable> : null}
 
       <Row style={{ marginTop: 14 }} gap={10}>
         <Card onPress={() => router.push("/book")} style={{ flex: 1, alignItems: "center", paddingVertical: 16, paddingHorizontal: 8, height: "100%" }}>

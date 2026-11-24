@@ -11,7 +11,8 @@ export interface Order {
 }
 export interface Pkg { id: string; name: string; service: string; total: number; left: number; expiresAt: string; expired: boolean; trips: number; tripsPeriod: "total" | "month"; purchasedAt: string }
 export interface Req { id: string; kind: "pickup" | "dropreq"; date: string; slot: string; address: string; status: string; confirmed: boolean; orderNumber: string }
-export interface Home { customer: Customer; balance: number; debt: number; credit: number; active: Order[]; recent: Order[]; packages: Pkg[]; requests: Req[]; owedTotal: number }
+export interface Loyalty { cardNo: string; points: number; value: number; tier: "bronze" | "silver" | "gold" | "platinum" | string; tierAr: string; tierEn: string; commitment: number; spent90: number; next: { ar: string; en: string; need: number } | null; redeemPoints: number; redeemValue: number; perBD: number }
+export interface Home { customer: Customer; balance: number; debt: number; credit: number; active: Order[]; recent: Order[]; packages: Pkg[]; requests: Req[]; owedTotal: number; loyalty?: Loyalty | null }
 export interface CatalogItem { id: string; ar: string; en: string; cat: string; prices: Record<string, number> }
 export interface CatalogPkg { id: string; name: string; service: string; pieces: number; price: number; perPiece: number; validDays: number; trips: number; tripsPeriod: string; bonus: string; itemsLimited: boolean }
 export interface Catalog {

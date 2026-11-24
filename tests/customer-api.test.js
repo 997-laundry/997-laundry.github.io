@@ -134,3 +134,14 @@ test("rating goes to the staff inbox on the customer's chat; low ratings are fla
   assert.match(note.body, /تقييم منخفض/); assert.match(note.body, /#00007/); assert.match(note.body, /تأخر/);
   assert.equal(w.threads[0].flag, "complaint");
 });
+
+test("loyalty card: same points/tier rules as the system (paid money only, redemptions deducted)", async () => {
+  const handle = await load(), w = world();
+  w.recs.push({ shop_id: SHOP, deleted: false, collection: "ledger", record_id: "t1", data: { id: "t1", customerId: "c1", type: "package_purchase", amount: 0, price: 16.9, at: new Date().toISOString() } });
+  w.recs.push({ shop_id: SHOP, deleted: false, collection: "ledger", record_id: "t2", data: { id: "t2", customerId: "c1", type: "adjustment", method: "loyalty", amount: 1, loyaltyPoints: 100, at: new Date().toISOString() } });
+  w.recs.find((r) => r.record_id === "o1").data.status = "delivered";
+  const { token } = await signIn(handle, w, "97333111111");
+  const l = (await call(handle, w, { action: "home", token })).body.loyalty;
+  // o1: total 1.5 paid (not on account) + package 16.9 = 18.4 BD → 184 points − 100 redeemed
+  assert.equal(l.points, 84); assert.equal(l.cardNo, "997-111111"); assert.equal(l.tier, "bronze"); assert.equal(l.next.ar, "فضي");
+});

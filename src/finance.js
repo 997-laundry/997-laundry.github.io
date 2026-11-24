@@ -391,5 +391,77 @@
     return s;
   }
 
-  return { CASH_METHODS, r3, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, targetedPayments, customerSummary, packageUsage, EXPENSE_GROUPS, EXPENSE_CATEGORIES, expenseCategory, salaryDue, unclosedDays, shiftSummary };
+  /* ⭐ الولاء والالتزام — محسوبة دائماً من السجلات نفسها (لا تُخزَّن)، فلا تختلف بين الأجهزة ولا تحتاج «تحديثاً» يدوياً:
+     • النقاط: تُكتسب على المبلغ المدفوع فعلاً (الطلبات المدفوعة + الباقات المشتراة) — الدين لا يكسب نقاطاً حتى يُسدَّد،
+       وتُخصم عند الاستبدال (حركة رصيد بها loyaltyPoints).
+     • الالتزام (0–100): طلبات سُجّلت ديناً، ودين مستحق الآن، وعمر أقدم دين.
+     • الفئة: حسب ما صرفه العميل في آخر 90 يوماً، وتنزل درجة واحدة إذا كان التزامه بالدفع ضعيفاً. */
+  const LOYALTY_DEFAULT = {
+    on: true, perBD: 10, redeemPoints: 500, redeemValue: 1, lateDays: 14,
+    tiers: [
+      { id: "bronze", ar: "برونزي", en: "Bronze", min: 0, discount: 5 },
+      { id: "silver", ar: "فضي", en: "Silver", min: 25, discount: 10 },
+      { id: "gold", ar: "ذهبي", en: "Gold", min: 60, discount: 15 },
+      { id: "platinum", ar: "بلاتيني", en: "Platinum", min: 120, discount: 20 },
+    ],
+  };
+  function loyaltyCfg(settings) {
+    const l = (settings && settings.loyalty) || {}, n = (v, d) => (Number.isFinite(Number(v)) && Number(v) >= 0 && v !== "" && v !== null ? Number(v) : d);
+    const tiers = Array.isArray(l.tiers) && l.tiers.length ? l.tiers : LOYALTY_DEFAULT.tiers;
+    return { on: l.on !== false, perBD: n(l.perBD, 10), redeemPoints: Math.max(1, Math.floor(n(l.redeemPoints, 500))), redeemValue: r3(n(l.redeemValue, 1)), lateDays: Math.floor(n(l.lateDays, 14)),
+      tiers: tiers.map((t) => ({ ...t, min: Number(t.min) || 0, discount: Number(t.discount) || 0 })).sort((a, b) => a.min - b.min) };
+  }
+  function customerStats(customers, orders, ledger, customerPackages, settings, today) {
+    const cfg = loyaltyCfg(settings), day = today || todayStr(), from90 = addDays(day, -89), out = {};
+    const owedById = allocateDebts(customers, orders, ledger);
+    const byC = new Map(), txByC = new Map(), pkByC = new Map();
+    (orders || []).forEach((o) => { if (!byC.has(o.customerId)) byC.set(o.customerId, []); byC.get(o.customerId).push(o); });
+    (ledger || []).forEach((t) => { if (!txByC.has(t.customerId)) txByC.set(t.customerId, []); txByC.get(t.customerId).push(t); });
+    (customerPackages || []).forEach((p) => { if (!pkByC.has(p.customerId)) pkByC.set(p.customerId, []); pkByC.get(p.customerId).push(p); });
+    (customers || []).forEach((c) => {
+      const os = (byC.get(c.id) || []).filter((o) => o.status !== "cancelled"), txs = txByC.get(c.id) || [], pks = pkByC.get(c.id) || [];
+      let spent = 0, spent90 = 0, paid = 0, pieces = 0, debtOrders = 0, oldestDebt = "", dueNow = 0, last = "", first = "", orders30 = 0;
+      os.forEach((o) => {
+        const p = pay(o), total = r3(p.total), at = String(o.createdAt || "");
+        pieces += (o.items || []).reduce((a, it) => a + (Number(it.qty) || 0), 0);
+        if (!last || at > last) last = at;
+        if (!first || at < first) first = at;
+        if (localDay(at) >= addDays(day, -29)) orders30++;
+        if (!isSale(o)) { if (o.status === "ready" && o.paymentConfirmed === false) dueNow = r3(dueNow + total); return; }
+        const owed = o.debtRecorded ? r3(owedById[o.id] || 0) : 0;
+        spent = r3(spent + total);
+        if (localDay(orderPaidAt(o)) >= from90) spent90 = r3(spent90 + total);
+        paid = r3(paid + total - owed);
+        if (o.debtRecorded) debtOrders++;
+        if (owed > 0) { const d = localDay(orderPaidAt(o)); if (!oldestDebt || d < oldestDebt) oldestDebt = d; }
+      });
+      let pkgSpent = 0;
+      txs.forEach((t) => { if (t.type === "package_purchase") { const pr = packagePrice(t, customerPackages); pkgSpent = r3(pkgSpent + pr); if (localDay(t.at) >= from90) spent90 = r3(spent90 + pr); } });
+      const redeemed = txs.reduce((a, t) => a + (t.reversedBy ? 0 : Number(t.loyaltyPoints) || 0), 0); // a reversed redemption gives the points back
+      const earned = Math.floor((paid + pkgSpent) * cfg.perBD);
+      const bal = r3(Number(c.balance) || 0), owedTotal = r3(Math.max(0, -bal) + dueNow);
+      const overdueDays = oldestDebt ? Math.max(0, Math.round((new Date(day + "T12:00:00Z") - new Date(oldestDebt + "T12:00:00Z")) / 86400000)) : 0;
+      const sales = os.filter(isSale).length;
+      let commitment = 100;
+      if (sales) commitment -= Math.round((debtOrders / sales) * 40);
+      if (bal < 0) commitment -= 10;
+      commitment -= Math.min(50, overdueDays > cfg.lateDays ? overdueDays : Math.round(overdueDays / 2));
+      commitment = Math.max(0, Math.min(100, commitment));
+      let ti = 0; cfg.tiers.forEach((t, i) => { if (spent90 >= t.min) ti = i; });
+      if (commitment < 60 && ti > 0) ti--;
+      const tier = cfg.tiers[ti], next = cfg.tiers[ti + 1] || null;
+      const points = Math.max(0, earned - redeemed);
+      out[c.id] = {
+        orders: os.length, sales, pieces, spent, spent90, paid, pkgSpent, packages: pks.length, activePackages: pks.filter((p) => Number(p.remainingPieces) > 0 && !(p.expiresAt && p.expiresAt < day)).length,
+        owed: owedTotal, debtOrders, overdueDays, commitment, commitmentLabel: commitment >= 85 ? "excellent" : commitment >= 60 ? "good" : "late",
+        lastOrderAt: last, firstOrderAt: first, since: c.createdAt || first, orders30, daysSinceLast: last ? Math.round((new Date(day + "T12:00:00Z") - new Date(localDay(last) + "T12:00:00Z")) / 86400000) : null,
+        tier: tier.id, tierIndex: ti, tierName: { ar: tier.ar, en: tier.en }, tierDiscount: tier.discount, nextTier: next ? { id: next.id, ar: next.ar, en: next.en, need: r3(Math.max(0, next.min - spent90)) } : null,
+        pointsEarned: earned, pointsRedeemed: redeemed, points, pointsValue: r3(Math.floor(points / cfg.redeemPoints) * cfg.redeemValue),
+        cardNo: "997-" + String(c.phone || c.id || "").replace(/\D/g, "").slice(-6).padStart(6, "0"),
+      };
+    });
+    return out;
+  }
+
+  return { CASH_METHODS, r3, LOYALTY_DEFAULT, loyaltyCfg, customerStats, localDay, todayStr, addDays, monthBounds, inRange, orderPaidAt, isSale, isUnpaidOpen, packagePrice, summarize, snapshot, allocateDebts, targetedPayments, customerSummary, packageUsage, EXPENSE_GROUPS, EXPENSE_CATEGORIES, expenseCategory, salaryDue, unclosedDays, shiftSummary };
 });

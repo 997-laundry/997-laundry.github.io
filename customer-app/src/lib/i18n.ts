@@ -31,6 +31,8 @@ const ar = {
   shopInfo: "عن المحل", hours: "ساعات العمل", callShop: "اتصل بالمحل", privacy: "الخصوصية", version: "الإصدار",
   retry: "إعادة المحاولة", offline: "ما في اتصال بالإنترنت", loading: "لحظة…", error: "صار خطأ — حاول مرة ثانية", signInAgain: "سجّل دخولك مرة ثانية",
   bd: "د.ب", close: "إغلاق", back: "رجوع", requestSent: "أبشر! وصل طلب التوصيل ✅",
+  loyaltyCard: "بطاقة الولاء", points: "نقطة", worth: "تساوي", toNext: "باقي", forTier: "للفئة", commitment: "التزامك بالدفع",
+  loyaltyHow: "كل 1 د.ب تدفعها = {perBD} نقطة · كل {rp} نقطة = {rv} د.ب رصيد. اطلب الاستبدال من المحل أو على واتساب.", redeem: "استبدال النقاط على واتساب",
 };
 type Dict = typeof ar;
 const en: Dict = {
@@ -63,6 +65,8 @@ const en: Dict = {
   shopInfo: "About the shop", hours: "Opening hours", callShop: "Call the shop", privacy: "Privacy", version: "Version",
   retry: "Try again", offline: "No internet connection", loading: "One moment…", error: "Something went wrong — try again", signInAgain: "Please sign in again",
   bd: "BD", close: "Close", back: "Back", requestSent: "Done! Delivery request sent ✅",
+  loyaltyCard: "Loyalty card", points: "points", worth: "worth", toNext: "", forTier: "more to reach", commitment: "Payment commitment",
+  loyaltyHow: "Every 1 BD you pay = {perBD} points · every {rp} points = {rv} BD credit. Ask the shop or on WhatsApp to redeem.", redeem: "Redeem on WhatsApp",
 };
 export type TKey = keyof Dict;
 export const DICT: Record<Lang, Dict> = { ar, en };

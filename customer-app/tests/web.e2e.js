@@ -35,7 +35,7 @@ function reply(body) {
     case "home": return { customer: { id: "c1", name: "أم أحمد", phone: "97339692392", area: "الرفاع", address: "منزل 1043 طريق 2120 مجمع 921" }, balance: -2.4, debt: 2.4, credit: 0,
       active: ORDERS.slice(0, 2), recent: ORDERS.slice(2), owedTotal: 2.4,
       packages: [{ id: "cp1", name: "غسيل وكوي 50 قطعة", service: "washiron", total: 50, left: 25, expiresAt: "2027-01-20", expired: false, trips: 4, tripsPeriod: "total", purchasedAt: "" }],
-      requests: [] };
+      requests: [], loyalty: { cardNo: "997-692392", points: 1240, value: 2, tier: "gold", tierAr: "ذهبي", tierEn: "Gold", commitment: 92, spent90: 70, next: { ar: "بلاتيني", en: "Platinum", need: 50 }, redeemPoints: 500, redeemValue: 1, perBD: 10 } };
     case "orders": return { orders: ORDERS };
     case "order": return { order: { ...ORDERS.find((o) => o.id === body.id), items: [{ ar: "ثوب", en: "Thobe", serviceAr: "غسيل وكي", serviceEn: "Wash & Iron", qty: 4, total: 2, fromPackage: false, value: 2, urgent: true }, { ar: "غترة", en: "Ghutra", serviceAr: "كي", serviceEn: "Iron", qty: 2, total: 0, fromPackage: true, value: 0.6, urgent: false }], extras: [], subtotal: 2.4, discount: 0, urgentFee: 0, packageValue: 0.6, history: [{ status: "received", at: new Date().toISOString() }] } };
     case "book_pickup": case "request_delivery": case "feedback": return { ok: true };
@@ -70,6 +70,7 @@ function reply(body) {
   await page.waitForTimeout(6500);
   check("after the code arrives on WhatsApp the customer is signed in (home)", /هلا والله أم/.test(await text()), (await text()).slice(0, 120));
   check("home shows the debt banner, active orders and the package", /عليك مبلغ متبقي/.test(await text()) && /#00055/.test(await text()) && /25/.test(await text()) && /قطعة متبقية/.test(await text()));
+  check("💳 loyalty card on home: tier, points, card number", /ذهبي/.test(await text()) && /1,240/.test(await text()) && /997-692392/.test(await text()));
   await shot("2-home");
   await tap("#00048"); await page.waitForTimeout(1200);
   check("order details: items, package value, remaining, deliver-home button", /غترة/.test(await text()) && /0.600/.test(await text()) && /المتبقي/.test(await text()) && /وصّلوه لي البيت/.test(await text()));
@@ -91,6 +92,8 @@ function reply(body) {
   await page.fill('input[placeholder*="ابحث"]', "عباية"); await page.waitForTimeout(400);
   check("search filters the price list", /عباية/.test(await text()) && !/جاكيت/.test(await text()));
   await page.goto(base + "account"); await page.waitForTimeout(1500);
+  check("account shows the full card with the redeem button", /استبدال النقاط على واتساب/.test(await text()) && /التزامك بالدفع: 92%/.test(await text()));
+  await shot("6a-account");
   await tap("English"); await page.waitForTimeout(600);
   check("English switch works everywhere", /Account/.test(await text()) && /Sign out/.test(await text()));
   await shot("6-account-en");

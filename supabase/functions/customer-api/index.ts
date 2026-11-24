@@ -159,6 +159,53 @@ function packageView(cp, dlv, today) {
     expiresAt: cp.expiresAt || "", expired: !!(cp.expiresAt && cp.expiresAt < today), trips: t.n, tripsPeriod: t.period, purchasedAt: cp.purchasedAt || "" };
 }
 
+/* ===================== ⭐ loyalty card (same rules as the system: src/finance.js customerStats) ===================== */
+const LOYALTY_TIERS = [{ id: "bronze", ar: "برونزي", en: "Bronze", min: 0, discount: 5 }, { id: "silver", ar: "فضي", en: "Silver", min: 25, discount: 10 }, { id: "gold", ar: "ذهبي", en: "Gold", min: 60, discount: 15 }, { id: "platinum", ar: "بلاتيني", en: "Platinum", min: 120, discount: 20 }];
+const localDay = (iso) => new Date(new Date(iso).getTime() + 3 * 3600e3).toISOString().slice(0, 10); // Bahrain (UTC+3, no DST)
+function loyaltyCfg(settings) {
+  const l = (settings && settings.loyalty) || {}, n = (v, d) => (Number.isFinite(Number(v)) && Number(v) >= 0 && v !== "" && v !== null ? Number(v) : d);
+  const tiers = (Array.isArray(l.tiers) && l.tiers.length ? l.tiers : LOYALTY_TIERS).map((t) => ({ ...t, min: Number(t.min) || 0 })).sort((a, b) => a.min - b.min);
+  return { on: l.on !== false, perBD: n(l.perBD, 10), redeemPoints: Math.max(1, Math.floor(n(l.redeemPoints, 500))), redeemValue: r3(n(l.redeemValue, 1)), lateDays: Math.floor(n(l.lateDays, 14)), tiers };
+}
+function loyaltyOf(cust, orders, ledger, settings, today) {
+  const cfg = loyaltyCfg(settings);
+  if (!cfg.on) return null;
+  const isSale = (o) => (o.status === "ready" || o.status === "delivered") && o.paymentConfirmed !== false;
+  const paidAt = (o) => o.paidAt || o.readyAt || o.deliveredAt || o.createdAt;
+  // the customer's debt is spread over their on-account orders, newest last (same as the system)
+  let left = r3(Math.max(0, -Number(cust.balance) || 0));
+  const tp = {}; ledger.forEach((t) => { if (t.settles && t.orderId && !t.reversedBy) tp[t.orderId] = r3((tp[t.orderId] || 0) + (Number(t.amount) || 0)); });
+  const owedBy = {};
+  orders.filter((o) => o.debtRecorded && o.status !== "cancelled").sort((a, b) => String(paidAt(b)).localeCompare(String(paidAt(a)))).forEach((o) => {
+    const open = r3(Math.max(0, (Number((o.payment || {}).outstanding) || 0) - (tp[o.id] || 0))), ow = r3(Math.min(open, left)); owedBy[o.id] = ow; left = r3(left - ow);
+  });
+  const from90 = addDays(today, -89);
+  let paid = 0, spent90 = 0, sales = 0, debtOrders = 0, oldest = "";
+  orders.filter((o) => o.status !== "cancelled" && isSale(o)).forEach((o) => {
+    const total = r3((o.payment || {}).total), ow = o.debtRecorded ? owedBy[o.id] || 0 : 0;
+    sales++; paid = r3(paid + total - ow);
+    if (localDay(paidAt(o)) >= from90) spent90 = r3(spent90 + total);
+    if (o.debtRecorded) debtOrders++;
+    if (ow > 0) { const d = localDay(paidAt(o)); if (!oldest || d < oldest) oldest = d; }
+  });
+  let pkg = 0;
+  ledger.forEach((t) => { if (t.type === "package_purchase") { const pr = r3(t.price); pkg = r3(pkg + pr); if (t.at && localDay(t.at) >= from90) spent90 = r3(spent90 + pr); } });
+  const redeemed = ledger.reduce((a, t) => a + (t.reversedBy ? 0 : Number(t.loyaltyPoints) || 0), 0);
+  const points = Math.max(0, Math.floor((paid + pkg) * cfg.perBD) - redeemed);
+  const overdue = oldest ? Math.max(0, Math.round((new Date(today + "T12:00:00Z").getTime() - new Date(oldest + "T12:00:00Z").getTime()) / 86400000)) : 0;
+  let commitment = 100;
+  if (sales) commitment -= Math.round((debtOrders / sales) * 40);
+  if (Number(cust.balance) < 0) commitment -= 10;
+  commitment -= Math.min(50, overdue > cfg.lateDays ? overdue : Math.round(overdue / 2));
+  commitment = Math.max(0, Math.min(100, commitment));
+  let ti = 0; cfg.tiers.forEach((t, i) => { if (spent90 >= t.min) ti = i; });
+  if (commitment < 60 && ti > 0) ti--;
+  const tier = cfg.tiers[ti], next = cfg.tiers[ti + 1] || null;
+  return { cardNo: "997-" + String(cust.phone || cust.id || "").replace(/\D/g, "").slice(-6).padStart(6, "0"), points, value: r3(Math.floor(points / cfg.redeemPoints) * cfg.redeemValue),
+    tier: tier.id, tierAr: tier.ar, tierEn: tier.en || tier.ar, commitment, spent90,
+    next: next ? { ar: next.ar, en: next.en || next.ar, need: r3(Math.max(0, next.min - spent90)) } : null, redeemPoints: cfg.redeemPoints, redeemValue: cfg.redeemValue, perBD: cfg.perBD };
+}
+
 /* ===================== actions ===================== */
 async function act(action, body, env, f, base) {
   const D = db(env, f);
@@ -210,9 +257,9 @@ async function act(action, body, env, f, base) {
   const today = bhToday();
 
   if (action === "home" || action === "me") {
-    const [settings, garments, orders, pkgs, reqs] = await Promise.all([doc(D, shop, "settings"), records(D, shop, "custom_garments"),
-      records(D, shop, "orders", `&data->>customerId=eq.${enc(cust.id)}&order=updated_at.desc&limit=60`), records(D, shop, "customer_packages", `&data->>customerId=eq.${enc(cust.id)}`),
-      records(D, shop, "suspended_orders", `&data->>customerId=eq.${enc(cust.id)}`)]);
+    const [settings, garments, orders, pkgs, reqs, ledger] = await Promise.all([doc(D, shop, "settings"), records(D, shop, "custom_garments"),
+      records(D, shop, "orders", `&data->>customerId=eq.${enc(cust.id)}&order=updated_at.desc&limit=1000`), records(D, shop, "customer_packages", `&data->>customerId=eq.${enc(cust.id)}`),
+      records(D, shop, "suspended_orders", `&data->>customerId=eq.${enc(cust.id)}`), records(D, shop, "ledger", `&data->>customerId=eq.${enc(cust.id)}`)]);
     const dlv = dlvCfg(settings), bal = r3(Number(cust.balance) || 0);
     const live = orders.filter((o) => o.status !== "cancelled").sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     return json(200, {
@@ -223,6 +270,7 @@ async function act(action, body, env, f, base) {
       packages: pkgs.filter((p) => Number(p.remainingPieces) > 0).map((p) => packageView(p, dlv, today)),
       requests: reqs.filter((r) => r.kind === "pickup" || r.kind === "dropreq").map((r) => ({ id: r.id, kind: r.kind, date: r.date || "", slot: r.slot || "", address: r.address || "", status: r.status || "new", confirmed: !r.needsConfirm, orderNumber: r.orderNumber || "" })),
       owedTotal: r3(live.reduce((a, o) => a + owed(o), 0)),
+      loyalty: loyaltyOf(cust, orders, ledger, settings, today),
     });
   }
 

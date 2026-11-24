@@ -4,6 +4,7 @@ import Constants from "expo-constants";
 import { useSession } from "../../lib/session";
 import { Btn, Card, Chip, Divider, Row, Screen, Section, T } from "../../components/ui";
 import { PackageCard } from "../../components/PackageCard";
+import { LoyaltyCard } from "../../components/LoyaltyCard";
 import { C } from "../../lib/theme";
 import { money } from "../../lib/i18n";
 import { SHOP_WHATSAPP, SITE_URL } from "../../lib/config";
@@ -29,6 +30,7 @@ export default function AccountScreen() {
           <T w="x" color={(home?.balance || 0) < 0 ? C.red : C.green}>{money(Math.abs(home?.balance || 0), lang)}{(home?.balance || 0) < 0 ? ` (${t("owed")})` : ""}</T>
         </Row>
       </Card>
+      {home?.loyalty ? <LoyaltyCard l={home.loyalty} /> : null}
       {home?.packages.length ? <><Section title={`🎟 ${t("myPackage")}`} />{home.packages.map((p) => <PackageCard key={p.id} p={p} />)}</> : null}
       <Section title={`🌐 ${t("language")}`} />
       <Row><Chip label="العربية" on={lang === "ar"} onPress={() => setLang("ar")} /><Chip label="English" on={lang === "en"} onPress={() => setLang("en")} /></Row>
